@@ -1,0 +1,25 @@
+name = "rsi-workers"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+[triggers]
+crons = ["*/1 * * * *"]  # Каждую минуту
+
+[[kv_namespaces]]
+binding = "KV"
+id = "537eb17689cb4cb39a13ae58dedaba57"
+preview_id = "537eb17689cb4cb39a13ae58dedaba57"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rsi-db"
+database_id = "548f70f8-9fcb-4bca-952d-5f629c8ebd37"
+
+[vars]
+ENVIRONMENT = "production"
+YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
+FCM_ENDPOINT = "https://fcm.googleapis.com/fcm/send"
+
+# Секреты (устанавливаются через wrangler secret put)
+# FCM_SERVER_KEY
+# YAHOO_API_KEY (если нужен)
