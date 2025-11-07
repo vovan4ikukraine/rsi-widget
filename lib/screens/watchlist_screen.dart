@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
+import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
 
 class WatchlistScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+  late final WidgetService _widgetService;
 
   List<WatchlistItem> _watchlistItems = [];
   final Map<String, _SymbolRsiData> _rsiDataMap = {};
@@ -37,9 +40,35 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void initState() {
     super.initState();
+    _widgetService = WidgetService(
+      isar: widget.isar,
+      yahooService: _yahooService,
+    );
     WidgetsBinding.instance.addObserver(this);
     _updateControllerHints();
+    _loadSavedState();
+  }
+
+  Future<void> _loadSavedState() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _timeframe = prefs.getString('watchlist_timeframe') ?? '15m';
+      _rsiPeriod = prefs.getInt('watchlist_rsi_period') ?? 14;
+      _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
+      _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
+    });
+    // Сохраняем период для виджета при инициализации
+    await prefs.setInt('rsi_widget_period', _rsiPeriod);
+    await prefs.setString('rsi_widget_timeframe', _timeframe);
     _loadWatchlist();
+  }
+
+  Future<void> _saveState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('watchlist_timeframe', _timeframe);
+    await prefs.setInt('watchlist_rsi_period', _rsiPeriod);
+    await prefs.setDouble('watchlist_lower_level', _lowerLevel);
+    await prefs.setDouble('watchlist_upper_level', _upperLevel);
   }
 
   // Перезагружаем список при возвращении приложения из фона
@@ -47,6 +76,45 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadWatchlist();
+      // Проверяем, изменился ли таймфрейм в виджете и обновляем данные
+      _checkWidgetTimeframe();
+    }
+  }
+
+  Future<void> _checkWidgetTimeframe() async {
+    // Загружаем таймфрейм и период из виджета (если были изменены в виджете)
+    final prefs = await SharedPreferences.getInstance();
+    final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
+    final widgetPeriod = prefs.getInt('rsi_widget_period');
+    final widgetNeedsRefresh = prefs.getBool('widget_needs_refresh') ?? false;
+
+    bool needsUpdate = false;
+
+    // Если таймфрейм изменился в виджете, обновляем его в приложении
+    if (widgetTimeframe != null && widgetTimeframe != _timeframe) {
+      setState(() {
+        _timeframe = widgetTimeframe;
+      });
+      _saveState();
+      needsUpdate = true;
+    }
+
+    // Если период изменился в виджете, обновляем его в приложении
+    if (widgetPeriod != null && widgetPeriod != _rsiPeriod) {
+      setState(() {
+        _rsiPeriod = widgetPeriod;
+      });
+      _saveState();
+      needsUpdate = true;
+    }
+
+    // Если виджет запросил обновление или что-то изменилось, перезагружаем данные
+    if (needsUpdate || widgetNeedsRefresh) {
+      // Сбрасываем флаг обновления
+      if (widgetNeedsRefresh) {
+        await prefs.remove('widget_needs_refresh');
+      }
+      _loadAllRsiData();
     }
   }
 
@@ -101,6 +169,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Загружаем RSI данные для всех символов
       await _loadAllRsiData();
+      // Обновляем виджет после загрузки watchlist (используем сохраненные настройки виджета или текущие)
+      _widgetService.updateWidget();
     } catch (e, stackTrace) {
       debugPrint('WatchlistScreen: Ошибка загрузки списка: $e');
       debugPrint('WatchlistScreen: Stack trace: $stackTrace');
@@ -127,6 +197,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       setState(() {
         _isLoading = false;
       });
+      // Обновляем виджет после загрузки данных (используем сохраненные настройки виджета)
+      _widgetService.updateWidget();
     }
   }
 
@@ -240,9 +312,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _watchlistItems.remove(item);
       _rsiDataMap.remove(item.symbol);
     });
+    // Обновляем виджет после удаления
+    _widgetService.updateWidget();
   }
 
-  void _applySettings() {
+  Future<void> _applySettings() async {
     final period = int.tryParse(_rsiPeriodController.text);
     final lower = double.tryParse(_lowerLevelController.text);
     final upper = double.tryParse(_upperLevelController.text);
@@ -255,6 +329,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         period != _rsiPeriod) {
       _rsiPeriod = period;
       changed = true;
+      _saveState();
     }
 
     if (lower != null &&
@@ -264,6 +339,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         lower != _lowerLevel) {
       _lowerLevel = lower;
       changed = true;
+      _saveState();
     }
 
     if (upper != null &&
@@ -273,26 +349,45 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         upper != _upperLevel) {
       _upperLevel = upper;
       changed = true;
+      _saveState();
     }
 
     _updateControllerHints();
 
     if (changed) {
+      // Сохраняем период для виджета
+      if (period != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('rsi_widget_period', _rsiPeriod);
+      }
       _loadAllRsiData();
+      // Обновляем виджет с новым периодом
+      _widgetService.updateWidget(
+        rsiPeriod: _rsiPeriod,
+      );
     } else {
       setState(() {});
     }
   }
 
-  void _resetSettings() {
+  Future<void> _resetSettings() async {
     setState(() {
       _timeframe = '15m';
       _rsiPeriod = 14;
       _lowerLevel = 30.0;
       _upperLevel = 70.0;
     });
+    _saveState();
+    // Сохраняем период для виджета
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('rsi_widget_period', _rsiPeriod);
     _updateControllerHints();
     _loadAllRsiData();
+    // Обновляем виджет
+    _widgetService.updateWidget(
+      timeframe: _timeframe,
+      rsiPeriod: _rsiPeriod,
+    );
   }
 
   @override
@@ -374,12 +469,25 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                   DropdownMenuItem(
                                       value: '1d', child: Text('1д')),
                                 ],
-                                onChanged: (value) {
+                                onChanged: (value) async {
                                   if (value != null) {
                                     setState(() {
                                       _timeframe = value;
                                     });
+                                    _saveState();
+                                    // Сохраняем таймфрейм для виджета
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
+                                    await prefs.setString(
+                                        'rsi_widget_timeframe', _timeframe);
+                                    await prefs.setInt(
+                                        'rsi_widget_period', _rsiPeriod);
                                     _loadAllRsiData(); // Автоматически перезагружаем данные при изменении таймфрейма
+                                    // Обновляем виджет
+                                    _widgetService.updateWidget(
+                                      timeframe: _timeframe,
+                                      rsiPeriod: _rsiPeriod,
+                                    );
                                   }
                                 },
                               ),

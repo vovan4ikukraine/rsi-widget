@@ -44,10 +44,11 @@ class NotificationService {
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
 
-      // Запрос разрешений для Android 13+
-      if (Platform.isAndroid) {
-        await _requestAndroidPermissions();
-      }
+      // Не запрашиваем разрешения автоматически при инициализации
+      // Разрешения будут запрашиваться только когда они действительно нужны
+      // if (Platform.isAndroid) {
+      //   await _requestAndroidPermissions();
+      // }
 
       _initialized = true;
 
@@ -61,21 +62,26 @@ class NotificationService {
     }
   }
 
-  /// Запрос разрешений для Android
-  static Future<void> _requestAndroidPermissions() async {
+  /// Запрос разрешений только при необходимости (например, при создании алерта)
+  static Future<bool> requestPermissionsIfNeeded() async {
     try {
       final androidPlugin =
           _notifications.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin != null) {
+        // Запрашиваем разрешение на уведомления только когда оно действительно нужно
+        // Не запрашиваем разрешение на точные будильники автоматически,
+        // так как это открывает настройки системы
         await androidPlugin.requestNotificationsPermission();
-        await androidPlugin.requestExactAlarmsPermission();
+        return true;
       }
+      return false;
     } catch (e) {
       if (kDebugMode) {
         print('Ошибка запроса разрешений Android: $e');
       }
+      return false;
     }
   }
 

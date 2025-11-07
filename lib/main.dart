@@ -56,6 +56,18 @@ class RSIWidgetApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: HomeScreen(isar: isar),
+      onGenerateRoute: (settings) {
+        // Обработка запуска из виджета для обновления данных
+        if (settings.arguments is Map &&
+            (settings.arguments as Map)['update_widget'] == true) {
+          // Открываем watchlist для обновления виджета
+          return MaterialPageRoute(
+            builder: (context) => HomeScreen(isar: isar),
+            settings: settings,
+          );
+        }
+        return null;
+      },
       debugShowCheckedModeBanner: false,
     );
   }

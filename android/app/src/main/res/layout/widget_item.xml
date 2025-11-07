@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_item_background"
+    android:layout_marginBottom="8dp"
+    android:minHeight="120dp">
+
+    <!-- Первая строка: Символ и RSI (компактно) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/widget_symbol"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="AAPL"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:letterSpacing="0.02" />
+
+        <TextView
+            android:id="@+id/widget_rsi"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50.00"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#42A5F5"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:background="@drawable/widget_rsi_badge_background"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/widget_price"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="150.00"
+            android:textSize="13sp"
+            android:textColor="#CCCCCC"
+            android:paddingStart="10dp" />
+
+        <TextView
+            android:id="@+id/widget_change"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+1.23"
+            android:textSize="13sp"
+            android:textColor="#66BB6A"
+            android:paddingStart="10dp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+    <!-- График RSI - основной элемент -->
+    <ImageView
+        android:id="@+id/widget_chart"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:layout_marginTop="6dp"
+        android:scaleType="fitXY"
+        android:background="#E01E1E1E" />
+
+</LinearLayout>
+
+

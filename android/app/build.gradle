@@ -49,4 +49,10 @@ dependencies {
     // AndroidX Material для поддержки lStar и других атрибутов Material Design 3
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.13.0'
+    
+    // OkHttp для HTTP запросов в виджете
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    
+    // Kotlin Coroutines для асинхронных операций
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

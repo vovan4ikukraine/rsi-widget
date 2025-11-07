@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
+import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
@@ -21,6 +24,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+  static const MethodChannel _channel =
+      MethodChannel('com.example.rsi_widget/widget');
+  late final WidgetService _widgetService;
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
@@ -43,15 +49,71 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _widgetService = WidgetService(
+      isar: widget.isar,
+      yahooService: _yahooService,
+    );
+    _setupMethodChannel();
+    _loadSavedState();
+  }
+
+  void _setupMethodChannel() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'refreshWidget') {
+        final timeframe = call.arguments['timeframe'] as String? ?? '15m';
+        final rsiPeriod = call.arguments['rsiPeriod'] as int? ?? 14;
+        final minimizeAfterUpdate =
+            call.arguments['minimizeAfterUpdate'] as bool? ?? false;
+
+        print(
+            'HomeScreen: Refresh widget requested - timeframe: $timeframe, period: $rsiPeriod, minimize: $minimizeAfterUpdate');
+
+        // Обновляем виджет с указанным таймфреймом и периодом
+        await _widgetService.updateWidget(
+          timeframe: timeframe,
+          rsiPeriod: rsiPeriod,
+        );
+
+        print('HomeScreen: Widget updated successfully');
+
+        // Небольшая дополнительная задержка, чтобы убедиться, что данные загружены
+        // Нативная часть минимизирует приложение через 2 секунды
+      }
+    });
+  }
+
+  Future<void> _loadSavedState() async {
+    final prefs = await SharedPreferences.getInstance();
+
     if (widget.initialSymbol != null) {
       _selectedSymbol = widget.initialSymbol!;
+    } else {
+      _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
     }
+
+    _selectedTimeframe = prefs.getString('home_selected_timeframe') ?? '15m';
+    _rsiPeriod = prefs.getInt('home_rsi_period') ?? 14;
+    _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
+    _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
+
     // Инициализируем контроллер символа
     _symbolController.text = _selectedSymbol;
     // Инициализируем контроллеры (без text, используем hintText)
     _clearControllers();
+
+    setState(() {});
+
     _loadAlerts();
     _loadRsiData();
+  }
+
+  Future<void> _saveState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('home_selected_symbol', _selectedSymbol);
+    await prefs.setString('home_selected_timeframe', _selectedTimeframe);
+    await prefs.setInt('home_rsi_period', _rsiPeriod);
+    await prefs.setDouble('home_lower_level', _lowerLevel);
+    await prefs.setDouble('home_upper_level', _upperLevel);
   }
 
   @override
@@ -513,6 +575,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _selectedSymbol = trimmedValue;
                               _symbolController.text = trimmedValue;
                             });
+                            _saveState();
                             _loadRsiData();
                           }
                           // Убираем фокус при отправке
@@ -548,6 +611,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() {
                         _selectedSymbol = selection.symbol;
                       });
+                      _saveState();
                       _loadRsiData();
                       // Убираем фокус после выбора
                       FocusScope.of(context).unfocus();
@@ -651,6 +715,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() {
                           _selectedTimeframe = value;
                         });
+                        _saveState();
                         _loadRsiData();
                       }
                     },
@@ -708,17 +773,23 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildRsiChart() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 16), // Уменьшены горизонтальные отступы с 16 до 8
+        padding: const EdgeInsets.only(
+            left: 4,
+            right: 4,
+            top: 16,
+            bottom:
+                16), // Минимальные горизонтальные отступы для максимального растяжения графика
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'График RSI',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'График RSI',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             RsiChart(
               rsiValues: _rsiValues,
               timestamps: _rsiTimestamps,
@@ -803,6 +874,7 @@ class _HomeScreenState extends State<HomeScreen> {
         period != _rsiPeriod) {
       _rsiPeriod = period;
       changed = true;
+      _saveState();
     }
 
     if (lower != null &&
@@ -812,6 +884,7 @@ class _HomeScreenState extends State<HomeScreen> {
         lower != _lowerLevel) {
       _lowerLevel = lower;
       changed = true;
+      _saveState();
     }
 
     if (upper != null &&
@@ -821,6 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
         upper != _upperLevel) {
       _upperLevel = upper;
       changed = true;
+      _saveState();
     }
 
     // Очищаем поля ввода
@@ -840,6 +914,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _lowerLevel = 30.0;
       _upperLevel = 70.0;
     });
+    _saveState();
     _clearControllers();
     _loadRsiData();
   }

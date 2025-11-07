@@ -4,6 +4,8 @@
     package="com.example.rsi_widget"
     tools:overrideLibrary="dev.isar.isar_flutter_libs">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="rsi_widget"
         android:name="${applicationName}"
@@ -27,11 +29,36 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.example.rsi_widget.REFRESH_WIDGET" />
+            </intent-filter>
         </activity>
 
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- App Widget Provider -->
+        <receiver
+            android:name=".RSIWidgetProvider"
+            android:exported="true"
+            android:label="RSI Watchlist">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.rsi_widget.UPDATE_WIDGET" />
+                <action android:name="com.example.rsi_widget.CHANGE_TIMEFRAME" />
+                <action android:name="com.example.rsi_widget.REFRESH_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
+
+        <!-- RemoteViewsService для списка в виджете -->
+        <service
+            android:name=".RSIWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
     </application>
 
     <queries>

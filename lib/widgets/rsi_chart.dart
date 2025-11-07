@@ -42,7 +42,7 @@ class RsiChart extends StatelessWidget {
           ? 200
           : 50, // Для компактного режима фиксированная высота 50
       padding: isInteractive
-          ? const EdgeInsets.all(16)
+          ? const EdgeInsets.only(left: 4, right: 4, top: 8, bottom: 8)
           : const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: LineChart(
         LineChartData(
@@ -134,8 +134,9 @@ class RsiChart extends StatelessWidget {
         sideTitles: SideTitles(
           showTitles:
               showLabels, // Показываем подписи только если showLabels = true
-          reservedSize:
-              isInteractive ? 40 : 25, // Компактный режим - меньше места
+          reservedSize: isInteractive
+              ? 30
+              : 25, // Уменьшено с 40 до 30 для интерактивного режима
           interval: isInteractive
               ? 20
               : 25, // Для компактного режима: 0, 25, 50, 75, 100
@@ -150,7 +151,7 @@ class RsiChart extends StatelessWidget {
               return const SizedBox.shrink();
             }
             return Padding(
-              padding: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.only(right: 2),
               child: Text(
                 value.toInt().toString(),
                 style: TextStyle(
