@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
+import '../localization/app_localizations.dart';
 
 class WatchlistScreen extends StatefulWidget {
   final Isar isar;
@@ -26,13 +27,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   bool _isLoading = false;
   bool _settingsExpanded = false;
 
-  // Настройки для всех графиков
+  // Settings for all charts
   String _timeframe = '15m';
   int _rsiPeriod = 14;
   double _lowerLevel = 30.0;
   double _upperLevel = 70.0;
 
-  // Контроллеры для полей ввода настроек
+  // Controllers for settings input fields
   final TextEditingController _rsiPeriodController = TextEditingController();
   final TextEditingController _lowerLevelController = TextEditingController();
   final TextEditingController _upperLevelController = TextEditingController();
@@ -57,7 +58,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
       _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
     });
-    // Сохраняем период для виджета при инициализации
+    // Save period for widget on initialization
     await prefs.setInt('rsi_widget_period', _rsiPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
     _loadWatchlist();
@@ -71,18 +72,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setDouble('watchlist_upper_level', _upperLevel);
   }
 
-  // Перезагружаем список при возвращении приложения из фона
+  // Reload list when app returns from background
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadWatchlist();
-      // Проверяем, изменился ли таймфрейм в виджете и обновляем данные
+      // Check if timeframe changed in widget and update data
       _checkWidgetTimeframe();
     }
   }
 
   Future<void> _checkWidgetTimeframe() async {
-    // Загружаем таймфрейм и период из виджета (если были изменены в виджете)
+    // Load timeframe and period from widget (if changed in widget)
     final prefs = await SharedPreferences.getInstance();
     final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
     final widgetPeriod = prefs.getInt('rsi_widget_period');
@@ -90,7 +91,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
     bool needsUpdate = false;
 
-    // Если таймфрейм изменился в виджете, обновляем его в приложении
+    // If timeframe changed in widget, update it in app
     if (widgetTimeframe != null && widgetTimeframe != _timeframe) {
       setState(() {
         _timeframe = widgetTimeframe;
@@ -99,7 +100,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       needsUpdate = true;
     }
 
-    // Если период изменился в виджете, обновляем его в приложении
+    // If period changed in widget, update it in app
     if (widgetPeriod != null && widgetPeriod != _rsiPeriod) {
       setState(() {
         _rsiPeriod = widgetPeriod;
@@ -108,9 +109,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       needsUpdate = true;
     }
 
-    // Если виджет запросил обновление или что-то изменилось, перезагружаем данные
+    // If widget requested update or something changed, reload data
     if (needsUpdate || widgetNeedsRefresh) {
-      // Сбрасываем флаг обновления
+      // Reset update flag
       if (widgetNeedsRefresh) {
         await prefs.remove('widget_needs_refresh');
       }
@@ -135,13 +136,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _loadWatchlist() async {
     try {
-      // Загружаем все элементы из базы
+      // Load all items from database
       final items = await widget.isar.watchlistItems.where().findAll();
-      debugPrint(
-          'WatchlistScreen: Загружено ${items.length} элементов из базы');
+      debugPrint('WatchlistScreen: Loaded ${items.length} items from database');
 
       if (items.isEmpty) {
-        debugPrint('WatchlistScreen: База данных пуста!');
+        debugPrint('WatchlistScreen: Database is empty!');
         setState(() {
           _watchlistItems = [];
           _rsiDataMap.clear();
@@ -150,33 +150,38 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
 
       debugPrint(
-          'WatchlistScreen: Символы: ${items.map((e) => '${e.symbol} (id:${e.id}, createdAt:${e.createdAt})').toList()}');
+          'WatchlistScreen: Symbols: ${items.map((e) => '${e.symbol} (id:${e.id}, createdAt:${e.createdAt})').toList()}');
 
-      // Сортируем по дате создания (самые старые первые, новые последние)
+      // Sort by creation date (oldest first, newest last)
       final sortedItems = List<WatchlistItem>.from(items);
       sortedItems.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
       debugPrint(
-          'WatchlistScreen: После сортировки: ${sortedItems.map((e) => e.symbol).toList()}');
+          'WatchlistScreen: After sorting: ${sortedItems.map((e) => e.symbol).toList()}');
 
       setState(() {
         _watchlistItems = sortedItems;
         debugPrint(
-            'WatchlistScreen: После setState _watchlistItems.length = ${_watchlistItems.length}');
+            'WatchlistScreen: After setState _watchlistItems.length = ${_watchlistItems.length}');
         debugPrint(
-            'WatchlistScreen: _watchlistItems содержит: ${_watchlistItems.map((e) => e.symbol).toList()}');
+            'WatchlistScreen: _watchlistItems contains: ${_watchlistItems.map((e) => e.symbol).toList()}');
       });
 
-      // Загружаем RSI данные для всех символов
+      // Load RSI data for all symbols
       await _loadAllRsiData();
-      // Обновляем виджет после загрузки watchlist (используем сохраненные настройки виджета или текущие)
+      // Update widget after loading watchlist (use saved widget settings or current)
       _widgetService.updateWidget();
     } catch (e, stackTrace) {
-      debugPrint('WatchlistScreen: Ошибка загрузки списка: $e');
+      debugPrint('WatchlistScreen: Error loading list: $e');
       debugPrint('WatchlistScreen: Stack trace: $stackTrace');
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки watchlist: $e')),
+          SnackBar(
+            content: Text(
+              loc.t('watchlist_error_loading', params: {'message': '$e'}),
+            ),
+          ),
         );
       }
     }
@@ -197,14 +202,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       setState(() {
         _isLoading = false;
       });
-      // Обновляем виджет после загрузки данных (используем сохраненные настройки виджета)
+      // Update widget after loading data (use saved widget settings)
       _widgetService.updateWidget();
     }
   }
 
   Future<void> _loadRsiDataForSymbol(String symbol) async {
     try {
-      // Определяем limit в зависимости от таймфрейма
+      // Determine limit depending on timeframe
       int limit = 100;
       if (_timeframe == '4h') {
         limit = 500;
@@ -244,7 +249,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         return;
       }
 
-      // Расчет RSI по алгоритму Wilder
+      // RSI calculation using Wilder's algorithm
       double gain = 0, loss = 0;
       for (int i = 1; i <= _rsiPeriod; i++) {
         final change = closes[i] - closes[i - 1];
@@ -277,7 +282,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         rsiTimestamps.add(candles[i].timestamp);
       }
 
-      // Берем только последние 50 точек для компактного графика
+      // Take only last 50 points for compact chart
       final chartRsiValues = rsiValues.length > 50
           ? rsiValues.sublist(rsiValues.length - 50)
           : rsiValues;
@@ -293,7 +298,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         );
       });
     } catch (e) {
-      debugPrint('Ошибка загрузки RSI для $symbol: $e');
+      debugPrint('Error loading RSI for $symbol: $e');
       setState(() {
         _rsiDataMap[symbol] = _SymbolRsiData(
           rsi: 0.0,
@@ -312,7 +317,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _watchlistItems.remove(item);
       _rsiDataMap.remove(item.symbol);
     });
-    // Обновляем виджет после удаления
+    // Update widget after deletion
     _widgetService.updateWidget();
   }
 
@@ -355,13 +360,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _updateControllerHints();
 
     if (changed) {
-      // Сохраняем период для виджета
+      // Save period for widget
       if (period != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('rsi_widget_period', _rsiPeriod);
       }
       _loadAllRsiData();
-      // Обновляем виджет с новым периодом
+      // Update widget with new period
       _widgetService.updateWidget(
         rsiPeriod: _rsiPeriod,
       );
@@ -378,12 +383,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _upperLevel = 70.0;
     });
     _saveState();
-    // Сохраняем период для виджета
+    // Save period for widget
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('rsi_widget_period', _rsiPeriod);
     _updateControllerHints();
     _loadAllRsiData();
-    // Обновляем виджет
+    // Update widget
     _widgetService.updateWidget(
       timeframe: _timeframe,
       rsiPeriod: _rsiPeriod,
@@ -392,15 +397,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Watchlist'),
+        title: Text(loc.t('watchlist_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
-          // Выпадающий бар с настройками
+          // Collapsible settings bar
           Card(
             margin: EdgeInsets.zero,
             child: Column(
@@ -409,7 +415,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   onTap: () {
                     setState(() {
                       _settingsExpanded = !_settingsExpanded;
-                      // При разворачивании заполняем поля текущими значениями
+                      // When expanding, fill fields with current values
                       if (_settingsExpanded) {
                         _rsiPeriodController.text = _rsiPeriod.toString();
                         _lowerLevelController.text =
@@ -423,9 +429,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        const Text(
-                          'Настройки Watchlist',
-                          style: TextStyle(
+                        Text(
+                          loc.t('watchlist_settings_title'),
+                          style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const Spacer(),
@@ -448,26 +454,27 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               flex: 2,
                               child: DropdownButtonFormField<String>(
                                 value: _timeframe,
-                                decoration: const InputDecoration(
-                                  labelText: 'ТФ',
-                                  border: OutlineInputBorder(),
+                                decoration: InputDecoration(
+                                  labelText: loc.t('home_timeframe_label'),
+                                  border: const OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
+                                  contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 8),
                                 ),
+                                isExpanded: true,
                                 items: const [
                                   DropdownMenuItem(
-                                      value: '1m', child: Text('1м')),
+                                      value: '1m', child: Text('1m')),
                                   DropdownMenuItem(
-                                      value: '5m', child: Text('5м')),
+                                      value: '5m', child: Text('5m')),
                                   DropdownMenuItem(
-                                      value: '15m', child: Text('15м')),
+                                      value: '15m', child: Text('15m')),
                                   DropdownMenuItem(
-                                      value: '1h', child: Text('1ч')),
+                                      value: '1h', child: Text('1h')),
                                   DropdownMenuItem(
-                                      value: '4h', child: Text('4ч')),
+                                      value: '4h', child: Text('4h')),
                                   DropdownMenuItem(
-                                      value: '1d', child: Text('1д')),
+                                      value: '1d', child: Text('1d')),
                                 ],
                                 onChanged: (value) async {
                                   if (value != null) {
@@ -475,15 +482,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                       _timeframe = value;
                                     });
                                     _saveState();
-                                    // Сохраняем таймфрейм для виджета
+                                    // Save timeframe for widget
                                     final prefs =
                                         await SharedPreferences.getInstance();
                                     await prefs.setString(
                                         'rsi_widget_timeframe', _timeframe);
                                     await prefs.setInt(
                                         'rsi_widget_period', _rsiPeriod);
-                                    _loadAllRsiData(); // Автоматически перезагружаем данные при изменении таймфрейма
-                                    // Обновляем виджет
+                                    _loadAllRsiData(); // Automatically reload data when timeframe changes
+                                    // Update widget
                                     _widgetService.updateWidget(
                                       timeframe: _timeframe,
                                       rsiPeriod: _rsiPeriod,
@@ -496,11 +503,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             Expanded(
                               child: TextField(
                                 controller: _rsiPeriodController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Период RSI',
-                                  border: OutlineInputBorder(),
+                                decoration: InputDecoration(
+                                  labelText: loc.t('home_rsi_period_label'),
+                                  border: const OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
+                                  contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 8),
                                 ),
                                 keyboardType: TextInputType.number,
@@ -510,11 +517,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             Expanded(
                               child: TextField(
                                 controller: _lowerLevelController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Нижняя зона',
-                                  border: OutlineInputBorder(),
+                                decoration: InputDecoration(
+                                  labelText: loc.t('home_lower_zone_label'),
+                                  border: const OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
+                                  contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 8),
                                 ),
                                 keyboardType:
@@ -526,11 +533,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             Expanded(
                               child: TextField(
                                 controller: _upperLevelController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Верхняя зона',
-                                  border: OutlineInputBorder(),
+                                decoration: InputDecoration(
+                                  labelText: loc.t('home_upper_zone_label'),
+                                  border: const OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
+                                  contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 8),
                                 ),
                                 keyboardType:
@@ -546,7 +553,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           children: [
                             IconButton(
                               icon: const Icon(Icons.refresh, size: 18),
-                              tooltip: 'Сбросить',
+                              tooltip: loc.t('watchlist_reset'),
                               onPressed: _resetSettings,
                               color: Colors.grey[600],
                               padding: EdgeInsets.zero,
@@ -555,7 +562,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             const SizedBox(width: 8),
                             IconButton(
                               icon: const Icon(Icons.check, size: 18),
-                              tooltip: 'Применить',
+                              tooltip: loc.t('watchlist_apply'),
                               onPressed: _applySettings,
                               color: Colors.blue,
                               padding: EdgeInsets.zero,
@@ -570,7 +577,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ],
             ),
           ),
-          // Список инструментов
+          // Instruments list
           Expanded(
             child: _isLoading && _watchlistItems.isEmpty
                 ? const Center(child: CircularProgressIndicator())
@@ -582,13 +589,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             Icon(Icons.list, size: 64, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              'Watchlist пуст',
+                              loc.t('watchlist_empty_title'),
                               style: TextStyle(
                                   color: Colors.grey[400], fontSize: 18),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Добавьте инструменты с главного экрана',
+                              loc.t('watchlist_empty_subtitle'),
                               style: TextStyle(
                                   color: Colors.grey[600], fontSize: 14),
                             ),
@@ -597,30 +604,30 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       )
                     : RefreshIndicator(
                         onRefresh: () async {
-                          await _loadWatchlist(); // Перезагружаем весь список, а не только RSI данные
+                          await _loadWatchlist(); // Reload entire list, not just RSI data
                         },
                         child: _watchlistItems.isEmpty
-                            ? const Center(child: Text('Нет элементов'))
+                            ? Center(child: Text(loc.t('watchlist_no_items')))
                             : Builder(
                                 builder: (context) {
                                   debugPrint(
-                                      'WatchlistScreen: ListView.builder будет отображать ${_watchlistItems.length} элементов');
+                                      'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
                                   return ListView.builder(
                                     key: ValueKey(
-                                        'watchlist_${_watchlistItems.length}'), // Ключ для принудительного обновления
+                                        'watchlist_${_watchlistItems.length}'), // Key for forced update
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 8),
                                     itemCount: _watchlistItems.length,
                                     itemBuilder: (context, index) {
                                       if (index >= _watchlistItems.length) {
                                         debugPrint(
-                                            'WatchlistScreen: ОШИБКА! Индекс $index >= длины списка ${_watchlistItems.length}');
+                                            'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
                                         return const SizedBox.shrink();
                                       }
 
                                       final item = _watchlistItems[index];
                                       debugPrint(
-                                          'WatchlistScreen: Отображение элемента $index: ${item.symbol} (id: ${item.id})');
+                                          'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
 
                                       final rsiData =
                                           _rsiDataMap[item.symbol] ??
@@ -643,6 +650,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Widget _buildWatchlistItem(WatchlistItem item, _SymbolRsiData rsiData) {
+    final loc = context.loc;
     final rsi = rsiData.rsi;
     Color rsiColor = Colors.grey;
     if (rsi < _lowerLevel) {
@@ -660,12 +668,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Удалить из Watchlist?'),
-              content: Text('Удалить ${item.symbol} из списка отслеживания?'),
+              title: Text(loc.t('watchlist_remove_title')),
+              content: Text(
+                loc.t('watchlist_remove_message',
+                    params: {'symbol': item.symbol}),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Отмена'),
+                  child: Text(loc.t('common_cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -673,7 +684,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     _removeFromWatchlist(item);
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  child: const Text('Удалить'),
+                  child: Text(loc.t('watchlist_remove')),
                 ),
               ],
             ),
@@ -690,13 +701,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   Text(
                     item.symbol,
                     style: const TextStyle(
-                      fontSize: 14, // Уменьшен размер шрифта с 16 до 14
+                      fontSize: 14, // Reduced font size from 16 to 14
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const Spacer(),
                   Text(
-                    'RSI: ${rsi.toStringAsFixed(1)}',
+                    loc.t('watchlist_rsi_prefix',
+                        params: {'value': rsi.toStringAsFixed(1)}),
                     style: TextStyle(
                       fontSize: 11,
                       color: rsiColor,
@@ -708,7 +720,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               const SizedBox(height: 4),
               if (rsiData.rsiValues.isNotEmpty)
                 SizedBox(
-                  height: 53, // Увеличено с 50 до 53 (примерно на 5%)
+                  height: 53, // Increased from 50 to 53 (approximately 5%)
                   child: RsiChart(
                     rsiValues: rsiData.rsiValues,
                     timestamps: rsiData.timestamps,
@@ -716,17 +728,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     timeframe: _timeframe,
                     levels: [_lowerLevel, _upperLevel],
                     showGrid: false,
-                    showLabels: true, // Включаем подписи для оси Y
+                    showLabels: true, // Enable labels for Y axis
                     lineWidth: 1.2,
-                    isInteractive: false, // Но tooltip все равно будет работать
+                    isInteractive: false, // But tooltip will still work
                   ),
                 )
               else
                 SizedBox(
-                  height: 53, // Увеличено с 50 до 53 (примерно на 5%)
+                  height: 53, // Increased from 50 to 53 (approximately 5%)
                   child: Center(
                     child: Text(
-                      'Нет данных',
+                      loc.t('watchlist_no_data'),
                       style: TextStyle(color: Colors.grey[600], fontSize: 11),
                     ),
                   ),

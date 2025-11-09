@@ -7,7 +7,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // Совместимо с SDK 34 и Gradle 8.7
+        // Compatible with SDK 34 and Gradle 8.7
         classpath 'com.android.tools.build:gradle:8.6.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.google.gms:google-services:4.4.2'
@@ -21,7 +21,7 @@ allprojects {
     }
 }
 
-// Добавляем namespace для isar_flutter_libs ДО оценки проекта
+// Add namespace for isar_flutter_libs BEFORE project evaluation
 gradle.beforeProject { project ->
     if (project.name == "isar_flutter_libs") {
         project.afterEvaluate {

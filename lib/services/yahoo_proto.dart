@@ -5,14 +5,14 @@ import 'package:http/http.dart' as http;
 final yahooService =
     YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
-/// Адаптер для получения данных от Yahoo Finance через прокси
+/// Adapter for getting data from Yahoo Finance through proxy
 class YahooProtoSource {
   final String endpoint;
   final http.Client _client = http.Client();
 
   YahooProtoSource(this.endpoint);
 
-  /// Получение свечей для символа
+  /// Get candles for symbol
   Future<List<CandleData>> fetchCandles(
     String symbol,
     String timeframe, {
@@ -37,54 +37,54 @@ class YahooProtoSource {
       if (response.statusCode != 200) {
         final errorBody = response.body;
         throw YahooException(
-            'Ошибка HTTP ${response.statusCode} для $symbol $timeframe: $errorBody');
+            'HTTP error ${response.statusCode} for $symbol $timeframe: $errorBody');
       }
 
       final decoded = json.decode(response.body);
 
-      // Проверка на ошибку от сервера
+      // Check for server error
       if (decoded is Map && decoded.containsKey('error')) {
         final errorMsg = decoded['error'];
         throw YahooException(
-            'Сервер вернул ошибку для $symbol $timeframe: $errorMsg');
+            'Server returned error for $symbol $timeframe: $errorMsg');
       }
 
-      // Проверка, что это массив
+      // Check that it's an array
       if (decoded is! List) {
         throw YahooException(
-            'Неверный формат данных для $symbol $timeframe: ожидается массив, получен ${decoded.runtimeType}. Ответ: ${decoded.toString().substring(0, decoded.toString().length > 200 ? 200 : decoded.toString().length)}');
+            'Invalid data format for $symbol $timeframe: expected array, got ${decoded.runtimeType}. Response: ${decoded.toString().substring(0, decoded.toString().length > 200 ? 200 : decoded.toString().length)}');
       }
 
       final data = decoded;
 
-      // Логируем количество полученных свечей
+      // Log number of received candles
       debugPrint(
-          'YahooProto: Получено ${data.length} свечей для $symbol $timeframe');
+          'YahooProto: Received ${data.length} candles for $symbol $timeframe');
 
       if (data.isEmpty) {
-        // Для больших таймфреймов в выходные дни может не быть свежих данных
+        // For large timeframes on weekends there may be no fresh data
         String hint = '';
         if (timeframe == '4h' || timeframe == '1d') {
           final now = DateTime.now();
           final dayOfWeek = now.weekday; // 1 = Monday, 7 = Sunday
           if (dayOfWeek == 6 || dayOfWeek == 7) {
             hint =
-                ' Рынки закрыты в выходные дни. Для таймфреймов 4h и 1d Yahoo Finance может не возвращать свежие данные в выходные.';
+                ' Markets are closed on weekends. For 4h and 1d timeframes, Yahoo Finance may not return fresh data on weekends.';
           } else {
             hint =
-                ' Для таймфреймов 4h и 1d требуются данные за более длительный период.';
+                ' For 4h and 1d timeframes, data for a longer period is required.';
           }
         }
         throw YahooException(
-            'Сервер вернул пустой массив данных для $symbol $timeframe. Возможно, нет данных за запрошенный период.$hint');
+            'Server returned empty data array for $symbol $timeframe. Possibly no data for requested period.$hint');
       }
 
-      // Поддержка двух форматов:
-      // 1. Массив объектов: [{timestamp, open, high, low, close, volume}, ...]
-      // 2. Массив массивов: [[ts, open, high, low, close, volume], ...]
+      // Support two formats:
+      // 1. Array of objects: [{timestamp, open, high, low, close, volume}, ...]
+      // 2. Array of arrays: [[ts, open, high, low, close, volume], ...]
       return data.map((e) {
         if (e is Map<String, dynamic>) {
-          // Формат объекта
+          // Object format
           final timestamp = e['timestamp'];
           final open = e['open'];
           final high = e['high'];
@@ -101,7 +101,7 @@ class YahooProtoSource {
             volume: volume is num ? volume.toDouble() : 0.0,
           );
         } else if (e is List) {
-          // Формат массива (обратная совместимость)
+          // Array format (backward compatibility)
           final list = e.cast<num>();
           return CandleData(
             timestamp: list[0].toInt(),
@@ -113,15 +113,15 @@ class YahooProtoSource {
           );
         } else {
           throw YahooException(
-              'Неверный формат элемента свечи: ожидается объект или массив, получен ${e.runtimeType}');
+              'Invalid candle element format: expected object or array, got ${e.runtimeType}');
         }
       }).toList();
     } catch (e) {
-      throw YahooException('Ошибка получения данных: $e');
+      throw YahooException('Error getting data: $e');
     }
   }
 
-  /// Получение текущей цены
+  /// Get current price
   Future<double> fetchCurrentPrice(String symbol) async {
     try {
       final uri = Uri.parse('$endpoint/yf/quote').replace(
@@ -139,27 +139,27 @@ class YahooProtoSource {
 
       final decoded = json.decode(response.body);
 
-      // Проверка на ошибку от сервера
+      // Check for server error
       if (decoded is Map && decoded.containsKey('error')) {
-        throw YahooException(decoded['error'] ?? 'Ошибка сервера');
+        throw YahooException(decoded['error'] ?? 'Server error');
       }
 
       if (decoded is! Map<String, dynamic> || !decoded.containsKey('price')) {
         throw YahooException(
-            'Неверный формат данных: ожидается объект с полем price');
+            'Invalid data format: expected object with price field');
       }
 
       final price = decoded['price'];
       if (price is! num) {
-        throw YahooException('Поле price должно быть числом');
+        throw YahooException('Price field must be a number');
       }
       return price.toDouble();
     } catch (e) {
-      throw YahooException('Ошибка получения цены: $e');
+      throw YahooException('Error getting price: $e');
     }
   }
 
-  /// Получение информации о символе
+  /// Get symbol information
   Future<SymbolInfo> fetchSymbolInfo(String symbol) async {
     try {
       final uri = Uri.parse('$endpoint/yf/info').replace(
@@ -177,13 +177,13 @@ class YahooProtoSource {
 
       final decoded = json.decode(response.body);
 
-      // Проверка на ошибку от сервера
+      // Check for server error
       if (decoded is Map && decoded.containsKey('error')) {
-        throw YahooException(decoded['error'] ?? 'Ошибка сервера');
+        throw YahooException(decoded['error'] ?? 'Server error');
       }
 
       if (decoded is! Map<String, dynamic>) {
-        throw YahooException('Неверный формат данных: ожидается объект');
+        throw YahooException('Invalid data format: expected object');
       }
 
       final data = decoded;
@@ -195,11 +195,11 @@ class YahooProtoSource {
         exchange: data['exchange'] ?? 'Unknown',
       );
     } catch (e) {
-      throw YahooException('Ошибка получения информации: $e');
+      throw YahooException('Error getting information: $e');
     }
   }
 
-  /// Поиск символов
+  /// Search symbols
   Future<List<SymbolInfo>> searchSymbols(String query) async {
     try {
       final uri = Uri.parse('$endpoint/yf/search').replace(
@@ -217,71 +217,71 @@ class YahooProtoSource {
 
       final decoded = json.decode(response.body);
 
-      // Проверка на ошибку от сервера
+      // Check for server error
       if (decoded is Map && decoded.containsKey('error')) {
-        throw YahooException(decoded['error'] ?? 'Ошибка сервера');
+        throw YahooException(decoded['error'] ?? 'Server error');
       }
 
-      // Проверка, что это массив
+      // Check that it's an array
       if (decoded is! List) {
         throw YahooException(
-            'Неверный формат данных: ожидается массив, получен ${decoded.runtimeType}');
+            'Invalid data format: expected array, got ${decoded.runtimeType}');
       }
 
       final data = decoded;
       return data.map<SymbolInfo>((e) {
         if (e is! Map<String, dynamic>) {
           throw YahooException(
-              'Неверный формат элемента: ожидается объект, получен ${e.runtimeType}');
+              'Invalid element format: expected object, got ${e.runtimeType}');
         }
         return SymbolInfo.fromJson(e);
       }).toList();
     } catch (e) {
-      throw YahooException('Ошибка поиска: $e');
+      throw YahooException('Error searching: $e');
     }
   }
 
-  /// Получение популярных символов
+  /// Get popular symbols
   Future<List<String>> fetchPopularSymbols() async {
     return [
-      // Акции США - Технологии
+      // US Stocks - Technology
       'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
       'AMD', 'INTC', 'CRM', 'ADBE', 'PYPL', 'UBER', 'SQ', 'NOW', 'SNOW',
       'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
 
-      // Акции США - Финансы
+      // US Stocks - Finance
       'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW',
 
-      // Акции США - Потребительские товары
+      // US Stocks - Consumer Goods
       'WMT', 'TGT', 'HD', 'NKE', 'SBUX', 'MCD', 'DIS', 'NFLX',
 
-      // Акции США - Энергетика
+      // US Stocks - Energy
       'XOM', 'CVX', 'COP', 'SLB', 'EOG',
 
-      // Акции США - Здравоохранение
+      // US Stocks - Healthcare
       'JNJ', 'PFE', 'UNH', 'ABBV', 'TMO', 'ABT', 'MRK',
 
-      // Индексы
+      // Indices
       '^GSPC', // S&P 500
       '^DJI', // Dow Jones
       '^IXIC', // NASDAQ
       '^RUT', // Russell 2000
 
-      // Форекс - Major pairs
+      // Forex - Major pairs
       'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X',
       'USDCHF=X', 'NZDUSD=X', 'EURGBP=X', 'EURJPY=X', 'GBPJPY=X',
       'EURCHF=X', 'AUDJPY=X', 'NZDJPY=X', 'CADJPY=X', 'CHFJPY=X',
 
-      // Форекс - Cross pairs
+      // Forex - Cross pairs
       'EURCAD=X', 'EURAUD=X', 'EURNZD=X', 'GBPCAD=X', 'GBPAUD=X',
       'GBPNZD=X', 'AUDCAD=X', 'AUDNZD=X', 'CADCHF=X',
 
-      // Криптовалюты
+      // Cryptocurrencies
       'BTC-USD', 'ETH-USD', 'BNB-USD', 'ADA-USD', 'SOL-USD',
       'XRP-USD', 'DOGE-USD', 'DOT-USD', 'MATIC-USD', 'AVAX-USD',
       'LINK-USD', 'UNI-USD', 'ATOM-USD', 'ALGO-USD', 'VET-USD',
 
-      // Товары
+      // Commodities
       'GC=F', // Gold
       'SI=F', // Silver
       'CL=F', // Crude Oil
@@ -304,7 +304,7 @@ class YahooProtoSource {
   }
 }
 
-/// Данные свечи
+/// Candle data
 class CandleData {
   final int timestamp;
   final double open;
@@ -341,7 +341,7 @@ class CandleData {
       );
 }
 
-/// Информация о символе
+/// Symbol information
 class SymbolInfo {
   final String symbol;
   final String name;
@@ -374,7 +374,7 @@ class SymbolInfo {
       );
 }
 
-/// Исключение Yahoo Finance
+/// Yahoo Finance exception
 class YahooException implements Exception {
   final String message;
   YahooException(this.message);
@@ -383,7 +383,7 @@ class YahooException implements Exception {
   String toString() => 'YahooException: $message';
 }
 
-/// Кэш для данных
+/// Data cache
 class DataCache {
   static final Map<String, List<CandleData>> _candlesCache = {};
   static final Map<String, double> _priceCache = {};

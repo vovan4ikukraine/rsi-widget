@@ -42,7 +42,7 @@ export class RsiEngine {
     ) { }
 
     /**
-     * Получение активных правил алертов
+     * Get active alert rules
      */
     async getActiveRules(): Promise<AlertRule[]> {
         const result = await this.db.prepare(`
@@ -58,7 +58,7 @@ export class RsiEngine {
     }
 
     /**
-     * Группировка правил по символу и таймфрейму
+     * Group rules by symbol and timeframe
      */
     groupRulesBySymbolTimeframe(rules: AlertRule[]): Record<string, AlertRule[]> {
         const grouped: Record<string, AlertRule[]> = {};
@@ -75,7 +75,7 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка алертов для конкретного символа и таймфрейма
+     * Check alerts for specific symbol and timeframe
      */
     async checkSymbolTimeframe(
         symbol: string,
@@ -85,7 +85,7 @@ export class RsiEngine {
         const triggers: AlertTrigger[] = [];
 
         try {
-            // Получаем свечи
+            // Get candles
             const candles = await this.yahooService.getCandles(symbol, timeframe, {
                 limit: 1000
             });
@@ -95,7 +95,7 @@ export class RsiEngine {
                 return triggers;
             }
 
-            // Проверяем каждое правило
+            // Check each rule
             for (const rule of rules) {
                 try {
                     const ruleTriggers = await this.checkRule(rule, candles);
@@ -113,16 +113,16 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка конкретного правила
+     * Check specific rule
      */
     async checkRule(rule: AlertRule, candles: any[]): Promise<AlertTrigger[]> {
         const triggers: AlertTrigger[] = [];
 
         try {
-            // Получаем состояние правила
+            // Get rule state
             const state = await this.getAlertState(rule.id);
 
-            // Рассчитываем RSI
+            // Calculate RSI
             const rsiData = this.calculateRsi(candles, rule.rsi_period);
 
             if (rsiData.length < 2) {
@@ -132,7 +132,7 @@ export class RsiEngine {
             const currentRsi = rsiData[rsiData.length - 1];
             const previousRsi = state.last_rsi || rsiData[rsiData.length - 2];
 
-            // Проверяем пересечения
+            // Check crossings
             const ruleTriggers = this.checkCrossings(
                 rule,
                 currentRsi,
@@ -141,11 +141,11 @@ export class RsiEngine {
             );
 
             if (ruleTriggers.length > 0) {
-                // Проверяем кулдаун
+                // Check cooldown
                 const canFire = this.checkCooldown(rule, state);
 
                 if (canFire) {
-                    // Сохраняем состояние
+                    // Save state
                     await this.updateAlertState(rule.id, {
                         last_rsi: currentRsi,
                         last_bar_ts: candles[candles.length - 1].timestamp,
@@ -153,7 +153,7 @@ export class RsiEngine {
                         last_side: this.getRsiZone(currentRsi, rule.levels),
                     });
 
-                    // Сохраняем события
+                    // Save events
                     for (const trigger of ruleTriggers) {
                         await this.saveAlertEvent(rule.id, trigger);
                     }
@@ -161,7 +161,7 @@ export class RsiEngine {
                     triggers.push(...ruleTriggers);
                 }
             } else {
-                // Обновляем только RSI без срабатывания
+                // Update only RSI without triggering
                 await this.updateAlertState(rule.id, {
                     last_rsi: currentRsi,
                     last_bar_ts: candles[candles.length - 1].timestamp,
@@ -176,7 +176,7 @@ export class RsiEngine {
     }
 
     /**
-     * Расчет RSI по алгоритму Wilder
+     * Calculate RSI using Wilder's algorithm
      */
     calculateRsi(candles: any[], period: number): number[] {
         if (candles.length < period + 1) {
@@ -186,7 +186,7 @@ export class RsiEngine {
         const closes = candles.map(c => c.close);
         const rsiValues: number[] = [];
 
-        // Первоначальный расчет
+        // Initial calculation
         let gain = 0, loss = 0;
         for (let i = 1; i <= period; i++) {
             const change = closes[i] - closes[i - 1];
@@ -197,7 +197,7 @@ export class RsiEngine {
         let au = gain / period;
         let ad = loss / period;
 
-        // Инкрементальный расчет
+        // Incremental calculation
         for (let i = period + 1; i < closes.length; i++) {
             const change = closes[i] - closes[i - 1];
             const u = change > 0 ? change : 0;
@@ -215,7 +215,7 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка пересечений уровней
+     * Check level crossings
      */
     checkCrossings(
         rule: AlertRule,
@@ -227,7 +227,7 @@ export class RsiEngine {
 
         if (rule.mode === 'cross') {
             for (const level of rule.levels) {
-                // Пересечение вверх
+                // Upward crossing
                 if (this.checkCrossUp(currentRsi, previousRsi, level, rule.hysteresis)) {
                     triggers.push({
                         ruleId: rule.id,
@@ -237,11 +237,11 @@ export class RsiEngine {
                         level: level,
                         type: 'cross_up',
                         timestamp: timestamp,
-                        message: `RSI пересек уровень ${level} вверх (${currentRsi.toFixed(1)})`
+                        message: `RSI crossed level ${level} upward (${currentRsi.toFixed(1)})`
                     });
                 }
 
-                // Пересечение вниз
+                // Downward crossing
                 if (this.checkCrossDown(currentRsi, previousRsi, level, rule.hysteresis)) {
                     triggers.push({
                         ruleId: rule.id,
@@ -251,7 +251,7 @@ export class RsiEngine {
                         level: level,
                         type: 'cross_down',
                         timestamp: timestamp,
-                        message: `RSI пересек уровень ${level} вниз (${currentRsi.toFixed(1)})`
+                        message: `RSI crossed level ${level} downward (${currentRsi.toFixed(1)})`
                     });
                 }
             }
@@ -271,7 +271,7 @@ export class RsiEngine {
                     level: rule.levels[1],
                     type: 'enter_zone',
                     timestamp: timestamp,
-                    message: `RSI вошел в зону ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
+                    message: `RSI entered zone ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
                 });
             }
         } else if (rule.mode === 'exit' && rule.levels.length >= 2) {
@@ -290,7 +290,7 @@ export class RsiEngine {
                     level: rule.levels[1],
                     type: 'exit_zone',
                     timestamp: timestamp,
-                    message: `RSI вышел из зоны ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
+                    message: `RSI exited zone ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
                 });
             }
         }
@@ -299,21 +299,21 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка пересечения вверх
+     * Check upward crossing
      */
     checkCrossUp(currentRsi: number, previousRsi: number, level: number, hysteresis: number): boolean {
         return previousRsi <= (level - hysteresis) && currentRsi > (level + hysteresis);
     }
 
     /**
-     * Проверка пересечения вниз
+     * Check downward crossing
      */
     checkCrossDown(currentRsi: number, previousRsi: number, level: number, hysteresis: number): boolean {
         return previousRsi >= (level + hysteresis) && currentRsi < (level - hysteresis);
     }
 
     /**
-     * Проверка входа в зону
+     * Check zone entry
      */
     checkEnterZone(
         currentRsi: number,
@@ -331,7 +331,7 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка выхода из зоны
+     * Check zone exit
      */
     checkExitZone(
         currentRsi: number,
@@ -349,7 +349,7 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка кулдауна
+     * Check cooldown
      */
     checkCooldown(rule: AlertRule, state: AlertState): boolean {
         if (!state.last_fire_ts) return true;
@@ -359,7 +359,7 @@ export class RsiEngine {
     }
 
     /**
-     * Определение зоны RSI
+     * Determine RSI zone
      */
     getRsiZone(rsi: number, levels: number[]): string {
         if (levels.length === 0) return 'between';
@@ -373,7 +373,7 @@ export class RsiEngine {
     }
 
     /**
-     * Получение состояния алерта
+     * Get alert state
      */
     async getAlertState(ruleId: number): Promise<AlertState> {
         const result = await this.db.prepare(`
@@ -390,7 +390,7 @@ export class RsiEngine {
     }
 
     /**
-     * Обновление состояния алерта
+     * Update alert state
      */
     async updateAlertState(ruleId: number, updates: Partial<AlertState>): Promise<void> {
         const values = Object.values(updates);
@@ -403,7 +403,7 @@ export class RsiEngine {
     }
 
     /**
-     * Сохранение события алерта
+     * Save alert event
      */
     async saveAlertEvent(ruleId: number, trigger: AlertTrigger): Promise<void> {
         await this.db.prepare(`
@@ -421,7 +421,7 @@ export class RsiEngine {
     }
 
     /**
-     * Проверка алертов для списка символов
+     * Check alerts for list of symbols
      */
     async checkAlerts(symbols: string[], timeframes: string[]): Promise<any> {
         const results: any = {};
@@ -448,7 +448,7 @@ export class RsiEngine {
     }
 
     /**
-     * Получение правил для символа и таймфрейма
+     * Get rules for symbol and timeframe
      */
     async getRulesForSymbolTimeframe(symbol: string, timeframe: string): Promise<AlertRule[]> {
         const result = await this.db.prepare(`

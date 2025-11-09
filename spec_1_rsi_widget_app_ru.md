@@ -1,107 +1,107 @@
-# SPEC-1—Приложение RSI/Виджет оповещений
+# SPEC-1—RSI Alert/Widget Application
 
 ## Background
 
-Вы хотите мобильное приложение, которое:
-- Показывает только график RSI выбранного инструмента (акции, крипто, FX и т.п.).
-- Присылает уведомления при пересечении заданных уровней RSI (например, 30/70 или пользовательские уровни).
-- Работает автономно («сам»), желательно в формате виджета на экране телефона.
+You need a mobile application that:
+- Shows only an RSI chart for the selected instrument (stocks, crypto, FX, etc.).
+- Sends notifications when RSI crosses predefined levels (for example, 30/70 or user-defined thresholds).
+- Works autonomously (self-sustained), ideally exposed as a widget on the phone’s home screen.
 
-Предварительные предположения (уточним вместе):
-- Поддержка iOS и Android с единым кодом.
-- Источник маркет‑данных — публичное API с минутными/часовыми/дневными свечами.
-- Оповещения должны работать даже когда приложение не запущено на экране.
+Initial assumptions (to validate together):
+- Unified codebase for iOS and Android.
+- Market data sourced from public APIs with minute/hour/day candles.
+- Alerts must fire even when the app is not in the foreground.
 
 ## Requirements
 
-### Предметная область
-- **Активы (Must):** криптовалюты (основные спотовые пары), акции (главные рынки США), форекс (majors).
-- **Данные (Must):** исторические и текущие свечи (1m/5m/15m/1h/4h/1d). Минимум 500–1000 последних свечей для расчёта RSI.
-- **RSI (Must):** классический RSI(14) + пользовательский период и уровни (например, 20/80, 30/70, 50).
-- **Оповещения (Must):** пересечение вверх/вниз заданного уровня, одноразовые/повторяющиеся, тихие/громкие.
-- **Виджеты (Should):** iOS/Android виджеты с мини‑графиком RSI и цветовой индикацией зон.
-- **Работа в фоне (Must):** автоматические проверки без открытия приложения; push‑уведомления.
-- **Кросс‑платформенность (Should):** один код на iOS и Android.
-- **Бюджет данных (Must):** опора на бесплатные/дешёвые провайдеры, минимизация лимитов.
-- **UX (Should):** быстрый выбор инструмента, пресеты уровней RSI, тёмная тема.
-- **Надёжность (Should):** защита от «дрожания» около уровня (гистерезис/дебаунс), дедупликация алертов.
-- **Конфиденциальность (Must):** без торговых ключей; только публичные маркет‑данные.
+### Domain scope
+- **Assets (Must):** cryptocurrencies (major spot pairs), equities (primary US markets), forex majors.
+- **Data (Must):** historical and live candles (1m/5m/15m/1h/4h/1d). At least 500–1000 recent candles to compute RSI reliably.
+- **RSI (Must):** classic RSI(14) plus custom period and levels (e.g., 20/80, 30/70, 50).
+- **Alerts (Must):** level cross up/down, one-shot or recurring, silent/loud modes.
+- **Widgets (Should):** iOS/Android widgets with mini RSI sparkline and zone coloring.
+- **Background execution (Must):** automated checks without opening the app; push notifications.
+- **Cross-platform (Should):** single codebase for iOS and Android.
+- **Data budget (Must):** rely on free or low-cost providers; minimize quota usage.
+- **UX (Should):** fast instrument switching, RSI level presets, dark theme.
+- **Reliability (Should):** debounce around thresholds (hysteresis), deduplicate alerts.
+- **Privacy (Must):** no trading keys; only public market data.
 
-### Предварительно выбранные источники данных (оптимально по цене)
-- **Крипто (Must):** публичные OHLC у бирж:
-  - Binance (REST /klines, высокие лимиты; без ключа для маркет‑данных).
-  - Kraken (REST /public/OHLC, до ~720 записей за запрос).
-- **Акции (Should → Must для США):** Alpha Vantage (бесплатно, но ~25 запросов/день на ключ) + Twelve Data Basic (бесплатно ~8 req/min и ~800/день) как альтернатива/фолбэк.
-- **Форекс (Must):** Twelve Data Basic или Alpha Vantage FX, в зависимости от лимитов и латентности.
+### Preliminary data sources (cost optimized)
+- **Crypto (Must):** public OHLC endpoints from exchanges:
+  - Binance (REST `/klines`, generous limits; no key required for market data).
+  - Kraken (REST `/public/OHLC`, up to ~720 rows per request).
+- **Stocks (Should → Must for US):** Alpha Vantage (free, ~25 calls/day per key) plus Twelve Data Basic (free ~8 req/min and ~800/day) as alternative/fallback.
+- **Forex (Must):** Twelve Data Basic or Alpha Vantage FX depending on limits and latency.
 
-> Примечание: точные лимиты и юридические условия провайдеров учтём в «Method», с механизмом кеширования и очередей запросов.
+> Note: exact limits and legal terms will be handled in the “Method” section with caching and request queuing.
 
-### Нефункциональные (MoSCoW)
+### Non-functional (MoSCoW)
 - **Must:**
-  - Средняя задержка алерта ≤ 1–2 мин для таймфреймов ≥ 1м.
-  - Работа при свёрнутом приложении.
-  - Локализация RU/EN.
+  - Average alert latency ≤ 1–2 minutes for timeframes ≥ 1m.
+  - Operates with the app minimized.
+  - Localization RU/EN.
 - **Should:**
-  - Хранение локальной истории RSI 30–90 дней для графика.
-  - Импорт/экспорт профилей алертов.
+  - Store 30–90 days of local RSI history for charting.
+  - Import/export alert profiles.
 - **Could:**
-  - Синхронизация через облако между устройствами.
-  - Бэктест: «переиграть» алерты за последний месяц.
+  - Cloud sync across devices.
+  - Backtest: replay alerts for the last month.
 - **Won’t (MVP):**
-  - Торговые операции, портфель, опционы.
-  - Серверная агрегация платных лент.
+  - Trading, portfolio, options.
+  - Server-side aggregation of paid data feeds.
 
 
 ## Method
 
-### Архитектура (MVP — надёжные алерты и дешёвая эксплуатация)
+### Architecture (MVP—reliable alerts, low maintenance)
 
-- **Клиент (Flutter)**: единая кодовая база iOS/Android; движок графиков (например, `flutter_charts`/`syncfusion_flutter_charts`), локальный кэш (SQLite/`isar`).
-- **Виджеты**:
-  - **iOS:** WidgetKit (микро‑таймлайны). Обновление по пуш‑сигналу на перегенерацию таймлайна.
-  - **Android:** AppWidget (Jetpack Glance/RemoteViews). Обновление по расписанию (ограничения ОС) + пуш‑сигнал для форс‑рефреша.
-- **Бэкенд (минимальный и дешёвый):**
-  - **Cloudflare Workers + Cron Triggers** (0–$5/мес в Free/Workers Paid) — периодический опрос API и расчёт RSI для активных правил; хранение конфигурации в **Cloudflare D1** (SQLite) или **KV**; отправка пушей через **Firebase Cloud Messaging (FCM)**.
-  - Альтернатива: **Vercel Cron + Serverless Functions** или **AWS Lambda + EventBridge** (возможен Free Tier).
-- **Источники данных (прототип):**
-  - **Акции/FX:** Yahoo Finance (адаптер `YahooProtoSource`), символы вида `AAPL`, `MSFT`, пары `EURUSD=X`, `GBPUSD=X`.
-- **Почему нужен лёгкий бэкенд:** для стабильной задержки 1–2 мин виджет/фон клиента недостаточен (системные лимиты iOS/Android). Бэкенд берёт на себя частый опрос и рассылает пуш‑уведомления.
+- **Client (Flutter):** single iOS/Android codebase; charting engine (`flutter_charts`/`syncfusion_flutter_charts`), local cache (SQLite/`isar`).
+- **Widgets:**
+  - **iOS:** WidgetKit (micro timelines). Refresh triggered via push signal that regenerates the timeline.
+  - **Android:** AppWidget (Jetpack Glance/RemoteViews). Scheduled refresh (OS limits) plus push-triggered forced refresh.
+- **Backend (lightweight and affordable):**
+  - **Cloudflare Workers + Cron Triggers** ($0–$5/month on Free/Workers Paid). Periodic polling of APIs, RSI calculation for active rules, configuration stored in **Cloudflare D1** (SQLite) or **KV**, push delivery through **Firebase Cloud Messaging (FCM)**.
+  - Alternatives: **Vercel Cron + Serverless Functions** or **AWS Lambda + EventBridge** (possible free tier).
+- **Data sources (prototype):**
+  - **Stocks/FX:** Yahoo Finance (`YahooProtoSource` adapter), symbols like `AAPL`, `MSFT`, pairs `EURUSD=X`, `GBPUSD=X`.
+- **Why a lightweight backend is required:** to keep latency within 1–2 minutes, client widgets/background jobs are insufficient (iOS/Android impose tight limits). The backend handles frequent polling and dispatches push notifications.
 
-### Дизайн виджета (RSI‑дашборд)
+### Widget design (RSI dashboard)
 
-**Цель:** поместить как можно больше «плиток инструментов» (tile), каждая с мини‑графиком RSI и числом.
+**Goal:** fit as many “instrument tiles” as possible, each showing an RSI mini-chart and the current value.
 
-**Ограничения платформ:**
-- **iOS (WidgetKit):** фиксированные размеры (малый/средний/большой). Скролла и интерактивности почти нет. 10 столбцов на телефоне не поместится физически; реалистично 2–4 столбца в зависимости от размера и модели.
-- **Android (AppWidget):** размер задаёт пользователь; можно ближе к 10 столбцам на широких экранах/планшетах. На телефоне — 3–5 столбцов типично.
+**Platform constraints:**
+- **iOS (WidgetKit):** fixed sizes (small/medium/large). Minimal scrolling/interactivity. Ten columns do not fit physically; 2–4 columns are realistic depending on size and device.
+- **Android (AppWidget):** user-defined size; can approach 10 columns on wide screens/tablets. On phones expect 3–5 columns.
 
-**Компромисс:** адаптивная сетка с минимальной шириной тайла `TileMinWidth` и авто‑подбором колонок: `cols = floor(widgetWidth / TileMinWidth)`.
+**Compromise:** adaptive grid with minimum tile width `TileMinWidth` and auto column count: `cols = floor(widgetWidth / TileMinWidth)`.
 
-**Тайл инструмента (минимальный):**
-- Символ (тикер) сверху слева (укороченный, например `AAPL`).
-- Значение RSI крупно (целое/с одним знаком после запятой).
-- Мини‑спарклайн RSI (последние 30–50 точек) на фоне.
-- Индикатор зоны: ниже нижнего уровня / внутри / выше верхнего уровня (иконка‑маркер).
-- Цветовая кодировка: ниже нижнего уровня — «холодный», выше верхнего — «тёплый», между — нейтральный.
+**Instrument tile (minimal):**
+- Ticker label in the top-left (short, e.g., `AAPL`).
+- RSI value large (integer/one decimal).
+- RSI mini sparkline (last 30–50 points) in the background.
+- Zone indicator: below lower bound / between bounds / above upper bound (icon/marker).
+- Color coding: below lower bound → cool, above upper bound → warm, between → neutral.
 
-**Сетки (целевые):**
-- **iOS Small:** до 2×2 тайла (4 инструмента).
-- **iOS Medium:** 3×2 или 4×2 (6–8 инструментов), в зависимости от устройства.
-- **iOS Large:** 4×3 (12 инструментов).
-- **Android:** адаптивно; на телефоне 4–5 столбцов × 3–4 ряда, на планшете возможно 8–10 столбцов.
+**Grid targets:**
+- **iOS Small:** up to 2×2 tiles (4 instruments).
+- **iOS Medium:** 3×2 or 4×2 (6–8 instruments) depending on device.
+- **iOS Large:** 4×3 (12 instruments).
+- **Android:** adaptive; 4–5 columns × 3–4 rows on phones, 8–10 columns on tablets.
 
-**Множественные виджеты:** пользователь может добавить несколько экземпляров виджета (разные наборы инструментов), чтобы визуально получить «10 столбцов» через несколько рядов виджетов на экране.
+**Multiple widgets:** users can add several widget instances (different instrument sets) to effectively emulate “10 columns” across rows on the home screen.
 
-**Данные для виджета:**
-- Снапшот на момент генерации таймлайна: `symbol`, `rsi`, `sparkline[]`, `zone`, `updatedAt`.
-- iOS: таймлайн на ближайшие 60–90 минут с перегенерацией по пушу.
-- Android: обновление через `AppWidgetManager` по пушу/периодике.
+**Widget payload:**
+- Snapshot at timeline generation: `symbol`, `rsi`, `sparkline[]`, `zone`, `updatedAt`.
+- iOS: timeline covering 60–90 minutes, regenerated via push.
+- Android: refresh through `AppWidgetManager` on push/schedule.
 
-**Производительность:**
-- Генерировать спарклайн на бэкенде как мини‑PNG/SparklinePath (компрессия), чтобы облегчить рендер на виджете.
-- Ограничить точки спарклайна (например, 32–48), округлять RSI до одного десятичного.
+**Performance:**
+- Generate the sparkline on the backend as a mini PNG/SparklinePath (compressed) to reduce widget rendering cost.
+- Limit sparkline points (e.g., 32–48), round RSI to one decimal.
 
-**Модель представления тайла:**
+**Tile view model:**
 ```json
 {
   "symbol": "AAPL",
@@ -114,38 +114,38 @@
 }
 ```
 
-### Потоки данных
+### Data flow
 
-> Режим прототипа: **Yahoo‑only для акций/FX**. Адаптер Yahoo подключён, остальные источники отключены. Переключение на Twelve Data/крипто — флагом конфигурации.
+> Prototype mode: **Yahoo-only for stocks/FX**. Yahoo adapter enabled, other providers disabled. Switching to Twelve Data/crypto is a configuration flag.
 
-1. Пользователь создаёт правило алерта (инструмент, таймфрейм, период RSI, уровень(я), тип пересечения, зона тишины).
-2. Правило сохраняется в D1/KV, помечается активным.
-3. Cron Worker по расписанию (например, каждую минуту для 1m/5m; каждые 5 мин для 15m+):
-   - Подтягивает недостающие свечи у Yahoo.
-   - Обновляет кэш цены/RSI; вычисляет пересечения с гистерезисом.
-   - На срабатывание — пишет событие и шлёт FCM (с токенами устройств).
-4. Клиент получает пуш, записывает событие локально, обновляет график/виджет.
+1. User creates an alert rule (instrument, timeframe, RSI period, level(s), crossing type, quiet zone).
+2. The rule is stored in D1/KV and marked active.
+3. Cron Worker runs on a schedule (e.g., every minute for 1m/5m; every 5 minutes for 15m+):
+   - Pulls missing candles from Yahoo.
+   - Updates the price/RSI cache; checks crossings with hysteresis.
+   - On trigger, records an event and sends FCM (device tokens).
+4. Client receives the push, logs the event locally, updates chart/widget.
 
-### Алгоритм RSI (Wilder’s RSI)
-- Период задаётся пользователем (по умолчанию 14). 
-- Формулы:
+### RSI algorithm (Wilder’s RSI)
+- Period configured by the user (default 14).
+- Formulas:
   - `U_t = max(0, Close_t - Close_{t-1})`, `D_t = max(0, Close_{t-1} - Close_t)`
   - `AU_t = (AU_{t-1}*(n-1) + U_t)/n`, `AD_t = (AD_{t-1}*(n-1) + D_t)/n`
-  - `RS_t = AU_t / AD_t` (если `AD_t = 0`, RSI=100)
+  - `RS_t = AU_t / AD_t` (if `AD_t = 0`, RSI = 100)
   - `RSI_t = 100 - 100/(1 + RS_t)`
-- Для первой точки AU/AD — средние за n первых шагов.
-- Кэшируем AU/AD для инкрементальных обновлений.
+- For the initial point, AU/AD are the averages over the first n steps.
+- Cache AU/AD values for incremental updates.
 
-### Логика срабатываний
-- Типы: `CrossUp(level)`, `CrossDown(level)`, `EnterZone([lo, hi])`, `ExitZone([lo, hi])`.
-- **Анти‑дрожание:** гистерезис `±δ` (например, 0.5 RSI), `cooldown` N минут, дедупликация по бару.
+### Trigger logic
+- Types: `CrossUp(level)`, `CrossDown(level)`, `EnterZone([lo, hi])`, `ExitZone([lo, hi])`.
+- **Anti-chatter:** hysteresis `±δ` (e.g., 0.5 RSI), cooldown of N minutes, deduplicate per bar.
 
-### Модель данных (D1/SQLite)
+### Data model (D1/SQLite)
 ```sql
 CREATE TABLE instrument (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,          -- stock|fx
-  provider TEXT NOT NULL,      -- YF_PROTO (позже BINANCE|KRAKEN|TWELVE)
+  provider TEXT NOT NULL,      -- YF_PROTO (later BINANCE|KRAKEN|TWELVE)
   symbol TEXT NOT NULL
 );
 
@@ -190,7 +190,7 @@ CREATE TABLE alert_event (
 );
 ```
 
-### Компоненты (PlantUML)
+### Components (PlantUML)
 ```plantuml
 @startuml
 skinparam componentStyle rectangle
@@ -222,9 +222,9 @@ User --> [Flutter UI]
 
 ## Implementation
 
-### Minimal Starter Kit — чтобы сразу бросить в Cursor
+### Minimal starter kit—for immediate use in Cursor
 
-#### 1) Flutter (Dart) — pubspec.yaml (минимум)
+#### 1) Flutter (Dart)—minimal `pubspec.yaml`
 ```yaml
 name: rsi_widget
 environment:
@@ -240,7 +240,7 @@ dependencies:
   freezed_annotation: ^2.4.4
   json_annotation: ^4.9.0
   fl_chart: ^0.68.0
-  # для iOS WidgetKit bridge можно добавить позже (метапроект)
+  # add an iOS WidgetKit bridge later (meta-project)
 dev_dependencies:
   flutter_test: { sdk: flutter }
   build_runner: ^2.4.11
@@ -248,7 +248,7 @@ dev_dependencies:
   json_serializable: ^6.9.0
 ```
 
-#### 2) Модели (Isar) и RSI-функция (Dart)
+#### 2) Models (Isar) and RSI function (Dart)
 `lib/models.dart`
 ```dart
 import 'package:isar/isar.dart';
@@ -315,14 +315,14 @@ double? computeRsi(List<double> closes, int n) {
 }
 ```
 
-#### 3) Клиентский YahooProto (поверх http)
+#### 3) YahooProto client (HTTP wrapper)
 `lib/yahoo_proto.dart`
 ```dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class YahooProtoSource {
-  final String endpoint; // прокси на Workers: /yf/candles
+  final String endpoint; // Workers proxy: /yf/candles
   YahooProtoSource(this.endpoint);
 
   Future<List<List<num>>> fetchCandles(String symbol, String tf, {int? since}) async {
@@ -330,13 +330,13 @@ class YahooProtoSource {
     final r = await http.get(uri, headers: { 'accept': 'application/json' });
     if (r.statusCode != 200) { throw Exception('YF $symbol $tf ${r.statusCode}'); }
     final data = json.decode(r.body) as List;
-    // ожидаемый формат: [[ts, open, high, low, close, volume], ...]
+    // expected format: [[ts, open, high, low, close, volume], ...]
     return data.map((e) => (e as List).cast<num>()).toList();
   }
 }
 ```
 
-#### 4) Простая отрисовка RSI (fl_chart)
+#### 4) Simple RSI chart (fl_chart)
 `lib/rsi_chart.dart`
 ```dart
 import 'package:fl_chart/fl_chart.dart';
@@ -363,7 +363,7 @@ class RsiChart extends StatelessWidget {
 }
 ```
 
-#### 5) Cloudflare Workers — минимальный проект
+#### 5) Cloudflare Workers—minimal project
 `wrangler.toml`
 ```toml
 name = "rsi-workers"
@@ -389,30 +389,30 @@ export interface Env { KV: KVNamespace; DB: D1Database; FCM_KEY: string; }
 const app = new Hono<{ Bindings: Env }>();
 app.use('*', cors());
 
-// Прокси для YahooProto (минимум; реализуйте легальный источник при публикации)
+// Proxy for YahooProto (minimal; replace with a licensed source before production)
 app.get('/yf/candles', async (c) => {
   const { symbol, tf, since } = c.req.query();
-  // TODO: сходить к неоф. YF-источнику или кэшу KV, вернуть [[ts,o,h,l,c,v],...]
-  // Заглушка: читаем из KV
+  // TODO: pull from an unofficial YF source or KV cache; return [[ts,o,h,l,c,v],...]
+  // Placeholder: read from KV
   const key = `yf:${symbol}:${tf}`;
   const cached = await c.env.KV.get(key);
   if (cached) return c.text(cached, 200);
   return c.json([]);
 });
 
-// Cron-задача: опрос YF, расчёт RSI, отправка FCM
+// Cron job: poll YF, compute RSI, send FCM
 export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
-    // 1) получить активные правила из D1
-    // 2) сгруппировать по symbol/tf, подтянуть недостающие свечи
-    // 3) посчитать RSI и проверку пересечений
-    // 4) при срабатывании — send FCM
+    // 1) fetch active rules from D1
+    // 2) group by symbol/tf, fetch missing candles
+    // 3) compute RSI and evaluate crossings
+    // 4) on trigger—send FCM
   }
 }
 ```
 
-Отправка FCM (минимум):
+Sending FCM (minimal):
 `src/fcm.ts`
 ```ts
 export async function sendFcm(fcmKey: string, token: string, data: Record<string,string>) {
@@ -424,9 +424,9 @@ export async function sendFcm(fcmKey: string, token: string, data: Record<string
   if (!r.ok) throw new Error(`FCM ${r.status}`);
 }
 ```
-> Для продакшна используйте **HTTP v1** с сервисным аккаунтом; тут — минимум для прототипа.
+> For production use **HTTP v1** with a service account; this is the bare minimum for a prototype.
 
-#### 6) D1 — создание таблиц (минимум)
+#### 6) D1—table creation (minimal)
 `schema.sql`
 ```sql
 CREATE TABLE IF NOT EXISTS alert_rule (
@@ -471,30 +471,30 @@ CREATE TABLE IF NOT EXISTS alert_event (
 );
 ```
 
-#### 7) ENV/секреты
+#### 7) ENV/secrets
 - Workers: `FCM_KEY=<legacy-server-key-or-use-httpv1>`, `PROVIDER_STOCKS_FX=YF_PROTO`.
-- Клиент: Firebase config (iOS/Android), `WORKERS_ENDPOINT=https://<your-worker>/`.
+- Client: Firebase config (iOS/Android), `WORKERS_ENDPOINT=https://<your-worker>/`.
 
-#### 8) Мини-чеклист
-- [ ] Поднять Firebase проект, включить Cloud Messaging, добавить приложения iOS/Android.
-- [ ] Создать D1 и KV, применить `schema.sql`.
-- [ ] Задеплоить Workers (`wrangler publish`).
-- [ ] В клиенте: ввод периода RSI, уровни, таймфрейм; экран правил; отрисовка графика RSI.
-- [ ] Получение пушей (FCM), запись в Isar, обновление виджета.
-- [ ] Cron тикает раз в 1 минуту, в логах видна обработка правил.
+#### 8) Mini checklist
+- [ ] Create a Firebase project, enable Cloud Messaging, add iOS/Android apps.
+- [ ] Provision D1 and KV, apply `schema.sql`.
+- [ ] Deploy Workers (`wrangler publish`).
+- [ ] In the client: input RSI period, levels, timeframe; rules screen; RSI chart rendering.
+- [ ] Receive pushes (FCM), persist in Isar, refresh widget.
+- [ ] Cron ticks every minute, logs show rule processing.
 
-#### 9) Примеры API (для отладки)
+#### 9) API samples (for debugging)
 ```bash
-# Принудительный refresh (если добавите handler)
+# Force refresh (if you add a handler)
 curl -X POST https://<worker>/refresh -d '{"symbols":["AAPL","EURUSD=X"],"tf":"15m"}' -H 'content-type: application/json'
 
-# Получить кэш свечей (демо)
+# Read cached candles (demo)
 curl "https://<worker>/yf/candles?symbol=AAPL&tf=15m"
 ```
 
-#### 10) Виджет — размеры тайла
-- Минимальная ширина тайла `TileMinWidth` ~ 56–72dp (под устройство), что даёт **3–5 столбцов** на телефоне; на планшетах — больше. Несколько экземпляров виджета помогут уместить больше инструментов.
+#### 10) Widget tile sizing
+- Minimum tile width `TileMinWidth` ≈ 56–72dp (device-dependent), giving **3–5 columns** on a phone; more on tablets. Multiple widget instances help show additional instruments.
 
 ---
-Это «скелет», который агент в Cursor сможет развить до работающего приложения.
+This is the “skeleton” that a Cursor agent can evolve into a production-ready application.
 

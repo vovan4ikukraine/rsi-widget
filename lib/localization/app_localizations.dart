@@ -1,0 +1,467 @@
+import 'package:flutter/widgets.dart';
+
+class AppLocalizations {
+  AppLocalizations(this.locale);
+
+  final Locale locale;
+
+  static const supportedLocales = [Locale('en'), Locale('ru')];
+
+  static const _localizedValues = <String, Map<String, String>>{
+    'en': {
+      'app_title': 'RSI Widget',
+
+      // Settings
+      'settings_title': 'Settings',
+      'settings_notifications_title': 'Notifications',
+      'settings_enable_notifications': 'Enable Notifications',
+      'settings_enable_notifications_sub': 'Receive RSI alerts',
+      'settings_sound': 'Sound',
+      'settings_sound_sub': 'Sound notifications',
+      'settings_vibration': 'Vibration',
+      'settings_vibration_sub': 'Vibration on notifications',
+      'settings_appearance_title': 'Appearance',
+      'settings_theme': 'Theme',
+      'settings_theme_dark': 'Dark',
+      'settings_theme_light': 'Light',
+      'settings_language': 'Language',
+      'settings_language_russian': 'Russian',
+      'settings_language_english': 'English',
+      'settings_data_title': 'Data',
+      'settings_auto_refresh': 'Auto Refresh',
+      'settings_auto_refresh_sub': 'Automatic data update',
+      'settings_refresh_interval': 'Refresh Interval',
+      'settings_refresh_interval_value': '{{seconds}} seconds',
+      'settings_clear_cache': 'Clear Cache',
+      'settings_clear_cache_sub': 'Delete saved data',
+      'settings_account_title': 'Account',
+      'settings_profile': 'Profile',
+      'settings_profile_sub': 'Profile settings',
+      'settings_sync': 'Sync',
+      'settings_sync_sub': 'Sync between devices',
+      'settings_about_title': 'About',
+      'settings_version': 'Version',
+      'settings_license': 'License',
+      'settings_license_sub': 'Terms of use',
+      'settings_support': 'Support',
+      'settings_support_sub': 'Contact support',
+      'settings_select_theme': 'Select Theme',
+      'settings_select_language': 'Select Language',
+      'settings_refresh_interval_title': 'Refresh Interval',
+      'settings_refresh_interval_current':
+          'Current interval: {{seconds}} seconds',
+      'settings_cancel': 'Cancel',
+      'settings_save': 'Save',
+      'settings_clear_cache_title': 'Clear Cache',
+      'settings_clear_cache_confirm':
+          'Are you sure you want to delete all saved data?',
+      'settings_clear_cache_success': 'Cache cleared',
+      'settings_profile_dialog_title': 'Profile',
+      'settings_profile_dialog_message':
+          'Profile feature will be implemented in future versions',
+      'settings_sync_dialog_title': 'Sync',
+      'settings_sync_dialog_message':
+          'Sync feature will be implemented in future versions',
+      'settings_about_dialog_title': 'About',
+      'settings_about_dialog_body':
+          'RSI Widget App\nVersion: 1.0.0\n\nMobile application for RSI alerts and widgets\n© 2024 RSI Widget Team',
+      'settings_license_dialog_title': 'License',
+      'settings_license_dialog_message':
+          'Terms of use will be added in future versions of the app.',
+      'settings_support_dialog_title': 'Support',
+      'settings_support_email': 'Email: support@rsiwidget.app',
+      'settings_support_telegram': 'Telegram: @rsiwidget_support',
+      'settings_support_github': 'GitHub: github.com/rsiwidget',
+      'settings_ok': 'OK',
+
+      // Common
+      'common_cancel': 'Cancel',
+      'common_save': 'Save',
+      'common_delete': 'Delete',
+      'common_ok': 'OK',
+      'common_apply': 'Apply',
+      'common_reset': 'Reset',
+      'common_create': 'Create',
+      'common_edit': 'Edit',
+      'common_duplicate': 'Duplicate',
+      'common_enable': 'Enable',
+      'common_disable': 'Disable',
+      'common_all': 'All',
+      'common_yes': 'Yes',
+      'common_no': 'No',
+      'common_error': 'Error',
+      'common_details': 'Details',
+      'common_close': 'Close',
+
+      // Home
+      'home_title': 'RSI Widget',
+      'home_watchlist_tooltip': 'Watchlist',
+      'home_alerts_tooltip': 'Alerts',
+      'home_settings_tooltip': 'Settings',
+      'home_instrument_label': 'Instrument',
+      'home_symbol_label': 'Symbol',
+      'home_symbol_hint': 'Start typing symbol (e.g., AAPL)',
+      'home_add_watchlist': 'Add to Watchlist',
+      'home_timeframe_label': 'TF',
+      'home_rsi_settings_title': 'RSI Settings',
+      'home_rsi_period_label': 'RSI Period',
+      'home_lower_zone_label': 'Lower Zone',
+      'home_upper_zone_label': 'Upper Zone',
+      'home_reset_defaults_tooltip': 'Reset to default values',
+      'home_apply_changes_tooltip': 'Apply changes',
+      'home_current_rsi_title': 'RSI ({{symbol}})',
+      'home_rsi_chart_title': 'RSI Chart',
+      'home_active_alerts_title': 'Active Alerts',
+      'home_active_alerts_all': 'All',
+      'home_no_active_alerts': 'No active alerts',
+      'home_quick_actions_title': 'Quick Actions',
+      'home_create_alert': 'Create Alert',
+      'home_refresh': 'Refresh',
+      'home_watchlist_added': '{{symbol}} added to Watchlist',
+      'home_watchlist_exists': '{{symbol}} already in Watchlist',
+      'home_no_data_for_timeframe':
+          'No data for instrument on timeframe {{timeframe}}',
+      'home_weekend_hint':
+          'Markets are closed on weekends. For 4h and 1d timeframes, Yahoo Finance may not return fresh data.\nTry on business days (Monday-Friday).',
+      'home_large_timeframe_hint':
+          'For large timeframes, data for a longer period is required.',
+      'home_check_symbol_hint': 'Check symbol spelling.',
+      'home_insufficient_data':
+          'Insufficient data for RSI calculation. Received {{count}} candles, minimum 15 required.',
+      'home_instrument_not_found':
+          'Instrument not found or no data available. Check symbol spelling.',
+      'home_error_details_title': 'Error Details',
+      'home_error_label_symbol': 'Symbol: {{symbol}}',
+      'home_error_label_timeframe': 'Timeframe: {{timeframe}}',
+      'home_error_label': 'Error:',
+      'home_close': 'Close',
+
+      // Alerts
+      'alerts_title': 'RSI Alerts',
+      'alerts_filter_active': 'Active',
+      'alerts_filter_inactive': 'Inactive',
+      'alerts_stat_total': 'Total',
+      'alerts_stat_active': 'Active',
+      'alerts_stat_week': 'This Week',
+      'alerts_empty_title': 'No alerts',
+      'alerts_empty_subtitle': 'Create your first RSI alert',
+      'alerts_levels_prefix': 'Levels: {{levels}}',
+      'alerts_enabled': 'Alert enabled',
+      'alerts_disabled': 'Alert disabled',
+      'alerts_duplicate_success': 'Alert duplicated',
+      'alerts_delete_title': 'Delete Alert',
+      'alerts_delete_message':
+          'Are you sure you want to delete alert for {{symbol}}?',
+      'alerts_delete_success': 'Alert deleted',
+      'alerts_error_loading': 'Error loading data: {{message}}',
+      'alerts_error_generic': 'Error: {{message}}',
+
+      // Create Alert
+      'create_alert_title_new': 'Create Alert',
+      'create_alert_title_edit': 'Edit Alert',
+      'create_alert_basic_title': 'Basic Information',
+      'create_alert_symbol_error': 'Select or enter symbol',
+      'create_alert_description_label': 'Description (optional)',
+      'create_alert_description_hint': 'Brief alert description',
+      'create_alert_rsi_settings_title': 'RSI Settings',
+      'create_alert_hysteresis_label': 'Hysteresis',
+      'create_alert_levels_title': 'RSI Levels',
+      'create_alert_lower_level': 'Lower Level',
+      'create_alert_upper_level': 'Upper Level',
+      'create_alert_presets_3070': '30/70',
+      'create_alert_presets_2080': '20/80',
+      'create_alert_presets_2575': '25/75',
+      'create_alert_presets_50': '50',
+      'create_alert_settings_title': 'Alert Settings',
+      'create_alert_type_label': 'Alert Type',
+      'create_alert_type_cross': 'Level Cross',
+      'create_alert_type_enter': 'Enter Zone',
+      'create_alert_type_exit': 'Exit Zone',
+      'create_alert_cooldown_label': 'Cooldown (sec)',
+      'create_alert_repeatable': 'Repeatable',
+      'create_alert_repeatable_sub': 'Alert can trigger multiple times',
+      'create_alert_sound': 'Sound',
+      'create_alert_sound_sub': 'Enable sound notification',
+      'create_alert_advanced_title': 'Advanced Settings',
+      'create_alert_hysteresis_value': 'Hysteresis: {{value}}',
+      'create_alert_cooldown_value': 'Cooldown: {{seconds}} sec',
+      'create_alert_cancel': 'Cancel',
+      'create_alert_create': 'Create',
+      'create_alert_save': 'Save',
+      'create_alert_created': 'Alert created',
+      'create_alert_updated': 'Alert updated',
+      'create_alert_deleted': 'Alert deleted',
+      'create_alert_delete_title': 'Delete Alert',
+      'create_alert_delete_message':
+          'Are you sure you want to delete this alert?',
+
+      // Watchlist
+      'watchlist_title': 'Watchlist',
+      'watchlist_settings_title': 'Watchlist Settings',
+      'watchlist_reset': 'Reset',
+      'watchlist_apply': 'Apply',
+      'watchlist_empty_title': 'Watchlist is empty',
+      'watchlist_empty_subtitle': 'Add instruments from the main screen',
+      'watchlist_no_items': 'No items',
+      'watchlist_remove_title': 'Remove from Watchlist?',
+      'watchlist_remove_message': 'Remove {{symbol}} from watchlist?',
+      'watchlist_remove': 'Remove',
+      'watchlist_no_data': 'No data',
+      'watchlist_rsi_prefix': 'RSI: {{value}}',
+      'watchlist_error_loading': 'Error loading watchlist: {{message}}',
+
+      // Chart
+      'chart_no_data_for': 'No data for {{symbol}}',
+      'chart_zone_oversold': 'Oversold',
+      'chart_zone_neutral': 'Neutral',
+      'chart_zone_overbought': 'Overbought',
+    },
+    'ru': {
+      'app_title': 'RSI Виджет',
+
+      // Settings
+      'settings_title': 'Настройки',
+      'settings_notifications_title': 'Уведомления',
+      'settings_enable_notifications': 'Включить уведомления',
+      'settings_enable_notifications_sub': 'Получать RSI-алерты',
+      'settings_sound': 'Звук',
+      'settings_sound_sub': 'Звуковые уведомления',
+      'settings_vibration': 'Вибрация',
+      'settings_vibration_sub': 'Вибросигнал при уведомлениях',
+      'settings_appearance_title': 'Оформление',
+      'settings_theme': 'Тема',
+      'settings_theme_dark': 'Тёмная',
+      'settings_theme_light': 'Светлая',
+      'settings_language': 'Язык',
+      'settings_language_russian': 'Русский',
+      'settings_language_english': 'Английский',
+      'settings_data_title': 'Данные',
+      'settings_auto_refresh': 'Автообновление',
+      'settings_auto_refresh_sub': 'Автоматическое обновление данных',
+      'settings_refresh_interval': 'Интервал обновления',
+      'settings_refresh_interval_value': '{{seconds}} секунд',
+      'settings_clear_cache': 'Очистить кэш',
+      'settings_clear_cache_sub': 'Удалить сохранённые данные',
+      'settings_account_title': 'Аккаунт',
+      'settings_profile': 'Профиль',
+      'settings_profile_sub': 'Настройки профиля',
+      'settings_sync': 'Синхронизация',
+      'settings_sync_sub': 'Синхронизация между устройствами',
+      'settings_about_title': 'О приложении',
+      'settings_version': 'Версия',
+      'settings_license': 'Лицензия',
+      'settings_license_sub': 'Условия использования',
+      'settings_support': 'Поддержка',
+      'settings_support_sub': 'Связаться со службой поддержки',
+      'settings_select_theme': 'Выберите тему',
+      'settings_select_language': 'Выберите язык',
+      'settings_refresh_interval_title': 'Интервал обновления',
+      'settings_refresh_interval_current':
+          'Текущий интервал: {{seconds}} секунд',
+      'settings_cancel': 'Отмена',
+      'settings_save': 'Сохранить',
+      'settings_clear_cache_title': 'Очистить кэш',
+      'settings_clear_cache_confirm': 'Удалить все сохранённые данные?',
+      'settings_clear_cache_success': 'Кэш очищен',
+      'settings_profile_dialog_title': 'Профиль',
+      'settings_profile_dialog_message':
+          'Функция профиля будет добавлена в будущих версиях',
+      'settings_sync_dialog_title': 'Синхронизация',
+      'settings_sync_dialog_message':
+          'Функция синхронизации будет добавлена в будущих версиях',
+      'settings_about_dialog_title': 'О приложении',
+      'settings_about_dialog_body':
+          'RSI Widget App\nВерсия: 1.0.0\n\nМобильное приложение для RSI-алертов и виджетов\n© 2024 RSI Widget Team',
+      'settings_license_dialog_title': 'Лицензия',
+      'settings_license_dialog_message':
+          'Условия использования будут добавлены в будущих версиях приложения.',
+      'settings_support_dialog_title': 'Поддержка',
+      'settings_support_email': 'Email: support@rsiwidget.app',
+      'settings_support_telegram': 'Telegram: @rsiwidget_support',
+      'settings_support_github': 'GitHub: github.com/rsiwidget',
+      'settings_ok': 'OK',
+
+      // Common
+      'common_cancel': 'Отмена',
+      'common_save': 'Сохранить',
+      'common_delete': 'Удалить',
+      'common_ok': 'OK',
+      'common_apply': 'Применить',
+      'common_reset': 'Сбросить',
+      'common_create': 'Создать',
+      'common_edit': 'Редактировать',
+      'common_duplicate': 'Дублировать',
+      'common_enable': 'Включить',
+      'common_disable': 'Выключить',
+      'common_all': 'Все',
+      'common_yes': 'Да',
+      'common_no': 'Нет',
+      'common_error': 'Ошибка',
+      'common_details': 'Подробнее',
+      'common_close': 'Закрыть',
+
+      // Home
+      'home_title': 'RSI Виджет',
+      'home_watchlist_tooltip': 'Список наблюдения',
+      'home_alerts_tooltip': 'Алерты',
+      'home_settings_tooltip': 'Настройки',
+      'home_instrument_label': 'Инструмент',
+      'home_symbol_label': 'Тикер',
+      'home_symbol_hint': 'Начните вводить тикер (например, AAPL)',
+      'home_add_watchlist': 'Добавить в список',
+      'home_timeframe_label': 'ТФ',
+      'home_rsi_settings_title': 'Настройки RSI',
+      'home_rsi_period_label': 'Период RSI',
+      'home_lower_zone_label': 'Нижняя зона',
+      'home_upper_zone_label': 'Верхняя зона',
+      'home_reset_defaults_tooltip': 'Сбросить на значения по умолчанию',
+      'home_apply_changes_tooltip': 'Применить изменения',
+      'home_current_rsi_title': 'RSI ({{symbol}})',
+      'home_rsi_chart_title': 'График RSI',
+      'home_active_alerts_title': 'Активные алерты',
+      'home_active_alerts_all': 'Все',
+      'home_no_active_alerts': 'Нет активных алертов',
+      'home_quick_actions_title': 'Быстрые действия',
+      'home_create_alert': 'Создать алерт',
+      'home_refresh': 'Обновить',
+      'home_watchlist_added': '{{symbol}} добавлен в список наблюдения',
+      'home_watchlist_exists': '{{symbol}} уже есть в списке наблюдения',
+      'home_no_data_for_timeframe':
+          'Нет данных для инструмента на таймфрейме {{timeframe}}',
+      'home_weekend_hint':
+          'Рынки закрыты в выходные. Для таймфреймов 4h и 1d Yahoo Finance может не возвращать свежие данные.\nПопробуйте в будние дни (понедельник-пятница).',
+      'home_large_timeframe_hint':
+          'Для больших таймфреймов требуется более длительная история данных.',
+      'home_check_symbol_hint': 'Проверьте написание тикера.',
+      'home_insufficient_data':
+          'Недостаточно данных для расчёта RSI. Получено {{count}} свечей, минимум требуется 15.',
+      'home_instrument_not_found':
+          'Инструмент не найден или нет данных. Проверьте написание тикера.',
+      'home_error_details_title': 'Детали ошибки',
+      'home_error_label_symbol': 'Символ: {{symbol}}',
+      'home_error_label_timeframe': 'Таймфрейм: {{timeframe}}',
+      'home_error_label': 'Ошибка:',
+      'home_close': 'Закрыть',
+
+      // Alerts
+      'alerts_title': 'RSI Алерты',
+      'alerts_filter_active': 'Активные',
+      'alerts_filter_inactive': 'Неактивные',
+      'alerts_stat_total': 'Всего',
+      'alerts_stat_active': 'Активно',
+      'alerts_stat_week': 'За неделю',
+      'alerts_empty_title': 'Алертов нет',
+      'alerts_empty_subtitle': 'Создайте первый RSI-алерт',
+      'alerts_levels_prefix': 'Уровни: {{levels}}',
+      'alerts_enabled': 'Алерт включён',
+      'alerts_disabled': 'Алерт выключен',
+      'alerts_duplicate_success': 'Алерт продублирован',
+      'alerts_delete_title': 'Удалить алерт',
+      'alerts_delete_message': 'Удалить алерт для {{symbol}}?',
+      'alerts_delete_success': 'Алерт удалён',
+      'alerts_error_loading': 'Ошибка загрузки данных: {{message}}',
+      'alerts_error_generic': 'Ошибка: {{message}}',
+
+      // Create Alert
+      'create_alert_title_new': 'Создать алерт',
+      'create_alert_title_edit': 'Редактировать алерт',
+      'create_alert_basic_title': 'Основная информация',
+      'create_alert_symbol_error': 'Выберите или введите тикер',
+      'create_alert_description_label': 'Описание (необязательно)',
+      'create_alert_description_hint': 'Краткое описание алерта',
+      'create_alert_rsi_settings_title': 'Настройки RSI',
+      'create_alert_hysteresis_label': 'Гистерезис',
+      'create_alert_levels_title': 'Уровни RSI',
+      'create_alert_lower_level': 'Нижний уровень',
+      'create_alert_upper_level': 'Верхний уровень',
+      'create_alert_presets_3070': '30/70',
+      'create_alert_presets_2080': '20/80',
+      'create_alert_presets_2575': '25/75',
+      'create_alert_presets_50': '50',
+      'create_alert_settings_title': 'Параметры алерта',
+      'create_alert_type_label': 'Тип алерта',
+      'create_alert_type_cross': 'Пересечение уровня',
+      'create_alert_type_enter': 'Вход в зону',
+      'create_alert_type_exit': 'Выход из зоны',
+      'create_alert_cooldown_label': 'Пауза (сек)',
+      'create_alert_repeatable': 'Повторяемый',
+      'create_alert_repeatable_sub': 'Алерт может срабатывать несколько раз',
+      'create_alert_sound': 'Звук',
+      'create_alert_sound_sub': 'Включить звуковое уведомление',
+      'create_alert_advanced_title': 'Расширенные настройки',
+      'create_alert_hysteresis_value': 'Гистерезис: {{value}}',
+      'create_alert_cooldown_value': 'Пауза: {{seconds}} сек',
+      'create_alert_cancel': 'Отмена',
+      'create_alert_create': 'Создать',
+      'create_alert_save': 'Сохранить',
+      'create_alert_created': 'Алерт создан',
+      'create_alert_updated': 'Алерт обновлён',
+      'create_alert_deleted': 'Алерт удалён',
+      'create_alert_delete_title': 'Удалить алерт',
+      'create_alert_delete_message': 'Удалить этот алерт?',
+
+      // Watchlist
+      'watchlist_title': 'Список наблюдения',
+      'watchlist_settings_title': 'Настройки списка',
+      'watchlist_reset': 'Сбросить',
+      'watchlist_apply': 'Применить',
+      'watchlist_empty_title': 'Список наблюдения пуст',
+      'watchlist_empty_subtitle': 'Добавьте инструменты на главном экране',
+      'watchlist_no_items': 'Нет элементов',
+      'watchlist_remove_title': 'Удалить из списка?',
+      'watchlist_remove_message': 'Удалить {{symbol}} из списка наблюдения?',
+      'watchlist_remove': 'Удалить',
+      'watchlist_no_data': 'Нет данных',
+      'watchlist_rsi_prefix': 'RSI: {{value}}',
+      'watchlist_error_loading': 'Ошибка загрузки списка: {{message}}',
+
+      // Chart
+      'chart_no_data_for': 'Нет данных для {{symbol}}',
+      'chart_zone_oversold': 'Перепродано',
+      'chart_zone_neutral': 'Нейтрально',
+      'chart_zone_overbought': 'Перекуплено',
+    },
+  };
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+  }
+
+  String t(String key, {Map<String, String>? params}) {
+    final languageCode = locale.languageCode;
+    final values = _localizedValues[languageCode] ?? _localizedValues['en']!;
+    final template = values[key] ?? _localizedValues['en']![key];
+    if (template == null) return key;
+    if (params == null || params.isEmpty) return template;
+
+    return params.entries.fold<String>(
+      template,
+      (acc, entry) => acc.replaceAll('{{${entry.key}}}', entry.value),
+    );
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => AppLocalizations.supportedLocales
+      .map((e) => e.languageCode)
+      .contains(locale.languageCode);
+
+  @override
+  Future<AppLocalizations> load(Locale locale) async {
+    return AppLocalizations(locale);
+  }
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+extension AppLocalizationExtension on BuildContext {
+  AppLocalizations get loc => AppLocalizations.of(this);
+}

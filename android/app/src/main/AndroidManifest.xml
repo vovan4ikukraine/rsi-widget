@@ -54,7 +54,7 @@
                 android:resource="@xml/widget_info" />
         </receiver>
 
-        <!-- RemoteViewsService для списка в виджете -->
+        <!-- RemoteViewsService for widget list -->
         <service
             android:name=".RSIWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"

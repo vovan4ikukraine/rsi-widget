@@ -1,5 +1,5 @@
 name: rsi_widget
-description: RSI Widget App - мобильное приложение для RSI алертов и виджетов
+description: RSI Widget App - mobile application for RSI alerts and widgets
 version: 1.0.0+1
 
 environment:
@@ -8,33 +8,33 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Локальные уведомления
+
+  # Local notifications
   flutter_local_notifications: ^17.2.1
-  
+
   # Firebase
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.2
-  
-  # HTTP клиент
+
+  # HTTP client
   http: ^1.2.2
-  
-  # Локальная база данных
+
+  # Local database
   isar: ^3.1.0+1
   isar_flutter_libs: ^3.1.0+1
-  
-  # Сериализация
+
+  # Serialization
   freezed_annotation: ^2.4.4
   json_annotation: ^4.9.0
-  
-  # Графики
+
+  # Charts
   fl_chart: ^0.68.0
-  
-  # UI компоненты
+
+  # UI components
   cupertino_icons: ^1.0.8
   material_design_icons_flutter: ^7.0.7296
-  
-  # Утилиты
+
+  # Utilities
   intl: ^0.19.0
   shared_preferences: ^2.2.2
 
@@ -42,8 +42,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  
-  # Генерация кода
+
+  # Code generation
   build_runner: ^2.4.11
   freezed: ^2.5.7
   json_serializable: ^6.9.0

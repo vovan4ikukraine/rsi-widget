@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../localization/app_localizations.dart';
 import '../services/yahoo_proto.dart';
+import '../state/app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,7 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _theme = 'dark';
   String _language = 'ru';
   bool _autoRefresh = true;
-  int _refreshInterval = 60; // секунды
+  int _refreshInterval = 60; // seconds
 
   @override
   void initState() {
@@ -50,22 +53,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
+    final appState = AppStateScope.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Настройки'),
+        title: Text(loc.t('settings_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),
       body: ListView(
         children: [
-          // Уведомления
+          // Notifications
           _buildSectionCard(
-            title: 'Уведомления',
+            title: loc.t('settings_notifications_title'),
             icon: Icons.notifications,
             children: [
               SwitchListTile(
-                title: const Text('Включить уведомления'),
-                subtitle: const Text('Получать RSI алерты'),
+                title: Text(loc.t('settings_enable_notifications')),
+                subtitle: Text(loc.t('settings_enable_notifications_sub')),
                 value: _notificationsEnabled,
                 onChanged: (value) {
                   setState(() {
@@ -75,8 +81,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               SwitchListTile(
-                title: const Text('Звук'),
-                subtitle: const Text('Звуковые уведомления'),
+                title: Text(loc.t('settings_sound')),
+                subtitle: Text(loc.t('settings_sound_sub')),
                 value: _soundEnabled,
                 onChanged: _notificationsEnabled
                     ? (value) {
@@ -88,8 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     : null,
               ),
               SwitchListTile(
-                title: const Text('Вибрация'),
-                subtitle: const Text('Вибрация при уведомлениях'),
+                title: Text(loc.t('settings_vibration')),
+                subtitle: Text(loc.t('settings_vibration_sub')),
                 value: _vibrationEnabled,
                 onChanged: _notificationsEnabled
                     ? (value) {
@@ -103,34 +109,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          // Внешний вид
+          // Appearance
           _buildSectionCard(
-            title: 'Внешний вид',
+            title: loc.t('settings_appearance_title'),
             icon: Icons.palette,
             children: [
               ListTile(
-                title: const Text('Тема'),
-                subtitle: Text(_theme == 'dark' ? 'Темная' : 'Светлая'),
+                title: Text(loc.t('settings_theme')),
+                subtitle: Text(_theme == 'dark'
+                    ? loc.t('settings_theme_dark')
+                    : loc.t('settings_theme_light')),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showThemeDialog(),
+                onTap: () => _showThemeDialog(appState),
               ),
               ListTile(
-                title: const Text('Язык'),
-                subtitle: Text(_language == 'ru' ? 'Русский' : 'English'),
+                title: Text(loc.t('settings_language')),
+                subtitle: Text(_language == 'ru'
+                    ? loc.t('settings_language_russian')
+                    : loc.t('settings_language_english')),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showLanguageDialog(),
+                onTap: () => _showLanguageDialog(appState),
               ),
             ],
           ),
 
-          // Данные
+          // Data
           _buildSectionCard(
-            title: 'Данные',
+            title: loc.t('settings_data_title'),
             icon: Icons.data_usage,
             children: [
               SwitchListTile(
-                title: const Text('Автообновление'),
-                subtitle: const Text('Автоматическое обновление данных'),
+                title: Text(loc.t('settings_auto_refresh')),
+                subtitle: Text(loc.t('settings_auto_refresh_sub')),
                 value: _autoRefresh,
                 onChanged: (value) {
                   setState(() {
@@ -140,62 +150,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               ListTile(
-                title: const Text('Интервал обновления'),
-                subtitle: Text('$_refreshInterval секунд'),
+                title: Text(loc.t('settings_refresh_interval')),
+                subtitle: Text(
+                  loc.t(
+                    'settings_refresh_interval_value',
+                    params: {'seconds': '$_refreshInterval'},
+                  ),
+                ),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showRefreshIntervalDialog(),
+                onTap: () => _showRefreshIntervalDialog(loc),
               ),
               ListTile(
-                title: const Text('Очистить кэш'),
-                subtitle: const Text('Удалить сохраненные данные'),
+                title: Text(loc.t('settings_clear_cache')),
+                subtitle: Text(loc.t('settings_clear_cache_sub')),
                 trailing: const Icon(Icons.delete),
-                onTap: () => _showClearCacheDialog(),
+                onTap: () => _showClearCacheDialog(loc),
               ),
             ],
           ),
 
-          // Учетная запись
+          // Account
           _buildSectionCard(
-            title: 'Учетная запись',
+            title: loc.t('settings_account_title'),
             icon: Icons.person,
             children: [
               ListTile(
-                title: const Text('Профиль'),
-                subtitle: const Text('Настройки профиля'),
+                title: Text(loc.t('settings_profile')),
+                subtitle: Text(loc.t('settings_profile_sub')),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showProfileDialog(),
+                onTap: () => _showProfileDialog(loc),
               ),
               ListTile(
-                title: const Text('Синхронизация'),
-                subtitle: const Text('Синхронизация между устройствами'),
+                title: Text(loc.t('settings_sync')),
+                subtitle: Text(loc.t('settings_sync_sub')),
                 trailing: const Icon(Icons.sync),
-                onTap: () => _showSyncDialog(),
+                onTap: () => _showSyncDialog(loc),
               ),
             ],
           ),
 
-          // О приложении
+          // About
           _buildSectionCard(
-            title: 'О приложении',
+            title: loc.t('settings_about_title'),
             icon: Icons.info,
             children: [
               ListTile(
-                title: const Text('Версия'),
+                title: Text(loc.t('settings_version')),
                 subtitle: const Text('1.0.0'),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showVersionDialog(),
+                onTap: () => _showVersionDialog(loc),
               ),
               ListTile(
-                title: const Text('Лицензия'),
-                subtitle: const Text('Условия использования'),
+                title: Text(loc.t('settings_license')),
+                subtitle: Text(loc.t('settings_license_sub')),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showLicenseDialog(),
+                onTap: () => _showLicenseDialog(loc),
               ),
               ListTile(
-                title: const Text('Поддержка'),
-                subtitle: const Text('Связаться с поддержкой'),
+                title: Text(loc.t('settings_support')),
+                subtitle: Text(loc.t('settings_support_sub')),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showSupportDialog(),
+                onTap: () => _showSupportDialog(loc),
               ),
             ],
           ),
@@ -236,38 +251,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showThemeDialog() {
+  void _showThemeDialog(AppState appState) {
+    final loc = context.loc;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Выберите тему'),
+        title: Text(loc.t('settings_select_theme')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text('Темная'),
+              title: Text(loc.t('settings_theme_dark')),
               leading: Radio<String>(
                 value: 'dark',
                 groupValue: _theme,
-                onChanged: (value) {
+                onChanged: (value) async {
+                  if (value == null) return;
                   setState(() {
-                    _theme = value!;
+                    _theme = value;
                   });
-                  _saveSettings();
+                  await appState.setTheme(value);
+                  await _saveSettings();
                   Navigator.pop(context);
                 },
               ),
             ),
             ListTile(
-              title: const Text('Светлая'),
+              title: Text(loc.t('settings_theme_light')),
               leading: Radio<String>(
                 value: 'light',
                 groupValue: _theme,
-                onChanged: (value) {
+                onChanged: (value) async {
+                  if (value == null) return;
                   setState(() {
-                    _theme = value!;
+                    _theme = value;
                   });
-                  _saveSettings();
+                  await appState.setTheme(value);
+                  await _saveSettings();
                   Navigator.pop(context);
                 },
               ),
@@ -278,38 +299,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showLanguageDialog() {
+  void _showLanguageDialog(AppState appState) {
+    final loc = context.loc;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Выберите язык'),
+        title: Text(loc.t('settings_select_language')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text('Русский'),
+              title: Text(loc.t('settings_language_russian')),
               leading: Radio<String>(
                 value: 'ru',
                 groupValue: _language,
-                onChanged: (value) {
+                onChanged: (value) async {
+                  if (value == null) return;
                   setState(() {
-                    _language = value!;
+                    _language = value;
                   });
-                  _saveSettings();
+                  await appState.setLanguage(value);
+                  await _saveSettings();
                   Navigator.pop(context);
                 },
               ),
             ),
             ListTile(
-              title: const Text('English'),
+              title: Text(loc.t('settings_language_english')),
               leading: Radio<String>(
                 value: 'en',
                 groupValue: _language,
-                onChanged: (value) {
+                onChanged: (value) async {
+                  if (value == null) return;
                   setState(() {
-                    _language = value!;
+                    _language = value;
                   });
-                  _saveSettings();
+                  await appState.setLanguage(value);
+                  await _saveSettings();
                   Navigator.pop(context);
                 },
               ),
@@ -320,22 +347,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showRefreshIntervalDialog() {
+  void _showRefreshIntervalDialog(AppLocalizations loc) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Интервал обновления'),
+        title: Text(loc.t('settings_refresh_interval_title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Текущий интервал: $_refreshInterval секунд'),
+            Text(
+              loc.t(
+                'settings_refresh_interval_current',
+                params: {'seconds': '$_refreshInterval'},
+              ),
+            ),
             const SizedBox(height: 16),
             Slider(
               value: _refreshInterval.toDouble(),
               min: 30,
               max: 300,
               divisions: 9,
-              label: '$_refreshInterval сек',
+              label: '${_refreshInterval} '
+                  '${loc.locale.languageCode == 'ru' ? 'сек.' : 'sec'}',
               onChanged: (value) {
                 setState(() {
                   _refreshInterval = value.round();
@@ -347,150 +380,134 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
+            child: Text(loc.t('settings_cancel')),
           ),
           ElevatedButton(
             onPressed: () {
               _saveSettings();
               Navigator.pop(context);
             },
-            child: const Text('Сохранить'),
+            child: Text(loc.t('settings_save')),
           ),
         ],
       ),
     );
   }
 
-  void _showClearCacheDialog() {
+  void _showClearCacheDialog(AppLocalizations loc) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Очистить кэш'),
-        content: const Text(
-            'Вы уверены, что хотите удалить все сохраненные данные?'),
+        title: Text(loc.t('settings_clear_cache_title')),
+        content: Text(loc.t('settings_clear_cache_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
+            child: Text(loc.t('settings_cancel')),
           ),
           ElevatedButton(
             onPressed: () async {
-              // Очистка кэша данных
+              // Clear data cache
               DataCache.clear();
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Кэш очищен')),
+                SnackBar(content: Text(loc.t('settings_clear_cache_success'))),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Очистить'),
+            child: Text(loc.t('settings_clear_cache')),
           ),
         ],
       ),
     );
   }
 
-  void _showProfileDialog() {
+  void _showProfileDialog(AppLocalizations loc) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Профиль'),
-        content:
-            const Text('Функция профиля будет реализована в следующих версиях'),
+        title: Text(loc.t('settings_profile_dialog_title')),
+        content: Text(loc.t('settings_profile_dialog_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text(loc.t('settings_ok')),
           ),
         ],
       ),
     );
   }
 
-  void _showSyncDialog() {
+  void _showSyncDialog(AppLocalizations loc) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Синхронизация'),
-        content: const Text(
-            'Функция синхронизации будет реализована в следующих версиях'),
+        title: Text(loc.t('settings_sync_dialog_title')),
+        content: Text(loc.t('settings_sync_dialog_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text(loc.t('settings_ok')),
           ),
         ],
       ),
     );
   }
 
-  void _showVersionDialog() {
+  void _showVersionDialog(AppLocalizations loc) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('О приложении'),
-        content: const Column(
+        title: Text(loc.t('settings_about_dialog_title')),
+        content: Text(loc.t('settings_about_dialog_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(loc.t('settings_ok')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLicenseDialog(AppLocalizations loc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(loc.t('settings_license_dialog_title')),
+        content: SingleChildScrollView(
+          child: Text(loc.t('settings_license_dialog_message')),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(loc.t('settings_ok')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSupportDialog(AppLocalizations loc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(loc.t('settings_support_dialog_title')),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('RSI Widget App'),
-            Text('Версия: 1.0.0'),
+            Text(loc.t('settings_support_email')),
             SizedBox(height: 8),
-            Text('Мобильное приложение для RSI алертов и виджетов'),
+            Text(loc.t('settings_support_telegram')),
             SizedBox(height: 8),
-            Text('© 2024 RSI Widget Team'),
+            Text(loc.t('settings_support_github')),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLicenseDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Лицензия'),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Условия использования будут добавлены в следующих версиях приложения.',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSupportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Поддержка'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Email: support@rsiwidget.app'),
-            SizedBox(height: 8),
-            Text('Telegram: @rsiwidget_support'),
-            SizedBox(height: 8),
-            Text('GitHub: github.com/rsiwidget'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text(loc.t('settings_ok')),
           ),
         ],
       ),

@@ -38,7 +38,7 @@ struct RSIWidgetProvider: TimelineProvider {
     }
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<RSIWidgetEntry>) -> ()) {
-        // Создаем timeline на 60 минут с обновлением каждые 15 минут
+        // Create timeline for 60 minutes with updates every 15 minutes
         let currentDate = Date()
         let entries = (0..<4).map { index in
             let entryDate = Calendar.current.date(byAdding: .minute, value: index * 15, to: currentDate)!
@@ -67,7 +67,7 @@ struct RSIWidgetEntryView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Заголовок с символом
+            // Header with symbol
             HStack {
                 Text(entry.symbol)
                     .font(.caption)
@@ -79,7 +79,7 @@ struct RSIWidgetEntryView: View {
                     .foregroundColor(.secondary)
             }
             
-            // RSI значение
+            // RSI value
             HStack {
                 Text(String(format: "%.1f", entry.rsi))
                     .font(.title2)
@@ -89,7 +89,7 @@ struct RSIWidgetEntryView: View {
                 zoneIndicator(entry.zone)
             }
             
-            // Спарклайн
+            // Sparkline
             SparklineView(data: entry.sparkline, levels: entry.levels)
                 .frame(height: 20)
         }
@@ -139,7 +139,7 @@ struct SparklineView: View {
             let minValue = 0.0
             
             ZStack {
-                // Фон зон
+                // Zone backgrounds
                 if levels.count >= 2 {
                     let lowerY = height * (1 - CGFloat(levels[0]) / maxValue)
                     let upperY = height * (1 - CGFloat(levels[1]) / maxValue)
@@ -155,7 +155,7 @@ struct SparklineView: View {
                         .position(x: width / 2, y: upperY + (height - upperY) / 2)
                 }
                 
-                // Линия RSI
+                // RSI line
                 Path { path in
                     guard !data.isEmpty else { return }
                     
@@ -186,7 +186,7 @@ struct RSIWidget: Widget {
             RSIWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("RSI Widget")
-        .description("Отображение RSI для выбранного инструмента")
+        .description("Display RSI for selected instrument")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

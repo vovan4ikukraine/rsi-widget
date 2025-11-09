@@ -7,80 +7,80 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 
-/// Сервис для работы с Firebase
+/// Service for working with Firebase
 class FirebaseService {
   static FirebaseMessaging? _messaging;
   static String? _fcmToken;
   static String? _userId;
 
-  /// Инициализация Firebase
+  /// Initialize Firebase
   static Future<void> initialize() async {
     try {
       await Firebase.initializeApp();
       _messaging = FirebaseMessaging.instance;
 
-      // Настройка обработчиков сообщений
+      // Setup message handlers
       _setupMessageHandlers();
 
-      // Получение FCM токена
+      // Get FCM token
       await _getFcmToken();
 
       if (kDebugMode) {
-        print('Firebase инициализирован');
+        print('Firebase initialized');
         print('FCM Token: $_fcmToken');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка инициализации Firebase: $e');
+        print('Error initializing Firebase: $e');
       }
     }
   }
 
-  /// Настройка обработчиков сообщений
+  /// Setup message handlers
   static void _setupMessageHandlers() {
     if (_messaging == null) return;
 
-    // Обработка сообщений когда приложение в фоне
+    // Handle messages when app is in background
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // Обработка сообщений когда приложение открыто
+    // Handle messages when app is open
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (kDebugMode) {
-        print('Получено сообщение: ${message.messageId}');
-        print('Данные: ${message.data}');
-        print('Уведомление: ${message.notification?.title}');
+        print('Message received: ${message.messageId}');
+        print('Data: ${message.data}');
+        print('Notification: ${message.notification?.title}');
       }
 
-      // Здесь можно показать локальное уведомление
+      // Can show local notification here
       _handleForegroundMessage(message);
     });
 
-    // Обработка нажатий на уведомления
+    // Handle notification taps
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       if (kDebugMode) {
-        print('Приложение открыто из уведомления: ${message.messageId}');
+        print('App opened from notification: ${message.messageId}');
       }
 
       _handleNotificationTap(message);
     });
 
-    // Проверка, было ли приложение открыто из уведомления при запуске
+    // Check if app was opened from notification on startup
     _messaging!.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         if (kDebugMode) {
-          print('Приложение запущено из уведомления: ${message.messageId}');
+          print('App launched from notification: ${message.messageId}');
         }
         _handleNotificationTap(message);
       }
     });
   }
 
-  /// Получение FCM токена
+  /// Get FCM token
   static Future<String?> _getFcmToken() async {
     try {
       if (_messaging == null) return null;
 
-      // Запрос разрешений
+      // Request permissions
       await _messaging!.requestPermission(
         alert: true,
         announcement: false,
@@ -93,7 +93,7 @@ class FirebaseService {
 
       _fcmToken = await _messaging!.getToken();
 
-      // Сохранение токена локально
+      // Save token locally
       if (_fcmToken != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fcm_token', _fcmToken!);
@@ -102,24 +102,24 @@ class FirebaseService {
       return _fcmToken;
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка получения FCM токена: $e');
+        print('Error getting FCM token: $e');
       }
       return null;
     }
   }
 
-  /// Получение текущего FCM токена
+  /// Get current FCM token
   static String? get fcmToken => _fcmToken;
 
-  /// Установка пользователя
+  /// Set user ID
   static void setUserId(String userId) {
     _userId = userId;
   }
 
-  /// Получение ID пользователя
+  /// Get user ID
   static String? get userId => _userId;
 
-  /// Обновление FCM токена
+  /// Refresh FCM token
   static Future<void> refreshToken() async {
     try {
       if (_messaging == null) return;
@@ -130,17 +130,17 @@ class FirebaseService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fcm_token', _fcmToken!);
 
-        // Здесь можно отправить токен на сервер
+        // Can send token to server here
         await _sendTokenToServer();
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка обновления FCM токена: $e');
+        print('Error refreshing FCM token: $e');
       }
     }
   }
 
-  /// Отправка токена на сервер
+  /// Send token to server
   static Future<void> _sendTokenToServer() async {
     if (_fcmToken == null || _userId == null) return;
 
@@ -162,27 +162,27 @@ class FirebaseService {
 
       if (response.statusCode == 200) {
         if (kDebugMode) {
-          print('FCM токен успешно отправлен на сервер');
+          print('FCM token successfully sent to server');
         }
       } else {
         if (kDebugMode) {
-          print('Ошибка отправки токена: ${response.statusCode}');
+          print('Error sending token: ${response.statusCode}');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка отправки токена на сервер: $e');
+        print('Error sending token to server: $e');
       }
     }
   }
 
-  /// Получение уникального ID устройства
+  /// Get unique device ID
   static Future<String> _getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     String? deviceId = prefs.getString('device_id');
 
     if (deviceId == null) {
-      // Генерируем новый ID устройства
+      // Generate new device ID
       deviceId =
           'device_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (9999 - 1000) * (DateTime.now().millisecondsSinceEpoch % 10000) / 10000).round()}';
       await prefs.setString('device_id', deviceId);
@@ -191,24 +191,24 @@ class FirebaseService {
     return deviceId;
   }
 
-  /// Обработка сообщений в фоне
+  /// Handle messages in background
   static Future<void> _firebaseMessagingBackgroundHandler(
       RemoteMessage message) async {
     if (kDebugMode) {
-      print('Обработка сообщения в фоне: ${message.messageId}');
+      print('Handling message in background: ${message.messageId}');
     }
 
-    // Здесь можно обработать данные сообщения
+    // Can process message data here
     final data = message.data;
     if (data.containsKey('alert_id')) {
-      // Обработка алерта
+      // Handle alert
       _handleAlertData(data);
     }
   }
 
-  /// Обработка сообщений в переднем плане
+  /// Handle messages in foreground
   static void _handleForegroundMessage(RemoteMessage message) {
-    // Показать локальное уведомление через NotificationService
+    // Show local notification via NotificationService
     final notification = message.notification;
     final data = message.data;
 
@@ -223,47 +223,47 @@ class FirebaseService {
     }
   }
 
-  /// Обработка нажатия на уведомление
+  /// Handle notification tap
   static void _handleNotificationTap(RemoteMessage message) {
     final data = message.data;
 
     if (data.containsKey('alert_id')) {
-      // Переход к алерту
+      // Navigate to alert
       _navigateToAlert(data['alert_id']);
     } else if (data.containsKey('symbol')) {
-      // Переход к символу
+      // Navigate to symbol
       _navigateToSymbol(data['symbol']);
     }
   }
 
-  /// Обработка данных алерта
+  /// Handle alert data
   static void _handleAlertData(Map<String, dynamic> data) {
-    // Данные алерта обрабатываются автоматически через NotificationService
-    // при получении уведомления в фоне
+    // Alert data is processed automatically through NotificationService
+    // when receiving notification in background
     if (kDebugMode) {
-      print('Обработка алерта: $data');
+      print('Handling alert: $data');
     }
   }
 
-  /// Навигация к алерту
+  /// Navigate to alert
   static void _navigateToAlert(String alertId) {
-    // Навигация реализована через NotificationService при нажатии на уведомление
+    // Navigation is implemented through NotificationService on notification tap
     if (kDebugMode) {
       print(
-          'Навигация к алерту: $alertId (обрабатывается через NotificationService)');
+          'Navigate to alert: $alertId (handled through NotificationService)');
     }
   }
 
-  /// Навигация к символу
+  /// Navigate to symbol
   static void _navigateToSymbol(String symbol) {
-    // Навигация реализована через NotificationService при нажатии на уведомление
+    // Navigation is implemented through NotificationService on notification tap
     if (kDebugMode) {
       print(
-          'Навигация к символу: $symbol (обрабатывается через NotificationService)');
+          'Navigate to symbol: $symbol (handled through NotificationService)');
     }
   }
 
-  /// Подписка на топик
+  /// Subscribe to topic
   static Future<void> subscribeToTopic(String topic) async {
     try {
       if (_messaging == null) return;
@@ -271,16 +271,16 @@ class FirebaseService {
       await _messaging!.subscribeToTopic(topic);
 
       if (kDebugMode) {
-        print('Подписка на топик: $topic');
+        print('Subscribed to topic: $topic');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка подписки на топик $topic: $e');
+        print('Error subscribing to topic $topic: $e');
       }
     }
   }
 
-  /// Отписка от топика
+  /// Unsubscribe from topic
   static Future<void> unsubscribeFromTopic(String topic) async {
     try {
       if (_messaging == null) return;
@@ -288,16 +288,16 @@ class FirebaseService {
       await _messaging!.unsubscribeFromTopic(topic);
 
       if (kDebugMode) {
-        print('Отписка от топика: $topic');
+        print('Unsubscribed from topic: $topic');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка отписки от топика $topic: $e');
+        print('Error unsubscribing from topic $topic: $e');
       }
     }
   }
 
-  /// Очистка токена
+  /// Clear token
   static Future<void> clearToken() async {
     try {
       if (_messaging == null) return;
@@ -309,17 +309,17 @@ class FirebaseService {
       await prefs.remove('fcm_token');
 
       if (kDebugMode) {
-        print('FCM токен очищен');
+        print('FCM token cleared');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка очистки FCM токена: $e');
+        print('Error clearing FCM token: $e');
       }
     }
   }
 }
 
-/// Обработчик сообщений в фоне (должен быть глобальной функцией)
+/// Background message handler (must be a global function)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();

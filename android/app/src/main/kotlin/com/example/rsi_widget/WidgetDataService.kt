@@ -12,7 +12,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Сервис для загрузки данных виджета в фоне без запуска Activity
+ * Service for loading widget data in background without launching Activity
  */
 object WidgetDataService {
     private const val TAG = "WidgetDataService"
@@ -23,18 +23,18 @@ object WidgetDataService {
         .build()
 
     /**
-     * Загружает данные для виджета в фоне
+     * Loads widget data in background
      */
     suspend fun refreshWidgetData(context: Context): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                 
-                // Загружаем watchlist из SharedPreferences
+                // Load watchlist from SharedPreferences
                 var watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
                 var watchlist = parseWatchlist(watchlistJson)
                 
-                // Если watchlist пуст, пытаемся извлечь символы из существующих данных
+                // If watchlist is empty, try to extract symbols from existing data
                 if (watchlist.isEmpty()) {
                     Log.d(TAG, "Watchlist symbols is empty, trying to extract from existing data")
                     val existingDataJson = prefs.getString("watchlist_data", "[]") ?: "[]"
@@ -47,7 +47,7 @@ object WidgetDataService {
                                 val symbol = item.getString("symbol")
                                 (watchlist as MutableList).add(symbol)
                             }
-                            // Сохраняем извлеченный watchlist для будущего использования
+                            // Save extracted watchlist for future use
                             val extractedJson = JSONArray(watchlist).toString()
                             prefs.edit().putString("watchlist_symbols", extractedJson).commit()
                             Log.d(TAG, "Extracted ${watchlist.size} symbols from existing data")
@@ -65,15 +65,15 @@ object WidgetDataService {
                 
                 Log.d(TAG, "Using watchlist with ${watchlist.size} symbols: $watchlist")
                 
-                // Загружаем настройки виджета
+                // Load widget settings
                 val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
-                // Используем период из виджета, если установлен, иначе из общих настроек
+                // Use period from widget if set, otherwise from general settings
                 val rsiPeriod = prefs.getInt("rsi_widget_period", 
                     prefs.getInt("rsi_period", 14))
                 
                 Log.d(TAG, "Loading data with timeframe: $timeframe, period: $rsiPeriod")
                 
-                // Загружаем данные для каждого символа
+                // Load data for each symbol
                 val widgetData = mutableListOf<WidgetItem>()
                 
                 for (symbol in watchlist) {
@@ -89,22 +89,22 @@ object WidgetDataService {
                     } catch (e: Exception) {
                         Log.e(TAG, "Error loading data for $symbol: ${e.message}", e)
                         e.printStackTrace()
-                        // Продолжаем загрузку других символов
+                        // Continue loading other symbols
                     }
                 }
                 
                 Log.d(TAG, "Total loaded ${widgetData.size} items out of ${watchlist.size} symbols")
                 
-                // Сохраняем обновленные данные (используем commit для синхронного сохранения)
+                // Save updated data (use commit for synchronous save)
                 val jsonData = widgetDataToJson(widgetData)
                 val editor = prefs.edit()
                 editor.putString("watchlist_data", jsonData)
                 editor.putString("timeframe", timeframe)
                 editor.putInt("rsi_period", rsiPeriod)
-                val saved = editor.commit() // commit() выполняется синхронно
+                val saved = editor.commit() // commit() executes synchronously
                 
                 if (saved) {
-                    // Проверяем, что данные действительно сохранились
+                    // Verify that data was actually saved
                     val verifyJson = prefs.getString("watchlist_data", null)
                     if (verifyJson == jsonData) {
                         Log.d(TAG, "Widget data refreshed and saved: ${widgetData.size} items, JSON length: ${jsonData.length}")
@@ -127,12 +127,12 @@ object WidgetDataService {
     }
     
     /**
-     * Загружает данные для одного символа
+     * Loads data for one symbol
      */
     private suspend fun loadSymbolData(symbol: String, timeframe: String, rsiPeriod: Int): WidgetItem? {
         return withContext(Dispatchers.IO) {
             try {
-                // Загружаем свечи
+                // Load candles
                 val url = "$YAHOO_ENDPOINT/yf/candles?symbol=$symbol&tf=$timeframe&limit=100"
                 Log.d(TAG, "Fetching candles from: $url")
                 val request = Request.Builder()
@@ -157,7 +157,7 @@ object WidgetDataService {
                 
                 Log.d(TAG, "Parsed ${candles.size} candles for $symbol")
                 
-                // Рассчитываем RSI
+                // Calculate RSI
                 val closes = candles.map { it.close }
                 Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
                 val rsiValues = calculateRSI(closes, rsiPeriod)
@@ -169,10 +169,7 @@ object WidgetDataService {
                 
                 val currentRsi = rsiValues.last()
                 val currentPrice = closes.last()
-                val previousPrice = if (closes.size > 1) closes[closes.size - 2] else currentPrice
-                val change = currentPrice - previousPrice
-                
-                // Берем последние 20 значений для графика
+                // Take last 20 values for chart
                 val chartValues = if (rsiValues.size > 20) {
                     rsiValues.subList(rsiValues.size - 20, rsiValues.size)
                 } else {
@@ -185,7 +182,6 @@ object WidgetDataService {
                     symbol = symbol,
                     rsi = currentRsi,
                     price = currentPrice,
-                    change = change,
                     rsiValues = chartValues
                 )
             } catch (e: Exception) {
@@ -196,7 +192,7 @@ object WidgetDataService {
     }
     
     /**
-     * Парсит watchlist из JSON
+     * Parses watchlist from JSON
      */
     private fun parseWatchlist(json: String): List<String> {
         return try {
@@ -209,7 +205,7 @@ object WidgetDataService {
     }
     
     /**
-     * Парсит свечи из JSON ответа
+     * Parses candles from JSON response
      */
     private fun parseCandles(json: String): List<Candle> {
         return try {
@@ -232,7 +228,7 @@ object WidgetDataService {
     }
     
     /**
-     * Рассчитывает RSI по алгоритму Wilder
+     * Calculates RSI using Wilder's algorithm
      */
     private fun calculateRSI(closes: List<Double>, period: Int): List<Double> {
         if (closes.size < period + 1) {
@@ -241,7 +237,7 @@ object WidgetDataService {
         
         val rsiValues = mutableListOf<Double>()
         
-        // Расчет первых средних значений
+        // Calculate initial average values
         var gain = 0.0
         var loss = 0.0
         for (i in 1..period) {
@@ -256,17 +252,17 @@ object WidgetDataService {
         var au = gain / period // Average Up
         var ad = loss / period // Average Down
         
-        // Инкрементальный расчет для остальных точек
+        // Incremental calculation for remaining points
         for (i in (period + 1) until closes.size) {
             val change = closes[i] - closes[i - 1]
             val u = if (change > 0) change else 0.0
             val d = if (change < 0) -change else 0.0
             
-            // Обновление по формуле Wilder
+            // Update using Wilder's formula
             au = (au * (period - 1) + u) / period
             ad = (ad * (period - 1) + d) / period
             
-            // Расчет RSI
+            // Calculate RSI
             val rsi = if (ad == 0.0) {
                 100.0
             } else {
@@ -280,7 +276,7 @@ object WidgetDataService {
     }
     
     /**
-     * Преобразует данные виджета в JSON
+     * Converts widget data to JSON
      */
     private fun widgetDataToJson(items: List<WidgetItem>): String {
         val array = JSONArray()
@@ -289,7 +285,6 @@ object WidgetDataService {
             obj.put("symbol", item.symbol)
             obj.put("rsi", item.rsi)
             obj.put("price", item.price)
-            obj.put("change", item.change)
             val rsiArray = JSONArray()
             for (rsiValue in item.rsiValues) {
                 rsiArray.put(rsiValue)
@@ -301,7 +296,7 @@ object WidgetDataService {
     }
     
     /**
-     * Данные свечи
+     * Candle data
      */
     private data class Candle(
         val open: Double,
@@ -313,13 +308,12 @@ object WidgetDataService {
     )
     
     /**
-     * Элемент виджета
+     * Widget item
      */
     data class WidgetItem(
         val symbol: String,
         val rsi: Double,
         val price: Double,
-        val change: Double,
         val rsiValues: List<Double>
     )
 }

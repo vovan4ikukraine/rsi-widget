@@ -16,7 +16,7 @@ import android.graphics.Path
 import android.graphics.DashPathEffect
 
 /**
- * RemoteViewsService для отображения элементов списка в виджете
+ * RemoteViewsService for displaying list items in widget
  */
 class RSIWidgetService : RemoteViewsService() {
     
@@ -34,7 +34,6 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         val symbol: String,
         val rsi: Double,
         val price: Double,
-        val change: Double,
         val rsiValues: List<Double>
     )
     
@@ -66,9 +65,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                     val symbol = item.getString("symbol")
                     val rsi = item.optDouble("rsi", 0.0)
                     val price = item.optDouble("price", 0.0)
-                    val change = item.optDouble("change", 0.0)
-                    
-                    // Парсим массив RSI значений для графика
+                    // Parse RSI values array for chart
                     val rsiValuesArray = item.optJSONArray("rsiValues")
                     val rsiValues = mutableListOf<Double>()
                     if (rsiValuesArray != null) {
@@ -77,7 +74,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                         }
                     }
                     
-                    items.add(WidgetItem(symbol, rsi, price, change, rsiValues))
+                    items.add(WidgetItem(symbol, rsi, price, rsiValues))
                     Log.d(TAG, "Loaded item: $symbol, RSI: $rsi, Price: $price, RSI values: ${rsiValues.size}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing item $i: ${e.message}", e)
@@ -101,34 +98,20 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         val item = items[position]
         val views = RemoteViews(context.packageName, R.layout.widget_item)
         
-        // Устанавливаем данные
+        // Set data
         views.setTextViewText(R.id.widget_symbol, item.symbol)
         views.setTextViewText(R.id.widget_rsi, String.format("%.2f", item.rsi))
         views.setTextViewText(R.id.widget_price, String.format("%.2f", item.price))
         
-        // Устанавливаем фон для RSI badge (используем drawable для скругленных углов)
-        views.setInt(R.id.widget_rsi, "setBackgroundResource", R.drawable.widget_rsi_badge_background)
-        
-        // Устанавливаем цвет текста RSI в зависимости от значения
+        // Set RSI text color depending on value
         val rsiTextColor = when {
-            item.rsi < 30 -> Color.parseColor("#66BB6A") // Зеленый для перепроданности
-            item.rsi > 70 -> Color.parseColor("#EF5350") // Красный для перекупленности
-            else -> Color.parseColor("#42A5F5") // Синий для нормального состояния
+            item.rsi < 30 -> Color.parseColor("#66BB6A") // Green for oversold
+            item.rsi > 70 -> Color.parseColor("#EF5350") // Red for overbought
+            else -> Color.parseColor("#42A5F5") // Blue for normal state
         }
         views.setTextColor(R.id.widget_rsi, rsiTextColor)
         
-        // Цвет изменения цены (современные цвета для темной темы)
-        val changeColor = if (item.change >= 0) {
-            Color.parseColor("#66BB6A")
-        } else {
-            Color.parseColor("#EF5350")
-        }
-        val changeText = if (item.change >= 0) "+${String.format("%.2f", item.change)}" 
-                        else String.format("%.2f", item.change)
-        views.setTextViewText(R.id.widget_change, changeText)
-        views.setTextColor(R.id.widget_change, changeColor)
-        
-        // Создаем график RSI как Bitmap (увеличиваем размер для лучшей видимости)
+        // Create RSI chart as Bitmap (increase size for better visibility)
         if (item.rsiValues.isNotEmpty()) {
             Log.d(TAG, "Creating chart for ${item.symbol} at position $position: ${item.rsiValues.size} values, current RSI: ${item.rsi}")
             Log.d(TAG, "Chart values range: min=${item.rsiValues.minOrNull()}, max=${item.rsiValues.maxOrNull()}")
@@ -137,13 +120,13 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             Log.d(TAG, "Chart bitmap created and set for ${item.symbol}")
         } else {
             Log.w(TAG, "No RSI values for ${item.symbol}, skipping chart")
-            // Создаем пустой битмап с полупрозрачным фоном
+            // Create empty bitmap with semi-transparent background
             val emptyBitmap = Bitmap.createBitmap(600, 80, Bitmap.Config.ARGB_8888)
             emptyBitmap.eraseColor(Color.parseColor("#E01E1E1E"))
             views.setImageViewBitmap(R.id.widget_chart, emptyBitmap)
         }
         
-        // Намерение для открытия приложения при клике
+        // Intent for opening app on click
         val fillInIntent = Intent().apply {
             putExtra("symbol", item.symbol)
         }
@@ -153,7 +136,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
     }
     
     private fun createChartBitmap(rsiValues: List<Double>, currentRsi: Double, width: Int, height: Int): Bitmap {
-        // Увеличиваем разрешение для лучшей четкости (2x для Retina)
+        // Increase resolution for better clarity (2x for Retina)
         val scale = 2f
         val scaledWidth = (width * scale).toInt()
         val scaledHeight = (height * scale).toInt()
@@ -161,49 +144,49 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         
-        // Полупрозрачный темный фон для современного вида
+        // Semi-transparent dark background for modern look
         canvas.drawColor(Color.parseColor("#E01E1E1E"))
         
         if (rsiValues.isEmpty()) {
-            // Масштабируем обратно для отображения
+            // Scale back for display
             return Bitmap.createScaledBitmap(bitmap, width, height, true)
         }
         
-        // Используем фиксированный масштаб 0-100 для RSI
+        // Use fixed 0-100 scale for RSI
         val padding = 8f * scale
         val chartWidth = scaledWidth - padding * 2
         val chartHeight = scaledHeight - padding * 2
         
-        // Зона перекупленности (выше 70) - темно-красная с прозрачностью
+        // Overbought zone (above 70) - dark red with transparency
         val overboughtPaint = Paint().apply {
-            color = Color.parseColor("#33F44336") // Красный с прозрачностью
+            color = Color.parseColor("#33F44336") // Red with transparency
             style = Paint.Style.FILL
         }
         val y70 = padding + ((100 - 70) / 100f) * chartHeight
         canvas.drawRect(padding, padding, scaledWidth - padding, y70, overboughtPaint)
         
-        // Зона перепроданности (ниже 30) - темно-зеленая с прозрачностью
+        // Oversold zone (below 30) - dark green with transparency
         val oversoldPaint = Paint().apply {
-            color = Color.parseColor("#334CAF50") // Зеленый с прозрачностью
+            color = Color.parseColor("#334CAF50") // Green with transparency
             style = Paint.Style.FILL
         }
         val y30 = padding + ((100 - 30) / 100f) * chartHeight
         canvas.drawRect(padding, y30, scaledWidth - padding, scaledHeight - padding, oversoldPaint)
         
-        // Рисуем линии уровней (тонкие, более заметные)
+        // Draw level lines (thin, more visible)
         val levelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#66FFFFFF") // Белый с прозрачностью для темной темы
+            color = Color.parseColor("#66FFFFFF") // White with transparency for dark theme
             strokeWidth = 1f * scale
             style = Paint.Style.STROKE
         }
         
-        // Линия 70 (перекупленность)
+        // Line 70 (overbought)
         canvas.drawLine(padding, y70, scaledWidth - padding, y70, levelPaint)
         
-        // Линия 30 (перепроданность)
+        // Line 30 (oversold)
         canvas.drawLine(padding, y30, scaledWidth - padding, y30, levelPaint)
         
-        // Линия 50 (нейтральная зона)
+        // Line 50 (neutral zone)
         val y50 = padding + ((100 - 50) / 100f) * chartHeight
         val midLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#44FFFFFF")
@@ -213,17 +196,17 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         }
         canvas.drawLine(padding, y50, scaledWidth - padding, y50, midLinePaint)
         
-        // Рисуем график (тонкая, четкая линия, цвет зависит от текущего RSI)
+        // Draw chart (thin, clear line, color depends on current RSI)
         val lineColor = when {
-            currentRsi < 30 -> Color.parseColor("#66BB6A") // Светло-зеленый - перепроданность
-            currentRsi > 70 -> Color.parseColor("#EF5350") // Светло-красный - перекупленность
-            else -> Color.parseColor("#42A5F5") // Светло-синий - норма
+            currentRsi < 30 -> Color.parseColor("#66BB6A") // Light green - oversold
+            currentRsi > 70 -> Color.parseColor("#EF5350") // Light red - overbought
+            else -> Color.parseColor("#42A5F5") // Light blue - normal
         }
         
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             color = lineColor
             style = Paint.Style.STROKE
-            strokeWidth = 2f * scale // Тонкая линия (эквивалент 1px при масштабе)
+            strokeWidth = 2f * scale // Thin line (equivalent to 1px at scale)
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             isAntiAlias = true
@@ -234,7 +217,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         
         rsiValues.forEachIndexed { index, value ->
             val x = padding + index * stepX
-            // RSI всегда в диапазоне 0-100
+            // RSI always in range 0-100
             val clampedValue = value.coerceIn(0.0, 100.0)
             val y = padding + ((100f - clampedValue.toFloat()) / 100f) * chartHeight
             
@@ -247,7 +230,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         
         canvas.drawPath(path, linePaint)
         
-        // Рисуем точки на экстремумах (максимумы и минимумы) - более тонкие
+        // Draw points on extrema (maxima and minima) - thinner
         val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
         }
@@ -258,7 +241,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             val maxIndex = rsiValues.indexOf(maxValue)
             val minIndex = rsiValues.indexOf(minValue)
             
-            // Точка максимума (если выше 70)
+            // Maximum point (if above 70)
             if (maxValue > 70) {
                 val maxX = padding + maxIndex * stepX
                 val maxY = padding + ((100f - maxValue.toFloat()) / 100f) * chartHeight
@@ -266,7 +249,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                 canvas.drawCircle(maxX, maxY, 3f * scale, pointPaint)
             }
             
-            // Точка минимума (если ниже 30)
+            // Minimum point (if below 30)
             if (minValue < 30) {
                 val minX = padding + minIndex * stepX
                 val minY = padding + ((100f - minValue.toFloat()) / 100f) * chartHeight
@@ -274,19 +257,19 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                 canvas.drawCircle(minX, minY, 3f * scale, pointPaint)
             }
             
-            // Текущая точка (последняя точка) - чуть больше
+            // Current point (last point) - slightly larger
             val lastIndex = rsiValues.size - 1
             val lastX = padding + lastIndex * stepX
             val lastY = padding + ((100f - currentRsi.coerceIn(0.0, 100.0).toFloat()) / 100f) * chartHeight
             pointPaint.color = lineColor
-            // Рисуем обводку для лучшей видимости
+            // Draw outline for better visibility
             pointPaint.style = Paint.Style.FILL
             canvas.drawCircle(lastX, lastY, 3.5f * scale, pointPaint)
             pointPaint.color = Color.parseColor("#E01E1E1E")
             canvas.drawCircle(lastX, lastY, 2f * scale, pointPaint)
         }
         
-        // Масштабируем обратно для отображения (с фильтрацией для четкости)
+        // Scale back for display (with filtering for clarity)
         return Bitmap.createScaledBitmap(bitmap, width, height, true)
     }
     

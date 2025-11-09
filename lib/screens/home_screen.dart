@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
+import '../localization/app_localizations.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -30,16 +31,16 @@ class _HomeScreenState extends State<HomeScreen> {
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
-  int _rsiPeriod = 14; // Период RSI
-  double _lowerLevel = 30.0; // Нижняя зона (перепроданность)
-  double _upperLevel = 70.0; // Верхняя зона (перекупленность)
+  int _rsiPeriod = 14; // RSI period
+  double _lowerLevel = 30.0; // Lower zone (oversold)
+  double _upperLevel = 70.0; // Upper zone (overbought)
   List<double> _rsiValues = [];
-  List<int> _rsiTimestamps = []; // Временные метки для каждой точки RSI
+  List<int> _rsiTimestamps = []; // Timestamps for each RSI point
   double _currentRsi = 0.0;
   bool _isLoading = false;
-  bool _rsiSettingsExpanded = false; // Состояние сворачивания настроек RSI
+  bool _rsiSettingsExpanded = false; // RSI settings expansion state
 
-  // Контроллеры для полей ввода
+  // Controllers for input fields
   final TextEditingController _rsiPeriodController = TextEditingController();
   final TextEditingController _lowerLevelController = TextEditingController();
   final TextEditingController _upperLevelController = TextEditingController();
@@ -68,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
         print(
             'HomeScreen: Refresh widget requested - timeframe: $timeframe, period: $rsiPeriod, minimize: $minimizeAfterUpdate');
 
-        // Обновляем виджет с указанным таймфреймом и периодом
+        // Update widget with specified timeframe and period
         await _widgetService.updateWidget(
           timeframe: timeframe,
           rsiPeriod: rsiPeriod,
@@ -76,8 +77,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         print('HomeScreen: Widget updated successfully');
 
-        // Небольшая дополнительная задержка, чтобы убедиться, что данные загружены
-        // Нативная часть минимизирует приложение через 2 секунды
+        // Small additional delay to ensure data is loaded
+        // Native part minimizes application after 2 seconds
       }
     });
   }
@@ -96,9 +97,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
     _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
 
-    // Инициализируем контроллер символа
+    // Initialize symbol controller
     _symbolController.text = _selectedSymbol;
-    // Инициализируем контроллеры (без text, используем hintText)
+    // Initialize controllers (without text, use hintText)
     _clearControllers();
 
     setState(() {});
@@ -134,20 +135,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadRsiData() async {
-    // Сохраняем предыдущий символ для отката в случае ошибки
+    // Save previous symbol for rollback in case of error
     final previousSymbol = _selectedSymbol;
 
     setState(() {
       _isLoading = true;
     });
 
+    final loc = context.loc;
+
     try {
-      // Увеличиваем limit для больших таймфреймов
+      // Increase limit for large timeframes
       int limit = 100;
       if (_selectedTimeframe == '4h') {
-        limit = 500; // Для 4h нужно больше данных (минимум 15 для RSI)
+        limit = 500; // For 4h need more data (minimum 15 for RSI)
       } else if (_selectedTimeframe == '1d') {
-        limit = 730; // Для 1d нужны данные за 2 года (минимум 15 для RSI)
+        limit = 730; // For 1d need 2 years of data (minimum 15 for RSI)
       }
 
       final candles = await _yahooService.fetchCandles(
@@ -157,31 +160,28 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       debugPrint(
-          'HomeScreen: Получено ${candles.length} свечей для $_selectedSymbol $_selectedTimeframe (limit был $limit)');
+          'HomeScreen: Received ${candles.length} candles for $_selectedSymbol $_selectedTimeframe (limit was $limit)');
 
       if (candles.isEmpty) {
-        // Откатываем символ обратно, если нет данных
+        // Rollback symbol if no data
         setState(() {
           _selectedSymbol = previousSymbol;
           _symbolController.text = previousSymbol;
         });
 
-        String message =
-            'Нет данных для инструмента на таймфрейме $_selectedTimeframe';
-        // Добавляем подсказку для больших таймфреймов и выходных дней
+        String message = loc.t('home_no_data_for_timeframe',
+            params: {'timeframe': _selectedTimeframe});
+        // Add hint for large timeframes and weekends
         if (_selectedTimeframe == '4h' || _selectedTimeframe == '1d') {
           final now = DateTime.now();
           final dayOfWeek = now.weekday; // 1 = Monday, 7 = Sunday
           if (dayOfWeek == 6 || dayOfWeek == 7) {
-            message +=
-                '\nРынки закрыты в выходные дни. Для таймфреймов 4h и 1d Yahoo Finance может не возвращать свежие данные.';
-            message += '\nПопробуйте в рабочие дни (понедельник-пятница).';
+            message += '\n${loc.t('home_weekend_hint')}';
           } else {
-            message +=
-                '\nДля больших таймфреймов требуются данные за более длительный период.';
+            message += '\n${loc.t('home_large_timeframe_hint')}';
           }
         } else {
-          message += '\nПроверьте правильность написания символа.';
+          message += '\n${loc.t('home_check_symbol_hint')}';
         }
 
         if (mounted) {
@@ -202,16 +202,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final closes = candles.map((c) => c.close).toList();
 
-      // Используем правильный алгоритм Wilder для расчета RSI
-      // Это стандартный алгоритм, используемый в TradingView и Yahoo Finance
+      // Use correct Wilder's algorithm for RSI calculation
+      // This is the standard algorithm used in TradingView and Yahoo Finance
       final rsiValues = <double>[];
-      final rsiTimestamps = <int>[]; // Временные метки для каждой точки RSI
+      final rsiTimestamps = <int>[]; // Timestamps for each RSI point
       final rsiPeriod = _rsiPeriod;
 
       if (closes.length < rsiPeriod + 1) {
-        // Недостаточно данных
+        // Insufficient data
       } else {
-        // Расчет первых средних значений (простая средняя)
+        // Calculate initial average values (simple average)
         double gain = 0, loss = 0;
         for (int i = 1; i <= rsiPeriod; i++) {
           final change = closes[i] - closes[i - 1];
@@ -225,17 +225,17 @@ class _HomeScreenState extends State<HomeScreen> {
         double au = gain / rsiPeriod; // Average Up
         double ad = loss / rsiPeriod; // Average Down
 
-        // Инкрементальный расчет для остальных точек по формуле Wilder
+        // Incremental calculation for remaining points using Wilder's formula
         for (int i = rsiPeriod + 1; i < closes.length; i++) {
           final change = closes[i] - closes[i - 1];
           final u = change > 0 ? change : 0.0;
           final d = change < 0 ? -change : 0.0;
 
-          // Обновление по формуле Wilder: EMA = (prev * (n-1) + current) / n
+          // Update using Wilder's formula: EMA = (prev * (n-1) + current) / n
           au = (au * (rsiPeriod - 1) + u) / rsiPeriod;
           ad = (ad * (rsiPeriod - 1) + d) / rsiPeriod;
 
-          // Расчет RSI
+          // Calculate RSI
           if (ad == 0) {
             rsiValues.add(100.0);
           } else {
@@ -244,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
             rsiValues.add(rsi.clamp(0, 100));
           }
 
-          // Сохраняем временную метку соответствующей свечи
+          // Save timestamp of corresponding candle
           rsiTimestamps.add(candles[i].timestamp);
         }
       }
@@ -254,28 +254,29 @@ class _HomeScreenState extends State<HomeScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'Недостаточно данных для расчета RSI. Получено ${candles.length} свечей, требуется минимум 15'),
+                loc.t('home_insufficient_data',
+                    params: {'count': '${candles.length}'}),
+              ),
               duration: const Duration(seconds: 4),
             ),
           );
         }
       }
 
-      // Для отображения графика берем только последние N точек
-      // Это улучшает читаемость, особенно для больших таймфреймов
-      int maxChartPoints = 100; // Максимум точек для графика
+      // For chart display take only last N points
+      // This improves readability, especially for large timeframes
+      int maxChartPoints = 100; // Maximum points for chart
       if (_selectedTimeframe == '4h') {
-        maxChartPoints = 60; // Для 4h показываем последние 60 точек (~10 дней)
+        maxChartPoints = 60; // For 4h show last 60 points (~10 days)
       } else if (_selectedTimeframe == '1d') {
-        maxChartPoints = 90; // Для 1d показываем последние 90 точек (~3 месяца)
+        maxChartPoints = 90; // For 1d show last 90 points (~3 months)
       } else if (_selectedTimeframe == '1h') {
-        maxChartPoints = 100; // Для 1h показываем последние 100 точек (~4 дня)
+        maxChartPoints = 100; // For 1h show last 100 points (~4 days)
       } else {
-        maxChartPoints =
-            100; // Для минутных таймфреймов показываем последние 100 точек
+        maxChartPoints = 100; // For minute timeframes show last 100 points
       }
 
-      // Берем только последние точки для графика
+      // Take only last points for chart
       final chartRsiValues = rsiValues.length > maxChartPoints
           ? rsiValues.sublist(rsiValues.length - maxChartPoints)
           : rsiValues;
@@ -289,41 +290,46 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentRsi = rsiValues.isNotEmpty ? rsiValues.last : 0.0;
       });
     } catch (e, stackTrace) {
-      // Откатываем символ обратно при ошибке
+      // Rollback symbol on error
       setState(() {
         _selectedSymbol = previousSymbol;
         _symbolController.text = previousSymbol;
       });
-      // Подробное логирование ошибки
-      debugPrint('Ошибка загрузки данных RSI:');
-      debugPrint('Символ: $_selectedSymbol');
-      debugPrint('Таймфрейм: $_selectedTimeframe');
-      debugPrint('Ошибка: $e');
+      // Detailed error logging
+      debugPrint('Error loading RSI data:');
+      debugPrint('Symbol: $_selectedSymbol');
+      debugPrint('Timeframe: $_selectedTimeframe');
+      debugPrint('Error: $e');
       debugPrint('Stack trace: $stackTrace');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Инструмент не найден или нет данных. Проверьте правильность написания символа.'),
+              loc.t('home_instrument_not_found'),
+            ),
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
-              label: 'Подробнее',
+              label: loc.t('common_details'),
               onPressed: () {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Детали ошибки'),
+                    title: Text(loc.t('home_error_details_title')),
                     content: SingleChildScrollView(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Символ: $_selectedSymbol'),
-                          Text('Таймфрейм: $_selectedTimeframe'),
+                          Text(loc.t('home_error_label_symbol',
+                              params: {'symbol': _selectedSymbol})),
+                          Text(loc.t('home_error_label_timeframe',
+                              params: {'timeframe': _selectedTimeframe})),
                           const SizedBox(height: 8),
-                          const Text('Ошибка:',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                            loc.t('home_error_label'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           Text('$e'),
                         ],
                       ),
@@ -331,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Закрыть'),
+                        child: Text(loc.t('common_close')),
                       ),
                     ],
                   ),
@@ -350,15 +356,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RSI Widget'),
+        title: Text(loc.t('home_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.bookmark_border),
-            tooltip: 'Watchlist',
+            tooltip: loc.t('home_watchlist_tooltip'),
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -366,11 +374,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context) => WatchlistScreen(isar: widget.isar),
                 ),
               );
-              // WatchlistScreen обновляется автоматически при открытии
+              // WatchlistScreen updates automatically when opened
             },
           ),
           IconButton(
             icon: const Icon(Icons.notifications),
+            tooltip: loc.t('home_alerts_tooltip'),
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -378,12 +387,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context) => AlertsScreen(isar: widget.isar),
                 ),
               );
-              // Обновляем список алертов после возврата
+              // Refresh alerts list after return
               _loadAlerts();
             },
           ),
           IconButton(
             icon: const Icon(Icons.settings),
+            tooltip: loc.t('home_settings_tooltip'),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -399,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onRefresh: _loadRsiData,
               child: GestureDetector(
                 onTap: () {
-                  // Убираем фокус при нажатии на экран
+                  // Remove focus when tapping on screen
                   FocusScope.of(context).unfocus();
                 },
                 behavior: HitTestBehavior.opaque,
@@ -409,27 +419,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Выбор символа и таймфрейма
+                      // Symbol and timeframe selection
                       _buildSymbolSelector(),
                       const SizedBox(height: 16),
 
-                      // Настройки RSI
+                      // RSI settings
                       _buildRsiSettingsCard(),
                       const SizedBox(height: 16),
 
-                      // Текущий RSI
+                      // Current RSI
                       _buildCurrentRsiCard(),
                       const SizedBox(height: 16),
 
-                      // График RSI
+                      // RSI chart
                       _buildRsiChart(),
                       const SizedBox(height: 16),
 
-                      // Активные алерты
+                      // Active alerts
                       _buildActiveAlerts(),
                       const SizedBox(height: 16),
 
-                      // Быстрые действия
+                      // Quick actions
                       _buildQuickActions(),
                     ],
                   ),
@@ -437,6 +447,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
       floatingActionButton: FloatingActionButton(
+        tooltip: loc.t('home_create_alert'),
         onPressed: () => _showCreateAlertDialog(),
         child: const Icon(Icons.add),
       ),
@@ -444,15 +455,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSymbolSelector() {
+    final loc = context.loc;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Инструмент',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('home_instrument_label'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Row(
@@ -463,16 +476,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     optionsBuilder: (TextEditingValue textEditingValue) async {
                       final query = textEditingValue.text.trim();
 
-                      // Если поле пустое - показываем все популярные
+                      // If field is empty - show all popular symbols
                       if (query.isEmpty) {
-                        // Сбрасываем флаг загрузки если он был установлен
+                        // Reset loading flag if it was set
                         if (_isSearchingSymbols && mounted) {
                           setState(() {
                             _isSearchingSymbols = false;
                           });
                         }
 
-                        // Показываем все популярные символы
+                        // Show all popular symbols
                         try {
                           final popularSymbols =
                               await _yahooService.fetchPopularSymbols();
@@ -488,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       }
 
-                      // Для одного символа также показываем популярные, но фильтруем
+                      // For single character also show popular symbols, but filtered
                       if (query.length == 1) {
                         if (_isSearchingSymbols && mounted) {
                           setState(() {
@@ -498,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         try {
                           final popularSymbols =
                               await _yahooService.fetchPopularSymbols();
-                          // Фильтруем по первому символу
+                          // Filter by first character
                           final filtered = popularSymbols.where((s) =>
                               s.toUpperCase().startsWith(query.toUpperCase()));
                           return filtered.map((s) => SymbolInfo(
@@ -513,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       }
 
-                      // Для поиска с 2+ символами
+                      // For search with 2+ characters
                       if (!_isSearchingSymbols && mounted) {
                         setState(() {
                           _isSearchingSymbols = true;
@@ -528,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             _isSearchingSymbols = false;
                           });
                         }
-                        // Показываем все результаты, не ограничиваем
+                        // Show all results, don't limit
                         return results;
                       } catch (e) {
                         if (mounted) {
@@ -547,7 +560,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       FocusNode focusNode,
                       VoidCallback onFieldSubmitted,
                     ) {
-                      // Синхронизируем контроллер с выбранным символом только один раз при инициализации
+                      // Sync controller with selected symbol only once during initialization
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (textEditingController.text !=
                             _symbolController.text) {
@@ -559,15 +572,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         controller: textEditingController,
                         focusNode: focusNode,
                         onTap: () {
-                          // При нажатии на поле очищаем его, чтобы показать список популярных
-                          // Это позволяет быстро выбрать инструмент без необходимости стирать текст
+                          // When tapping on field, clear it to show popular list
+                          // This allows quick instrument selection without having to erase text
                           if (textEditingController.text.isNotEmpty) {
                             textEditingController.clear();
                             _symbolController.clear();
                           }
                         },
                         onFieldSubmitted: (String value) {
-                          // Позволяем вводить символ напрямую, даже если его нет в списке
+                          // Allow direct symbol input even if it's not in the list
                           final trimmedValue = value.trim().toUpperCase();
                           if (trimmedValue.isNotEmpty &&
                               trimmedValue != _selectedSymbol) {
@@ -578,13 +591,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             _saveState();
                             _loadRsiData();
                           }
-                          // Убираем фокус при отправке
+                          // Remove focus on submit
                           focusNode.unfocus();
                           onFieldSubmitted();
                         },
                         decoration: InputDecoration(
-                          labelText: 'Символ',
-                          hintText: 'Начните вводить символ (например, AAPL)',
+                          labelText: loc.t('home_symbol_label'),
+                          hintText: loc.t('home_symbol_hint'),
                           border: const OutlineInputBorder(),
                           suffixIcon: _isSearchingSymbols
                               ? const SizedBox(
@@ -606,14 +619,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     onSelected: (SymbolInfo selection) {
                       _symbolController.text = selection.symbol;
-                      // Обновляем символ и загружаем данные
-                      // Если загрузка не удастся, символ будет откатан в _loadRsiData
+                      // Update symbol and load data
+                      // If loading fails, symbol will be rolled back in _loadRsiData
                       setState(() {
                         _selectedSymbol = selection.symbol;
                       });
                       _saveState();
                       _loadRsiData();
-                      // Убираем фокус после выбора
+                      // Remove focus after selection
                       FocusScope.of(context).unfocus();
                     },
                     optionsViewBuilder: (
@@ -687,28 +700,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.bookmark_add),
-                  tooltip: 'Добавить в Watchlist',
+                  tooltip: loc.t('home_add_watchlist'),
                   onPressed: () => _addToWatchlist(_selectedSymbol),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _selectedTimeframe,
-                    decoration: const InputDecoration(
-                      labelText: 'ТФ',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: loc.t('home_timeframe_label'),
+                      border: const OutlineInputBorder(),
                       isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 16),
                     ),
+                    isExpanded: true,
                     style: const TextStyle(fontSize: 14),
                     items: const [
-                      DropdownMenuItem(value: '1m', child: Text('1м')),
-                      DropdownMenuItem(value: '5m', child: Text('5м')),
-                      DropdownMenuItem(value: '15m', child: Text('15м')),
-                      DropdownMenuItem(value: '1h', child: Text('1ч')),
-                      DropdownMenuItem(value: '4h', child: Text('4ч')),
-                      DropdownMenuItem(value: '1d', child: Text('1д')),
+                      DropdownMenuItem(value: '1m', child: Text('1m')),
+                      DropdownMenuItem(value: '5m', child: Text('5m')),
+                      DropdownMenuItem(value: '15m', child: Text('15m')),
+                      DropdownMenuItem(value: '1h', child: Text('1h')),
+                      DropdownMenuItem(value: '4h', child: Text('4h')),
+                      DropdownMenuItem(value: '1d', child: Text('1d')),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -730,6 +744,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCurrentRsiCard() {
+    final loc = context.loc;
     final zone = _getRsiZone(_currentRsi);
     final color = _getZoneColor(zone);
 
@@ -743,7 +758,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'RSI ($_selectedSymbol)',
+                    loc.t('home_current_rsi_title',
+                        params: {'symbol': _selectedSymbol}),
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.bold),
                   ),
@@ -771,6 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRsiChart() {
+    final loc = context.loc;
     return Card(
       child: Padding(
         padding: const EdgeInsets.only(
@@ -778,15 +795,16 @@ class _HomeScreenState extends State<HomeScreen> {
             right: 4,
             top: 16,
             bottom:
-                16), // Минимальные горизонтальные отступы для максимального растяжения графика
+                16), // Minimum horizontal padding for maximum chart stretching
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                'График RSI',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                loc.t('home_rsi_chart_title'),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 8),
@@ -804,6 +822,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActiveAlerts() {
+    final loc = context.loc;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -813,9 +832,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Активные алерты',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  loc.t('home_active_alerts_title'),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -825,16 +845,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (context) => AlertsScreen(isar: widget.isar),
                       ),
                     );
-                    // Обновляем список алертов после возврата
+                    // Refresh alerts list after return
                     _loadAlerts();
                   },
-                  child: const Text('Все'),
+                  child: Text(loc.t('home_active_alerts_all')),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             if (_alerts.isEmpty)
-              const Text('Нет активных алертов')
+              Text(loc.t('home_no_active_alerts'))
             else
               ..._alerts.take(3).map((alert) => ListTile(
                     title: Text(alert.symbol),
@@ -861,7 +881,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _applyRsiSettings() {
-    // Применяем значения из полей ввода
+    // Apply values from input fields
     final period = int.tryParse(_rsiPeriodController.text);
     final lower = double.tryParse(_lowerLevelController.text);
     final upper = double.tryParse(_upperLevelController.text);
@@ -897,14 +917,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _saveState();
     }
 
-    // Очищаем поля ввода
+    // Clear input fields
     _clearControllers();
 
-    // Пересчитываем RSI если изменился период
+    // Recalculate RSI if period changed
     if (changed && period != null) {
       _loadRsiData();
     } else if (changed) {
-      setState(() {}); // Обновляем только уровни
+      setState(() {}); // Update only levels
     }
   }
 
@@ -920,6 +940,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildRsiSettingsCard() {
+    final loc = context.loc;
     return Card(
       child: Column(
         children: [
@@ -927,7 +948,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () {
               setState(() {
                 _rsiSettingsExpanded = !_rsiSettingsExpanded;
-                // При разворачивании заполняем поля текущими значениями
+                // When expanding, fill fields with current values
                 if (_rsiSettingsExpanded) {
                   _rsiPeriodController.text = _rsiPeriod.toString();
                   _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
@@ -939,9 +960,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Text(
-                    'Настройки RSI',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    loc.t('home_rsi_settings_title'),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const Spacer(),
                   Icon(
@@ -964,9 +986,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextField(
                           controller: _rsiPeriodController,
-                          decoration: const InputDecoration(
-                            labelText: 'Период RSI',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: loc.t('home_rsi_period_label'),
+                            border: const OutlineInputBorder(),
                             isDense: true,
                           ),
                           keyboardType: TextInputType.number,
@@ -976,9 +998,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextField(
                           controller: _lowerLevelController,
-                          decoration: const InputDecoration(
-                            labelText: 'Нижняя зона',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: loc.t('home_lower_zone_label'),
+                            border: const OutlineInputBorder(),
                             isDense: true,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(
@@ -989,9 +1011,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: TextField(
                           controller: _upperLevelController,
-                          decoration: const InputDecoration(
-                            labelText: 'Верхняя зона',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: loc.t('home_upper_zone_label'),
+                            border: const OutlineInputBorder(),
                             isDense: true,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(
@@ -1006,7 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.refresh, size: 20),
-                        tooltip: 'Сбросить до значений по умолчанию',
+                        tooltip: loc.t('home_reset_defaults_tooltip'),
                         onPressed: _resetRsiSettings,
                         color: Colors.grey[600],
                         padding: EdgeInsets.zero,
@@ -1015,7 +1037,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.check, size: 20),
-                        tooltip: 'Применить изменения',
+                        tooltip: loc.t('home_apply_changes_tooltip'),
                         onPressed: _applyRsiSettings,
                         color: Colors.blue,
                         padding: EdgeInsets.zero,
@@ -1033,15 +1055,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildQuickActions() {
+    final loc = context.loc;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Быстрые действия',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('home_quick_actions_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Row(
@@ -1050,7 +1073,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _showCreateAlertDialog(),
                     icon: const Icon(Icons.add_alert),
-                    label: const Text('Создать алерт'),
+                    label: Text(loc.t('home_create_alert')),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1058,7 +1081,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _loadRsiData(),
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Обновить'),
+                    label: Text(loc.t('home_refresh')),
                   ),
                 ),
               ],
@@ -1076,7 +1099,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => CreateAlertScreen(isar: widget.isar),
       ),
     );
-    // Всегда обновляем список алертов после возврата
+    // Always refresh alerts list after return
     _loadAlerts();
   }
 
@@ -1088,12 +1111,13 @@ class _HomeScreenState extends State<HomeScreen> {
             CreateAlertScreen(isar: widget.isar, alert: alert),
       ),
     );
-    // Всегда обновляем список алертов после возврата
+    // Always refresh alerts list after return
     _loadAlerts();
   }
 
   Future<void> _addToWatchlist(String symbol) async {
-    // Проверяем, не добавлен ли уже этот символ
+    final loc = context.loc;
+    // Check if this symbol is already added
     final existing = await widget.isar.watchlistItems
         .where()
         .symbolEqualTo(symbol)
@@ -1102,66 +1126,74 @@ class _HomeScreenState extends State<HomeScreen> {
     if (existing != null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$symbol уже в Watchlist')),
+          SnackBar(
+            content: Text(
+              loc.t('home_watchlist_exists', params: {'symbol': symbol}),
+            ),
+          ),
         );
       }
       return;
     }
 
-    // Добавляем в watchlist
-    // Сначала получаем все существующие элементы, чтобы убедиться что ID назначается правильно
+    // Add to watchlist
+    // First get all existing items to ensure ID is assigned correctly
     final allExistingItems = await widget.isar.watchlistItems.where().findAll();
     debugPrint(
-        'HomeScreen: Перед добавлением $symbol уже есть ${allExistingItems.length} элементов');
+        'HomeScreen: Before adding $symbol there are ${allExistingItems.length} items');
     if (allExistingItems.isNotEmpty) {
       debugPrint(
-          'HomeScreen: Существующие элементы: ${allExistingItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
+          'HomeScreen: Existing items: ${allExistingItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
     }
 
-    // Вычисляем следующий доступный ID
+    // Calculate next available ID
     int nextId = 1;
     if (allExistingItems.isNotEmpty) {
       final maxId =
           allExistingItems.map((e) => e.id).reduce((a, b) => a > b ? a : b);
       nextId = maxId + 1;
     }
-    debugPrint('HomeScreen: Следующий доступный ID: $nextId');
+    debugPrint('HomeScreen: Next available ID: $nextId');
 
-    // Создаем новый элемент с явным ID
+    // Create new item with explicit ID
     final item = WatchlistItem();
-    item.id = nextId; // Явно устанавливаем ID
+    item.id = nextId; // Explicitly set ID
     item.symbol = symbol;
     item.createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     await widget.isar.writeTxn(() {
-      // Используем put() с явным ID
+      // Use put() with explicit ID
       return widget.isar.watchlistItems.put(item);
     });
 
-    debugPrint('HomeScreen: После put() item.id = ${item.id}');
+    debugPrint('HomeScreen: After put() item.id = ${item.id}');
 
-    // Проверяем, что элемент действительно добавлен
+    // Verify that item was actually added
     final allItems = await widget.isar.watchlistItems.where().findAll();
     debugPrint(
-        'HomeScreen: После добавления $symbol всего элементов: ${allItems.length}');
+        'HomeScreen: After adding $symbol total items: ${allItems.length}');
     debugPrint(
-        'HomeScreen: Символы в watchlist: ${allItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
+        'HomeScreen: Symbols in watchlist: ${allItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
 
-    // Проверяем, что новый элемент действительно имеет уникальный ID
+    // Verify that new item actually has unique ID
     final addedItem = await widget.isar.watchlistItems
         .where()
         .symbolEqualTo(symbol)
         .findAll();
     debugPrint(
-        'HomeScreen: Найдено элементов с символом $symbol: ${addedItem.length}');
+        'HomeScreen: Found items with symbol $symbol: ${addedItem.length}');
     if (addedItem.length > 1) {
       debugPrint(
-          'HomeScreen: ВНИМАНИЕ! Дубликаты для $symbol: ${addedItem.map((e) => e.id).toList()}');
+          'HomeScreen: WARNING! Duplicates for $symbol: ${addedItem.map((e) => e.id).toList()}');
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$symbol добавлен в Watchlist')),
+        SnackBar(
+          content: Text(
+            loc.t('home_watchlist_added', params: {'symbol': symbol}),
+          ),
+        ),
       );
     }
   }

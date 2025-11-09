@@ -11,23 +11,23 @@ import '../models.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/home_screen.dart';
 
-/// Сервис для локальных уведомлений
+/// Service for local notifications
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
 
-  /// Инициализация сервиса уведомлений
+  /// Initialize notification service
   static Future<void> initialize() async {
     if (_initialized) return;
 
     try {
-      // Настройки для Android
+      // Settings for Android
       const androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      // Настройки для iOS
+      // Settings for iOS
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -44,8 +44,8 @@ class NotificationService {
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
 
-      // Не запрашиваем разрешения автоматически при инициализации
-      // Разрешения будут запрашиваться только когда они действительно нужны
+      // Don't request permissions automatically on initialization
+      // Permissions will be requested only when really needed
       // if (Platform.isAndroid) {
       //   await _requestAndroidPermissions();
       // }
@@ -53,16 +53,16 @@ class NotificationService {
       _initialized = true;
 
       if (kDebugMode) {
-        print('Сервис уведомлений инициализирован');
+        print('Notification service initialized');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка инициализации уведомлений: $e');
+        print('Error initializing notifications: $e');
       }
     }
   }
 
-  /// Запрос разрешений только при необходимости (например, при создании алерта)
+  /// Request permissions only when needed (e.g., when creating an alert)
   static Future<bool> requestPermissionsIfNeeded() async {
     try {
       final androidPlugin =
@@ -70,25 +70,25 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin != null) {
-        // Запрашиваем разрешение на уведомления только когда оно действительно нужно
-        // Не запрашиваем разрешение на точные будильники автоматически,
-        // так как это открывает настройки системы
+        // Request notification permission only when really needed
+        // Don't request exact alarm permission automatically,
+        // as this opens system settings
         await androidPlugin.requestNotificationsPermission();
         return true;
       }
       return false;
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка запроса разрешений Android: $e');
+        print('Error requesting Android permissions: $e');
       }
       return false;
     }
   }
 
-  /// Обработка нажатия на уведомление
+  /// Handle notification tap
   static void _onNotificationTapped(NotificationResponse response) {
     if (kDebugMode) {
-      print('Нажато уведомление: ${response.payload}');
+      print('Notification tapped: ${response.payload}');
     }
 
     final payload = response.payload;
@@ -97,34 +97,34 @@ class NotificationService {
     }
   }
 
-  /// Обработка payload уведомления
+  /// Handle notification payload
   static void _handleNotificationPayload(String payload) async {
     try {
-      // Парсинг payload (может быть JSON строка или Map в виде строки)
+      // Parse payload (can be JSON string or Map as string)
       Map<String, dynamic>? data;
 
-      // Пытаемся распарсить как JSON
+      // Try to parse as JSON
       try {
         final decoded = json.decode(payload);
         if (decoded is Map<String, dynamic>) {
           data = decoded;
         }
       } catch (e) {
-        // Если не JSON, пытаемся распарсить как строку формата "{key: value, ...}"
+        // If not JSON, try to parse as string format "{key: value, ...}"
         if (payload.startsWith('{') && payload.endsWith('}')) {
-          // Простой парсинг для формата FlutterLocalNotifications
+          // Simple parsing for FlutterLocalNotifications format
           data = _parseSimpleMap(payload);
         }
       }
 
       if (data == null) {
         if (kDebugMode) {
-          print('Не удалось распарсить payload: $payload');
+          print('Failed to parse payload: $payload');
         }
         return;
       }
 
-      // Навигация на основе типа уведомления
+      // Navigate based on notification type
       if (data.containsKey('type')) {
         final type = data['type'];
         if (type is! String) return;
@@ -146,23 +146,23 @@ class NotificationService {
       }
 
       if (kDebugMode) {
-        print('Навигация выполнена для payload: $data');
+        print('Navigation completed for payload: $data');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка обработки payload: $e');
+        print('Error processing payload: $e');
       }
     }
   }
 
-  /// Простой парсинг строки формата Map
+  /// Simple parsing of Map format string
   static Map<String, dynamic>? _parseSimpleMap(String str) {
     try {
-      // Убираем фигурные скобки
+      // Remove curly braces
       final content = str.substring(1, str.length - 1);
       final Map<String, dynamic> result = {};
 
-      // Простой парсинг ключ-значение
+      // Simple key-value parsing
       final pairs = content.split(',');
       for (final pair in pairs) {
         final parts = pair.split(':');
@@ -179,13 +179,13 @@ class NotificationService {
     }
   }
 
-  /// Навигация к символу
+  /// Navigate to symbol
   static Future<void> _navigateToSymbol(String symbol) async {
     try {
       final navigator = RSIWidgetApp.navigatorKey.currentState;
       if (navigator == null) return;
 
-      // Получаем Isar из пути
+      // Get Isar from path
       final dir = await getApplicationDocumentsDirectory();
       final isar = await Isar.open(
         [
@@ -206,18 +206,18 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка навигации к символу $symbol: $e');
+        print('Error navigating to symbol $symbol: $e');
       }
     }
   }
 
-  /// Навигация к алерту
+  /// Navigate to alert
   static Future<void> _navigateToAlert(String alertId) async {
     try {
       final navigator = RSIWidgetApp.navigatorKey.currentState;
       if (navigator == null) return;
 
-      // Получаем Isar из пути
+      // Get Isar from path
       final dir = await getApplicationDocumentsDirectory();
       final isar = await Isar.open(
         [
@@ -238,12 +238,12 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка навигации к алерту $alertId: $e');
+        print('Error navigating to alert $alertId: $e');
       }
     }
   }
 
-  /// Показать RSI алерт
+  /// Show RSI alert
   static Future<void> showRsiAlert({
     required String symbol,
     required double rsi,
@@ -257,12 +257,12 @@ class NotificationService {
 
     try {
       final title = 'RSI Alert: $symbol';
-      final body = message ?? 'RSI $rsi пересек уровень $level ($type)';
+      final body = message ?? 'RSI $rsi crossed level $level ($type)';
 
       const androidDetails = AndroidNotificationDetails(
         'rsi_alerts',
         'RSI Alerts',
-        channelDescription: 'Уведомления о пересечении уровней RSI',
+        channelDescription: 'Notifications about RSI level crossings',
         importance: Importance.high,
         priority: Priority.high,
         showWhen: true,
@@ -300,16 +300,16 @@ class NotificationService {
       );
 
       if (kDebugMode) {
-        print('Показано RSI уведомление для $symbol');
+        print('RSI notification shown for $symbol');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка показа RSI уведомления: $e');
+        print('Error showing RSI notification: $e');
       }
     }
   }
 
-  /// Показать общее уведомление
+  /// Show general notification
   static Future<void> showNotification({
     required String title,
     required String body,
@@ -324,7 +324,7 @@ class NotificationService {
       const androidDetails = AndroidNotificationDetails(
         'general',
         'General Notifications',
-        channelDescription: 'Общие уведомления приложения',
+        channelDescription: 'General application notifications',
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
         showWhen: true,
@@ -350,21 +350,20 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка показа уведомления: $e');
+        print('Error showing notification: $e');
       }
     }
   }
 
-  /// Показать уведомление о подключении к серверу
+  /// Show connection notification
   static Future<void> showConnectionNotification({
     required bool connected,
     String? message,
   }) async {
-    final title = connected ? 'Подключено к серверу' : 'Отключено от сервера';
+    final title =
+        connected ? 'Connected to server' : 'Disconnected from server';
     final body = message ??
-        (connected
-            ? 'Получение данных о RSI'
-            : 'Проверьте подключение к интернету');
+        (connected ? 'Receiving RSI data' : 'Check internet connection');
 
     await showNotification(
       title: title,
@@ -373,27 +372,27 @@ class NotificationService {
     );
   }
 
-  /// Показать уведомление об ошибке
+  /// Show error notification
   static Future<void> showErrorNotification({
     required String error,
     String? details,
   }) async {
     await showNotification(
-      title: 'Ошибка приложения',
+      title: 'Application error',
       body: details ?? error,
       payload: 'error',
     );
   }
 
-  /// Показать уведомление о синхронизации
+  /// Show sync notification
   static Future<void> showSyncNotification({
     required String symbol,
     required bool success,
   }) async {
-    final title = success ? 'Данные синхронизированы' : 'Ошибка синхронизации';
+    final title = success ? 'Data synchronized' : 'Synchronization error';
     final body = success
-        ? 'RSI данные для $symbol обновлены'
-        : 'Не удалось обновить данные для $symbol';
+        ? 'RSI data for $symbol updated'
+        : 'Failed to update data for $symbol';
 
     await showNotification(
       title: title,
@@ -402,58 +401,58 @@ class NotificationService {
     );
   }
 
-  /// Отменить все уведомления
+  /// Cancel all notifications
   static Future<void> cancelAllNotifications() async {
     try {
       await _notifications.cancelAll();
 
       if (kDebugMode) {
-        print('Все уведомления отменены');
+        print('All notifications cancelled');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка отмены уведомлений: $e');
+        print('Error cancelling notifications: $e');
       }
     }
   }
 
-  /// Отменить уведомления по ID
+  /// Cancel notification by ID
   static Future<void> cancelNotification(int id) async {
     try {
       await _notifications.cancel(id);
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка отмены уведомления $id: $e');
+        print('Error cancelling notification $id: $e');
       }
     }
   }
 
-  /// Отменить уведомления по "тегу" (эмулируем через hashCode)
+  /// Cancel notifications by "tag" (emulated via hashCode)
   static Future<void> cancelNotificationsByTag(String tag) async {
     try {
-      // Генерируем ID из строки — одинаковый для одного тега
+      // Generate ID from string - same for one tag
       final id = tag.hashCode.abs() % 1000000;
       await _notifications.cancel(id);
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка отмены уведомлений по тегу $tag: $e');
+        print('Error cancelling notifications by tag $tag: $e');
       }
     }
   }
 
-  /// Получить активные уведомления
+  /// Get active notifications
   static Future<List<ActiveNotification>> getActiveNotifications() async {
     try {
       return await _notifications.getActiveNotifications();
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка получения активных уведомлений: $e');
+        print('Error getting active notifications: $e');
       }
       return [];
     }
   }
 
-  /// Проверить, включены ли уведомления
+  /// Check if notifications are enabled
   static Future<bool> areNotificationsEnabled() async {
     try {
       if (Platform.isAndroid) {
@@ -465,16 +464,16 @@ class NotificationService {
           return await androidPlugin.areNotificationsEnabled() ?? false;
         }
       }
-      return true; // Для iOS предполагаем, что включены
+      return true; // For iOS assume they are enabled
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка проверки статуса уведомлений: $e');
+        print('Error checking notification status: $e');
       }
       return false;
     }
   }
 
-  /// Открыть настройки уведомлений
+  /// Open notification settings
   static Future<void> openNotificationSettings() async {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
@@ -483,12 +482,12 @@ class NotificationService {
         );
       } else {
         if (kDebugMode) {
-          print('Открытие настроек поддерживается только на Android/iOS');
+          print('Opening settings is supported only on Android/iOS');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Ошибка открытия настроек уведомлений: $e');
+        print('Error opening notification settings: $e');
       }
     }
   }

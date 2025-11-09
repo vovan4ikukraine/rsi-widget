@@ -23,7 +23,7 @@ app.use('*', cors({
 }));
 
 
-// Прокси для Yahoo Finance
+// Proxy for Yahoo Finance
 app.get('/yf/candles', async (c) => {
     try {
         const { symbol, tf, since, limit } = c.req.query();
@@ -45,7 +45,7 @@ app.get('/yf/candles', async (c) => {
     }
 });
 
-// Получение текущей цены
+// Get current price
 app.get('/yf/quote', async (c) => {
     try {
         const { symbol } = c.req.query();
@@ -64,7 +64,7 @@ app.get('/yf/quote', async (c) => {
     }
 });
 
-// Информация о символе
+// Symbol information
 app.get('/yf/info', async (c) => {
     try {
         const { symbol } = c.req.query();
@@ -83,7 +83,7 @@ app.get('/yf/info', async (c) => {
     }
 });
 
-// Поиск символов
+// Search symbols
 app.get('/yf/search', async (c) => {
     try {
         const { q } = c.req.query();
@@ -102,7 +102,7 @@ app.get('/yf/search', async (c) => {
     }
 });
 
-// Регистрация устройства
+// Device registration
 app.post('/device/register', async (c) => {
     try {
         const { deviceId, fcmToken, platform, userId } = await c.req.json();
@@ -123,7 +123,7 @@ app.post('/device/register', async (c) => {
     }
 });
 
-// Создание правила алерта
+// Create alert rule
 app.post('/alerts/create', async (c) => {
     try {
         const {
@@ -159,7 +159,7 @@ app.post('/alerts/create', async (c) => {
     }
 });
 
-// Получение правил пользователя
+// Get user rules
 app.get('/alerts/:userId', async (c) => {
     try {
         const userId = c.req.param('userId');
@@ -175,7 +175,7 @@ app.get('/alerts/:userId', async (c) => {
     }
 });
 
-// Обновление правила
+// Update rule
 app.put('/alerts/:ruleId', async (c) => {
     try {
         const ruleId = c.req.param('ruleId');
@@ -200,7 +200,7 @@ app.put('/alerts/:ruleId', async (c) => {
     }
 });
 
-// Удаление правила
+// Delete rule
 app.delete('/alerts/:ruleId', async (c) => {
     try {
         const ruleId = c.req.param('ruleId');
@@ -216,7 +216,7 @@ app.delete('/alerts/:ruleId', async (c) => {
     }
 });
 
-// Принудительная проверка алертов
+// Force alert check
 app.post('/alerts/check', async (c) => {
     try {
         const { symbols, timeframes } = await c.req.json();
@@ -236,7 +236,7 @@ app.post('/alerts/check', async (c) => {
     }
 });
 
-// Cron задача для проверки алертов
+// Cron job for checking alerts
 const worker: ExportedHandler<Env> = {
     fetch: app.fetch,
     scheduled: async (_controller: ScheduledController, env: Env, _ctx: ExecutionContext) => {
@@ -246,7 +246,7 @@ const worker: ExportedHandler<Env> = {
             const rsiEngine = new RsiEngine(env.DB, new YahooService(env.YAHOO_ENDPOINT));
             const fcmService = new FcmService(env.FCM_SERVER_KEY, env.FCM_ENDPOINT, env.DB);
 
-            // Получаем активные правила
+            // Get active rules
             const rules = await rsiEngine.getActiveRules();
 
             if (rules.length === 0) {
@@ -254,10 +254,10 @@ const worker: ExportedHandler<Env> = {
                 return;
             }
 
-            // Группируем по символам и таймфреймам
+            // Group by symbols and timeframes
             const groupedRules = rsiEngine.groupRulesBySymbolTimeframe(rules);
 
-            // Проверяем каждый символ/таймфрейм
+            // Check each symbol/timeframe
             for (const [key, rules] of Object.entries(groupedRules)) {
                 const [symbol, timeframe] = key.split('|');
 
@@ -271,7 +271,7 @@ const worker: ExportedHandler<Env> = {
                     if (triggers.length > 0) {
                         console.log(`Found ${triggers.length} triggers for ${symbol} ${timeframe}`);
 
-                        // Отправляем уведомления
+                        // Send notifications
                         for (const trigger of triggers) {
                             await fcmService.sendAlert(trigger);
                         }

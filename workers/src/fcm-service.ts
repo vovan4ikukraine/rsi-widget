@@ -24,11 +24,11 @@ export class FcmService {
     ) { }
 
     /**
-     * Отправка алерта через FCM
+     * Send alert via FCM
      */
     async sendAlert(trigger: any): Promise<void> {
         try {
-            // Получаем FCM токены пользователя
+            // Get user FCM tokens
             const tokens = await this.getUserFcmTokens(trigger.userId, this.db);
 
             if (tokens.length === 0) {
@@ -36,7 +36,7 @@ export class FcmService {
                 return;
             }
 
-            // Отправляем каждому устройству
+            // Send to each device
             for (const token of tokens) {
                 await this.sendToDevice(token, trigger);
             }
@@ -48,7 +48,7 @@ export class FcmService {
     }
 
     /**
-     * Отправка сообщения на устройство
+     * Send message to device
      */
     async sendToDevice(token: string, trigger: any): Promise<void> {
         const message: FcmMessage = {
@@ -83,7 +83,7 @@ export class FcmService {
                 const errorText = await response.text();
                 console.error(`FCM error: ${response.status} - ${errorText}`);
 
-                // Если токен недействителен, удаляем его
+                // If token is invalid, remove it
                 if (response.status === 400 || response.status === 401) {
                     await this.removeInvalidToken(token, this.db);
                 }
@@ -96,7 +96,7 @@ export class FcmService {
     }
 
     /**
-     * Получение FCM токенов пользователя
+     * Get user FCM tokens
      */
     async getUserFcmTokens(userId: string, db?: D1Database): Promise<string[]> {
         if (!db) {
@@ -118,7 +118,7 @@ export class FcmService {
     }
 
     /**
-     * Удаление недействительного токена
+     * Remove invalid token
      */
     async removeInvalidToken(token: string, db?: D1Database): Promise<void> {
         if (!db) {
@@ -138,7 +138,7 @@ export class FcmService {
     }
 
     /**
-     * Отправка тестового сообщения
+     * Send test message
      */
     async sendTestMessage(token: string, message: string): Promise<boolean> {
         try {
@@ -169,7 +169,7 @@ export class FcmService {
     }
 
     /**
-     * Отправка уведомления о подключении
+     * Send connection notification
      */
     async sendConnectionNotification(userId: string, connected: boolean): Promise<void> {
         const tokens = await this.getUserFcmTokens(userId);
@@ -181,14 +181,14 @@ export class FcmService {
                 rsi: 0,
                 level: 0,
                 type: 'connection',
-                message: connected ? 'Подключено к серверу' : 'Отключено от сервера',
+                message: connected ? 'Connected to server' : 'Disconnected from server',
                 timestamp: Date.now(),
             });
         }
     }
 
     /**
-     * Отправка уведомления об ошибке
+     * Send error notification
      */
     async sendErrorNotification(userId: string, error: string): Promise<void> {
         const tokens = await this.getUserFcmTokens(userId);
@@ -200,7 +200,7 @@ export class FcmService {
                 rsi: 0,
                 level: 0,
                 type: 'error',
-                message: `Ошибка: ${error}`,
+                message: `Error: ${error}`,
                 timestamp: Date.now(),
             });
         }

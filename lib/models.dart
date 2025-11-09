@@ -7,7 +7,7 @@ part 'models.freezed.dart';
 @collection
 class AlertRule {
   Id id = Isar
-      .autoIncrement; // Isar автоматически присвоит следующий доступный ID при сохранении
+      .autoIncrement; // Isar will automatically assign the next available ID when saving
 
   @Index()
   late String symbol; // e.g. AAPL, EURUSD=X
@@ -31,7 +31,7 @@ class AlertRule {
 
   String? description;
 
-  // Дополнительные настройки
+  // Additional settings
   bool repeatable = true;
   bool soundEnabled = true;
   String? customSound;
@@ -40,7 +40,7 @@ class AlertRule {
 @collection
 class AlertState {
   Id id = Isar
-      .autoIncrement; // Isar автоматически присвоит следующий доступный ID при сохранении
+      .autoIncrement; // Isar will automatically assign the next available ID when saving
 
   @Index()
   late int ruleId;
@@ -53,11 +53,11 @@ class AlertState {
 
   String? lastSide; // above|below|between
 
-  // Состояние для гистерезиса
+  // State for hysteresis
   bool? wasAboveUpper;
   bool? wasBelowLower;
 
-  // Кэш для RSI расчета
+  // Cache for RSI calculation
   double? lastAu;
   double? lastAd;
 }
@@ -65,7 +65,7 @@ class AlertState {
 @collection
 class AlertEvent {
   Id id = Isar
-      .autoIncrement; // Isar автоматически присвоит следующий доступный ID при сохранении
+      .autoIncrement; // Isar will automatically assign the next available ID when saving
 
   @Index()
   late int ruleId;
@@ -90,7 +90,7 @@ class AlertEvent {
 @collection
 class RsiData {
   Id id = Isar
-      .autoIncrement; // Isar автоматически присвоит следующий доступный ID при сохранении
+      .autoIncrement; // Isar will automatically assign the next available ID when saving
 
   @Index()
   late String symbol;
@@ -104,7 +104,7 @@ class RsiData {
 
   late double close;
 
-  // Кэш для инкрементального расчета
+  // Cache for incremental calculation
   double? au;
   double? ad;
 }
@@ -112,7 +112,7 @@ class RsiData {
 @collection
 class DeviceInfo {
   Id id = Isar
-      .autoIncrement; // Isar автоматически присвоит следующий доступный ID при сохранении
+      .autoIncrement; // Isar will automatically assign the next available ID when saving
 
   late String deviceId;
 
@@ -138,7 +138,7 @@ class WatchlistItem {
   WatchlistItem();
 }
 
-/// Состояние для инкрементального расчета RSI
+/// State for incremental RSI calculation
 class RsiState {
   final double au;
   final double ad;
@@ -150,7 +150,7 @@ class RsiState {
   }
 }
 
-/// Результат расчета RSI
+/// RSI calculation result
 @freezed
 class RsiResult with _$RsiResult {
   const factory RsiResult({
@@ -161,7 +161,7 @@ class RsiResult with _$RsiResult {
   }) = _RsiResult;
 }
 
-/// Типы алертов
+/// Alert types
 enum AlertType {
   crossUp,
   crossDown,
@@ -169,14 +169,14 @@ enum AlertType {
   exitZone,
 }
 
-/// Зоны RSI
+/// RSI zones
 enum RsiZone {
-  below, // ниже нижнего уровня
-  between, // между уровнями
-  above, // выше верхнего уровня
+  below, // below lower level
+  between, // between levels
+  above, // above upper level
 }
 
-/// Конфигурация алерта
+/// Alert configuration
 @freezed
 class AlertConfig with _$AlertConfig {
   const factory AlertConfig({
@@ -192,7 +192,7 @@ class AlertConfig with _$AlertConfig {
   }) = _AlertConfig;
 }
 
-/// Событие срабатывания алерта
+/// Alert trigger event
 @freezed
 class AlertTrigger with _$AlertTrigger {
   const factory AlertTrigger({

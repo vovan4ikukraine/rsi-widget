@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 /**
- * App Widget Provider для отображения Watchlist с графиками RSI
+ * App Widget Provider for displaying Watchlist with RSI charts
  */
 class RSIWidgetProvider : AppWidgetProvider() {
     
@@ -31,7 +31,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
     ) {
         Log.d(TAG, "onUpdate called for ${appWidgetIds.size} widgets")
         
-        // Обновляем все виджеты
+        // Update all widgets
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
@@ -49,7 +49,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 
                 Log.d(TAG, "Received update action for ${appWidgetIds.size} widgets")
                 
-                // Обновляем все виджеты
+                // Update all widgets
                 for (appWidgetId in appWidgetIds) {
                     updateAppWidget(context, appWidgetManager, appWidgetId)
                 }
@@ -60,21 +60,21 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 
                 Log.d(TAG, "Changing timeframe to $newTimeframe for widget $appWidgetId")
                 
-                // Сохраняем новый таймфрейм в SharedPreferences
+                // Save new timeframe to SharedPreferences
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                // Используем период из виджета, если установлен, иначе из общих настроек
+                // Use period from widget if set, otherwise from general settings
                 val rsiPeriod = prefs.getInt("rsi_widget_period", 
                     prefs.getInt("rsi_period", 14))
                 prefs.edit().apply {
                     putString("timeframe", newTimeframe)
                     putString("rsi_widget_timeframe", newTimeframe)
                     putInt("rsi_widget_period", rsiPeriod)
-                    commit() // Используем commit для синхронного сохранения
+                    commit() // Use commit for synchronous save
                 }
                 
                 Log.d(TAG, "Saved timeframe: $newTimeframe, period: $rsiPeriod")
                 
-                // Сразу обновляем UI виджета с новым таймфреймом
+                // Immediately update widget UI with new timeframe
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     updateAppWidget(context, appWidgetManager, appWidgetId)
@@ -87,17 +87,17 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
                 
-                // Загружаем данные в фоне БЕЗ запуска Activity
+                // Load data in background WITHOUT launching Activity
                 CoroutineScope(Dispatchers.IO).launch {
                     Log.d(TAG, "Starting background data refresh for timeframe: $newTimeframe")
                     val success = WidgetDataService.refreshWidgetData(context)
                     Log.d(TAG, "Background data refresh completed: success=$success")
                     
                     if (success) {
-                        // Небольшая задержка, чтобы данные точно сохранились
+                        // Small delay to ensure data is saved
                         kotlinx.coroutines.delay(100)
                         
-                        // Обновляем виджет после загрузки данных на главном потоке
+                        // Update widget after loading data on main thread
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             try {
                                 val manager = AppWidgetManager.getInstance(context)
@@ -106,20 +106,20 @@ class RSIWidgetProvider : AppWidgetProvider() {
                                 )
                                 Log.d(TAG, "Updating ${ids.size} widget(s) after data refresh")
                                 
-                                // Проверяем, что данные действительно сохранены
+                                // Verify that data was actually saved
                                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                                 val savedData = prefs.getString("watchlist_data", "[]")
                                 Log.d(TAG, "Verifying saved data: length=${savedData?.length ?: 0}")
                                 
                                 for (id in ids) {
-                                    // Сначала обновляем UI виджета (заголовок, кнопки)
+                                    // First update widget UI (title, buttons)
                                     updateAppWidget(context, manager, id)
                                     
-                                    // Затем принудительно обновляем данные в списке
-                                    // Это вызовет onDataSetChanged() в RSIWidgetService
+                                    // Then forcefully update data in list
+                                    // This will call onDataSetChanged() in RSIWidgetService
                                     manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
                                     
-                                    // Обновляем виджет еще раз, чтобы применить изменения
+                                    // Update widget once more to apply changes
                                     updateAppWidget(context, manager, id)
                                 }
                                 Log.d(TAG, "Widget(s) updated successfully after data refresh")
@@ -138,11 +138,11 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 
                 Log.d(TAG, "Refresh widget requested for widget $appWidgetId")
                 
-                // Получаем текущий таймфрейм из настроек
+                // Get current timeframe from settings
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                 val currentTimeframe = prefs.getString("timeframe", "15m") ?: "15m"
                 
-                // Сразу обновляем виджет с существующими данными
+                // Immediately update widget with existing data
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     updateAppWidget(context, appWidgetManager, appWidgetId)
@@ -157,17 +157,17 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
                 
-                // Загружаем данные в фоне БЕЗ запуска Activity
+                // Load data in background WITHOUT launching Activity
                 CoroutineScope(Dispatchers.IO).launch {
                     Log.d(TAG, "Starting background data refresh for timeframe: $currentTimeframe")
                     val success = WidgetDataService.refreshWidgetData(context)
                     Log.d(TAG, "Background data refresh completed: success=$success")
                     
                     if (success) {
-                        // Небольшая задержка, чтобы данные точно сохранились
+                        // Small delay to ensure data is saved
                         kotlinx.coroutines.delay(100)
                         
-                        // Обновляем виджет после загрузки данных на главном потоке
+                        // Update widget after loading data on main thread
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             try {
                                 val manager = AppWidgetManager.getInstance(context)
@@ -176,20 +176,20 @@ class RSIWidgetProvider : AppWidgetProvider() {
                                 )
                                 Log.d(TAG, "Updating ${ids.size} widget(s) after data refresh")
                                 
-                                // Проверяем, что данные действительно сохранены
+                                // Verify that data was actually saved
                                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                                 val savedData = prefs.getString("watchlist_data", "[]")
                                 Log.d(TAG, "Verifying saved data: length=${savedData?.length ?: 0}")
                                 
                                 for (id in ids) {
-                                    // Сначала обновляем UI виджета (заголовок, кнопки)
+                                    // First update widget UI (title, buttons)
                                     updateAppWidget(context, manager, id)
                                     
-                                    // Затем принудительно обновляем данные в списке
-                                    // Это вызовет onDataSetChanged() в RSIWidgetService
+                                    // Then forcefully update data in list
+                                    // This will call onDataSetChanged() in RSIWidgetService
                                     manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
                                     
-                                    // Обновляем виджет еще раз, чтобы применить изменения
+                                    // Update widget once more to apply changes
                                     updateAppWidget(context, manager, id)
                                 }
                                 Log.d(TAG, "Widget(s) updated successfully after data refresh")
@@ -220,7 +220,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int
     ) {
         try {
-            // Загружаем данные из SharedPreferences (переданные из Flutter)
+            // Load data from SharedPreferences (passed from Flutter)
             val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
             val watchlistJson = prefs.getString("watchlist_data", "[]")
             val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
@@ -231,7 +231,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
             
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             
-            // Парсим JSON данные
+            // Parse JSON data
             val watchlistArray = if (watchlistJson.isNullOrEmpty() || watchlistJson == "[]") {
                 JSONArray()
             } else {
@@ -246,26 +246,26 @@ class RSIWidgetProvider : AppWidgetProvider() {
             Log.d(TAG, "Parsed ${watchlistArray.length()} items from JSON")
             
             if (watchlistArray.length() == 0) {
-                // Нет данных - показываем пустое состояние
+                // No data - show empty state
                 views.setTextViewText(R.id.widget_title, "RSI Watchlist")
-                views.setTextViewText(R.id.widget_empty_text, "Добавьте инструменты в Watchlist")
+                views.setTextViewText(R.id.widget_empty_text, "Add instruments to Watchlist")
                 views.setViewVisibility(R.id.widget_empty_text, android.view.View.VISIBLE)
                 views.setViewVisibility(R.id.widget_list, android.view.View.GONE)
                 views.setViewVisibility(R.id.widget_timeframe_selector, android.view.View.GONE)
             } else {
-                // Есть данные - показываем список
+                // Has data - show list
                 views.setTextViewText(R.id.widget_title, "RSI Watchlist ($timeframe, RSI($rsiPeriod))")
                 views.setViewVisibility(R.id.widget_empty_text, android.view.View.GONE)
                 views.setViewVisibility(R.id.widget_list, android.view.View.VISIBLE)
                 views.setViewVisibility(R.id.widget_timeframe_selector, android.view.View.VISIBLE)
                 
-                // Устанавливаем адаптер для списка
+                // Set adapter for list
                 val intent = Intent(context, RSIWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 }
                 views.setRemoteAdapter(R.id.widget_list, intent)
                 
-                // Устанавливаем обработчик кликов
+                // Set click handler
                 val pendingIntent = android.app.PendingIntent.getActivity(
                     context,
                     0,
@@ -274,7 +274,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 )
                 views.setPendingIntentTemplate(R.id.widget_list, pendingIntent)
                 
-                // Устанавливаем обработчики для кнопок выбора таймфрейма
+                // Set handlers for timeframe selection buttons
                 val timeframeButtons = mapOf(
                     R.id.widget_tf_1m to "1m",
                     R.id.widget_tf_5m to "5m",
@@ -298,7 +298,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     )
                     views.setOnClickPendingIntent(buttonId, tfPendingIntent)
                     
-                    // Подсвечиваем текущий таймфрейм (современный дизайн для темной темы)
+                    // Highlight current timeframe (modern design for dark theme)
                     if (tf == timeframe) {
                         views.setInt(buttonId, "setBackgroundResource", R.drawable.widget_button_active_background)
                         views.setTextColor(buttonId, Color.parseColor("#FFFFFF"))
@@ -308,7 +308,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
                 
-                // Устанавливаем обработчик для кнопки обновления
+                // Set handler for refresh button
                 val refreshIntent = Intent(context, RSIWidgetProvider::class.java).apply {
                     action = ACTION_REFRESH_WIDGET
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -322,7 +322,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_refresh_button, refreshPendingIntent)
             }
             
-            // Обновляем виджет
+            // Update widget
             appWidgetManager.updateAppWidget(appWidgetId, views)
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
             

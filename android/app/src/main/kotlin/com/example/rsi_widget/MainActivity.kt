@@ -28,7 +28,7 @@ class MainActivity: FlutterActivity() {
                         
                         Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod")
                         
-                        // Сохраняем данные в SharedPreferences
+                        // Save data to SharedPreferences
                         val prefs = getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                         prefs.edit().apply {
                             putString("watchlist_data", watchlistData)
@@ -37,7 +37,7 @@ class MainActivity: FlutterActivity() {
                             apply()
                         }
                         
-                        // Отправляем broadcast для обновления виджета
+                        // Send broadcast to update widget
                         val intent = Intent(RSIWidgetProvider.ACTION_UPDATE_WIDGET)
                         sendBroadcast(intent)
                         
@@ -53,20 +53,20 @@ class MainActivity: FlutterActivity() {
             }
         }
         
-        // Обработка Intent при запуске (если приложение открывается из виджета)
-        // Виджет теперь обновляется в фоне, но если пользователь кликнет на элемент виджета,
-        // приложение откроется с выбранным символом
+        // Handle Intent on launch (if app opens from widget)
+        // Widget now updates in background, but if user clicks widget item,
+        // app will open with selected symbol
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         
-        // Обработка клика по виджету - открываем приложение с выбранным символом
+        // Handle widget click - open app with selected symbol
         val symbol = intent.getStringExtra("symbol")
         if (symbol != null) {
             Log.d(TAG, "Opening app with symbol: $symbol")
-            // Flutter обработает это через initialSymbol в HomeScreen
+            // Flutter will handle this through initialSymbol in HomeScreen
         }
     }
 }

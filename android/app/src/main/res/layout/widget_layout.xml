@@ -6,7 +6,7 @@
     android:padding="14dp"
     android:background="@drawable/widget_background">
 
-    <!-- Заголовок с иконкой обновления -->
+    <!-- Header with refresh icon -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -31,13 +31,13 @@
             android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_rotate"
             android:background="@drawable/widget_refresh_button_background"
-            android:contentDescription="Обновить данные"
+            android:contentDescription="Refresh data"
             android:padding="8dp"
             android:scaleType="fitCenter"
             android:tint="#FFFFFF" />
     </LinearLayout>
 
-    <!-- Селектор таймфрейма -->
+    <!-- Timeframe selector -->
     <LinearLayout
         android:id="@+id/widget_timeframe_selector"
         android:layout_width="match_parent"
@@ -52,7 +52,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="1м"
+            android:text="1m"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -65,7 +65,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="5м"
+            android:text="5m"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -78,7 +78,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="15м"
+            android:text="15m"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -91,7 +91,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="1ч"
+            android:text="1h"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -104,7 +104,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="4ч"
+            android:text="4h"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -117,7 +117,7 @@
             android:layout_width="0dp"
             android:layout_height="38dp"
             android:layout_weight="1"
-            android:text="1д"
+            android:text="1d"
             android:textSize="11sp"
             android:textColor="#E0E0E0"
             android:background="@drawable/widget_button_background"
@@ -125,19 +125,19 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Пустое состояние -->
+    <!-- Empty state -->
     <TextView
         android:id="@+id/widget_empty_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Добавьте инструменты в Watchlist"
+        android:text="Add instruments to Watchlist"
         android:textSize="14sp"
         android:textColor="#999999"
         android:gravity="center"
         android:padding="16dp"
         android:visibility="gone" />
 
-    <!-- Список инструментов -->
+    <!-- Instruments list -->
     <ListView
         android:id="@+id/widget_list"
         android:layout_width="match_parent"

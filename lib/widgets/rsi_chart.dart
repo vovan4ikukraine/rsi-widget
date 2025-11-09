@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models.dart';
+import '../localization/app_localizations.dart';
 
-/// Виджет для отображения RSI графика
+/// Widget for displaying RSI chart
 class RsiChart extends StatelessWidget {
   final List<double> rsiValues;
-  final List<int> timestamps; // Временные метки для каждой точки RSI
+  final List<int> timestamps; // Timestamps for each RSI point
   final List<double> levels;
   final String symbol;
   final String timeframe;
@@ -38,9 +39,7 @@ class RsiChart extends StatelessWidget {
     }
 
     return Container(
-      height: isInteractive
-          ? 200
-          : 50, // Для компактного режима фиксированная высота 50
+      height: isInteractive ? 200 : 50, // Fixed height 50 for compact mode
       padding: isInteractive
           ? const EdgeInsets.only(left: 4, right: 4, top: 8, bottom: 8)
           : const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -56,13 +55,14 @@ class RsiChart extends StatelessWidget {
           extraLinesData: _buildExtraLinesData(),
           lineTouchData: isInteractive
               ? _buildLineTouchData()
-              : _buildCompactLineTouchData(), // Компактный режим с tooltip
+              : _buildCompactLineTouchData(), // Compact mode with tooltip
         ),
       ),
     );
   }
 
   Widget _buildEmptyChart(BuildContext context) {
+    final loc = context.loc;
     return Container(
       height: 200,
       padding: const EdgeInsets.all(16),
@@ -77,7 +77,7 @@ class RsiChart extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Нет данных для $symbol',
+              loc.t('chart_no_data_for', params: {'symbol': symbol}),
               style: TextStyle(
                 color: Colors.grey[400],
                 fontSize: 16,
@@ -110,11 +110,9 @@ class RsiChart extends StatelessWidget {
       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       bottomTitles: AxisTitles(
         sideTitles: SideTitles(
-          showTitles:
-              isInteractive, // Показываем даты только в интерактивном режиме
-          reservedSize: isInteractive
-              ? 40
-              : 0, // В компактном режиме не резервируем место
+          showTitles: isInteractive, // Show dates only in interactive mode
+          reservedSize:
+              isInteractive ? 40 : 0, // In compact mode don't reserve space
           interval: _calculateTimeInterval(),
           getTitlesWidget: (value, meta) {
             final label = _formatTimeLabel(value);
@@ -132,16 +130,14 @@ class RsiChart extends StatelessWidget {
       ),
       leftTitles: AxisTitles(
         sideTitles: SideTitles(
-          showTitles:
-              showLabels, // Показываем подписи только если showLabels = true
+          showTitles: showLabels, // Show labels only if showLabels = true
           reservedSize: isInteractive
               ? 30
-              : 25, // Уменьшено с 40 до 30 для интерактивного режима
-          interval: isInteractive
-              ? 20
-              : 25, // Для компактного режима: 0, 25, 50, 75, 100
+              : 25, // Reduced from 40 to 30 for interactive mode
+          interval:
+              isInteractive ? 20 : 25, // For compact mode: 0, 25, 50, 75, 100
           getTitlesWidget: (value, meta) {
-            // В компактном режиме показываем только основные значения
+            // In compact mode show only main values
             if (!isInteractive &&
                 value != 0 &&
                 value != 25 &&
@@ -155,9 +151,8 @@ class RsiChart extends StatelessWidget {
               child: Text(
                 value.toInt().toString(),
                 style: TextStyle(
-                  fontSize: isInteractive
-                      ? 10
-                      : 8, // Меньший шрифт для компактного режима
+                  fontSize:
+                      isInteractive ? 10 : 8, // Smaller font for compact mode
                 ),
                 textAlign: TextAlign.right,
               ),
@@ -187,7 +182,7 @@ class RsiChart extends StatelessWidget {
   ExtraLinesData _buildExtraLinesData() {
     final horizontalLines = <HorizontalLine>[];
 
-    // Добавляем уровни RSI
+    // Add RSI levels
     for (final level in levels) {
       horizontalLines.add(
         HorizontalLine(
@@ -199,7 +194,7 @@ class RsiChart extends StatelessWidget {
       );
     }
 
-    // Добавляем зоны
+    // Add zones
     horizontalLines.addAll(_buildZoneLines());
 
     return ExtraLinesData(horizontalLines: horizontalLines);
@@ -212,7 +207,7 @@ class RsiChart extends StatelessWidget {
       final lowerLevel = levels[0];
       final upperLevel = levels[1];
 
-      // Зона перепроданности (ниже нижнего уровня)
+      // Oversold zone (below lower level)
       lines.add(
         HorizontalLine(
           y: lowerLevel,
@@ -221,7 +216,7 @@ class RsiChart extends StatelessWidget {
         ),
       );
 
-      // Зона перекупленности (выше верхнего уровня)
+      // Overbought zone (above upper level)
       lines.add(
         HorizontalLine(
           y: upperLevel,
@@ -256,13 +251,13 @@ class RsiChart extends StatelessWidget {
         return spotIndexes.map((index) {
           return TouchedSpotIndicatorData(
             const FlLine(
-                color: Colors.blue, strokeWidth: 1), // Уменьшено с 2 до 1
+                color: Colors.blue, strokeWidth: 1), // Reduced from 2 to 1
             FlDotData(
               getDotPainter: (spot, percent, barData, index) {
                 return FlDotCirclePainter(
-                  radius: 3, // Уменьшено с 4 до 3
+                  radius: 3, // Reduced from 4 to 3
                   color: Colors.blue,
-                  strokeWidth: 1, // Уменьшено с 2 до 1
+                  strokeWidth: 1, // Reduced from 2 to 1
                   strokeColor: Colors.white,
                 );
               },
@@ -283,12 +278,12 @@ class RsiChart extends StatelessWidget {
             final index = spot.x.toInt();
             String dateTimeStr = '';
 
-            // Получаем дату и время для этой точки
+            // Get date and time for this point
             if (index >= 0 && index < timestamps.length) {
               final timestamp = timestamps[index];
               final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
-              // Форматируем дату и время в зависимости от таймфрейма
+              // Format date and time depending on timeframe
               switch (timeframe) {
                 case '1m':
                 case '5m':
@@ -323,13 +318,13 @@ class RsiChart extends StatelessWidget {
         return spotIndexes.map((index) {
           return TouchedSpotIndicatorData(
             const FlLine(
-                color: Colors.blue, strokeWidth: 1.5), // Уменьшено с 2 до 1.5
+                color: Colors.blue, strokeWidth: 1.5), // Reduced from 2 to 1.5
             FlDotData(
               getDotPainter: (spot, percent, barData, index) {
                 return FlDotCirclePainter(
-                  radius: 3.5, // Уменьшено с 4 до 3.5
+                  radius: 3.5, // Reduced from 4 to 3.5
                   color: Colors.blue,
-                  strokeWidth: 1.5, // Уменьшено с 2 до 1.5
+                  strokeWidth: 1.5, // Reduced from 2 to 1.5
                   strokeColor: Colors.white,
                 );
               },
@@ -354,14 +349,14 @@ class RsiChart extends StatelessWidget {
 
   double _calculateTimeInterval() {
     final length = rsiValues.length;
-    // Вычисляем интервал в зависимости от количества точек
-    // Для больших таймфреймов показываем меньше меток
+    // Calculate interval depending on number of points
+    // For large timeframes show fewer labels
     if (length <= 10) return 1;
     if (length <= 20) return 2;
     if (length <= 50) return length / 5;
     if (length <= 100) return length / 4;
     if (length <= 200) return length / 3;
-    return length / 2; // Для очень больших графиков показываем только 2 метки
+    return length / 2; // For very large charts show only 2 labels
   }
 
   String _formatTimeLabel(double value) {
@@ -370,33 +365,33 @@ class RsiChart extends StatelessWidget {
       return '';
     }
 
-    // Используем реальные временные метки для форматирования даты
+    // Use real timestamps for date formatting
     final timestamp = timestamps[index];
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
-    // Форматируем в зависимости от таймфрейма
+    // Format depending on timeframe
     switch (timeframe) {
       case '1m':
       case '5m':
       case '15m':
       case '30m':
-        // Для минутных таймфреймов показываем время
+        // For minute timeframes show time
         return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
       case '1h':
       case '4h':
-        // Для часовых таймфреймов показываем дату и час
+        // For hourly timeframes show date and hour
         return '${date.day}/${date.month} ${date.hour.toString().padLeft(2, '0')}';
       case '1d':
-        // Для дневных таймфреймов показываем только дату
+        // For daily timeframes show only date
         return '${date.day}/${date.month}';
       default:
-        // По умолчанию показываем дату и время
+        // By default show date and time
         return '${date.day}/${date.month} ${date.hour.toString().padLeft(2, '0')}';
     }
   }
 }
 
-/// Мини-график RSI для виджетов
+/// Mini RSI chart for widgets
 class RsiMiniChart extends StatelessWidget {
   final List<double> rsiValues;
   final List<double> levels;
@@ -469,7 +464,7 @@ class RsiMiniChart extends StatelessWidget {
   }
 }
 
-/// Индикатор зоны RSI
+/// RSI zone indicator
 class RsiZoneIndicator extends StatelessWidget {
   final double rsi;
   final List<double> levels;
@@ -484,10 +479,11 @@ class RsiZoneIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
     final zone = _getRsiZone(rsi, levels);
     final color = _getZoneColor(zone);
     final icon = _getZoneIcon(zone);
-    final text = _getZoneText(zone);
+    final text = _getZoneText(loc, zone);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -551,14 +547,14 @@ class RsiZoneIndicator extends StatelessWidget {
     }
   }
 
-  String _getZoneText(RsiZone zone) {
+  String _getZoneText(AppLocalizations loc, RsiZone zone) {
     switch (zone) {
       case RsiZone.below:
-        return 'Перепродан';
+        return loc.t('chart_zone_oversold');
       case RsiZone.between:
-        return 'Нейтрально';
+        return loc.t('chart_zone_neutral');
       case RsiZone.above:
-        return 'Перекуплен';
+        return loc.t('chart_zone_overbought');
     }
   }
 }

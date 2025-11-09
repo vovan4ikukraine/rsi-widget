@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-10-01"
 
 [triggers]
-crons = ["*/1 * * * *"]  # Каждую минуту
+crons = ["*/1 * * * *"]  # Every minute
 
 [[kv_namespaces]]
 binding = "KV"
@@ -20,6 +20,6 @@ ENVIRONMENT = "production"
 YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
 FCM_ENDPOINT = "https://fcm.googleapis.com/fcm/send"
 
-# Секреты (устанавливаются через wrangler secret put)
+# Secrets (set via wrangler secret put)
 # FCM_SERVER_KEY
-# YAHOO_API_KEY (если нужен)
+# YAHOO_API_KEY (if needed)

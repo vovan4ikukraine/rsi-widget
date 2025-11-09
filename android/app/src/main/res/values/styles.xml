@@ -16,7 +16,7 @@
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
     
-    <!-- Прозрачная тема для фонового обновления виджета -->
+    <!-- Transparent theme for background widget update -->
     <style name="InvisibleTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>

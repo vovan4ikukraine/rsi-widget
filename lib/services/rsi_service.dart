@@ -1,12 +1,12 @@
 import '../models.dart';
 
-/// Сервис для расчета RSI по алгоритму Wilder
+/// Service for calculating RSI using Wilder's algorithm
 class RsiService {
-  /// Расчет RSI для списка цен закрытия
+  /// Calculate RSI for a list of closing prices
   static double? computeRsi(List<double> closes, int period) {
     if (closes.length < period + 1) return null;
 
-    // Расчет первых средних значений
+    // Calculate initial average values
     double gain = 0, loss = 0;
     for (int i = 1; i <= period; i++) {
       final change = closes[i] - closes[i - 1];
@@ -20,7 +20,7 @@ class RsiService {
     double au = gain / period;
     double ad = loss / period;
 
-    // Инкрементальный расчет для остальных точек
+    // Incremental calculation for remaining points
     for (int i = period + 1; i < closes.length; i++) {
       final change = closes[i] - closes[i - 1];
       final u = change > 0 ? change : 0.0;
@@ -38,7 +38,7 @@ class RsiService {
     return rsi.clamp(0, 100);
   }
 
-  /// Инкрементальный расчет RSI с состоянием
+  /// Incremental RSI calculation with state
   static RsiResult computeRsiIncremental(
     double currentClose,
     double previousClose,
@@ -52,11 +52,11 @@ class RsiService {
 
     double au, ad;
     if (previousState == null) {
-      // Первое значение - используем простую среднюю
+      // First value - use simple average
       au = u;
       ad = d;
     } else {
-      // Инкрементальное обновление по Wilder
+      // Incremental update using Wilder's formula
       au = (previousState.au * (period - 1) + u) / period;
       ad = (previousState.ad * (period - 1) + d) / period;
     }
@@ -79,7 +79,7 @@ class RsiService {
     );
   }
 
-  /// Определение зоны RSI
+  /// Determine RSI zone
   static RsiZone getRsiZone(double rsi, List<double> levels) {
     if (levels.isEmpty) return RsiZone.between;
 
@@ -95,7 +95,7 @@ class RsiService {
     }
   }
 
-  /// Проверка пересечения уровня с гистерезисом
+  /// Check level crossing with hysteresis
   static bool checkCrossUp(
     double currentRsi,
     double previousRsi,
@@ -106,7 +106,7 @@ class RsiService {
         currentRsi > (level + hysteresis);
   }
 
-  /// Проверка пересечения уровня вниз с гистерезисом
+  /// Check downward level crossing with hysteresis
   static bool checkCrossDown(
     double currentRsi,
     double previousRsi,
@@ -117,7 +117,7 @@ class RsiService {
         currentRsi < (level - hysteresis);
   }
 
-  /// Проверка входа в зону
+  /// Check zone entry
   static bool checkEnterZone(
     double currentRsi,
     double previousRsi,
@@ -133,7 +133,7 @@ class RsiService {
     return wasOutside && isInside;
   }
 
-  /// Проверка выхода из зоны
+  /// Check zone exit
   static bool checkExitZone(
     double currentRsi,
     double previousRsi,
@@ -149,7 +149,7 @@ class RsiService {
     return wasInside && isOutside;
   }
 
-  /// Проверка срабатывания алерта
+  /// Check alert triggers
   static List<AlertTrigger> checkAlertTriggers(
     AlertRule rule,
     double currentRsi,
@@ -170,7 +170,7 @@ class RsiService {
             type: AlertType.crossUp,
             zone: zone,
             timestamp: timestamp,
-            message: 'RSI пересек уровень $level вверх',
+            message: 'RSI crossed level $level upward',
           ));
         }
 
@@ -183,7 +183,7 @@ class RsiService {
             type: AlertType.crossDown,
             zone: zone,
             timestamp: timestamp,
-            message: 'RSI пересек уровень $level вниз',
+            message: 'RSI crossed level $level downward',
           ));
         }
       }
@@ -203,7 +203,7 @@ class RsiService {
           type: AlertType.enterZone,
           zone: zone,
           timestamp: timestamp,
-          message: 'RSI вошел в зону ${rule.levels[0]}-${rule.levels[1]}',
+          message: 'RSI entered zone ${rule.levels[0]}-${rule.levels[1]}',
         ));
       }
     } else if (rule.mode == 'exit' && rule.levels.length >= 2) {
@@ -222,7 +222,7 @@ class RsiService {
           type: AlertType.exitZone,
           zone: zone,
           timestamp: timestamp,
-          message: 'RSI вышел из зоны ${rule.levels[0]}-${rule.levels[1]}',
+          message: 'RSI exited zone ${rule.levels[0]}-${rule.levels[1]}',
         ));
       }
     }
@@ -230,18 +230,18 @@ class RsiService {
     return triggers;
   }
 
-  /// Генерация спарклайна для виджета
+  /// Generate sparkline for widget
   static List<double> generateSparkline(List<double> rsiValues, int maxPoints) {
     if (rsiValues.length <= maxPoints) {
       return rsiValues;
     }
 
-    // Берем последние maxPoints значений
+    // Take last maxPoints values
     return rsiValues.skip(rsiValues.length - maxPoints).toList();
   }
 
-  /// Нормализация RSI для отображения
+  /// Normalize RSI for display
   static double normalizeRsi(double rsi) {
-    return (rsi * 10).round() / 10; // Округление до 1 знака после запятой
+    return (rsi * 10).round() / 10; // Round to 1 decimal place
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
+import '../localization/app_localizations.dart';
 
 class CreateAlertScreen extends StatefulWidget {
   final Isar isar;
@@ -59,10 +60,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-            widget.alert == null ? 'Создать алерт' : 'Редактировать алерт'),
+        title: Text(widget.alert == null
+            ? loc.t('create_alert_title_new')
+            : loc.t('create_alert_title_edit')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
@@ -80,57 +83,57 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // Основная информация
-                  _buildBasicInfoCard(),
+                  // Basic information
+                  _buildBasicInfoCard(loc),
                   const SizedBox(height: 16),
 
-                  // Настройки RSI
-                  _buildRsiSettingsCard(),
+                  // RSI settings
+                  _buildRsiSettingsCard(loc),
                   const SizedBox(height: 16),
 
-                  // Настройки алерта
-                  _buildAlertSettingsCard(),
+                  // Alert settings
+                  _buildAlertSettingsCard(loc),
                   const SizedBox(height: 16),
 
-                  // Дополнительные настройки
-                  _buildAdvancedSettingsCard(),
+                  // Advanced settings
+                  _buildAdvancedSettingsCard(loc),
                   const SizedBox(height: 32),
 
-                  // Кнопки
-                  _buildActionButtons(),
+                  // Buttons
+                  _buildActionButtons(loc),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildBasicInfoCard() {
+  Widget _buildBasicInfoCard(AppLocalizations loc) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Основная информация',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('create_alert_basic_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Autocomplete<SymbolInfo>(
               optionsBuilder: (TextEditingValue textEditingValue) async {
                 final query = textEditingValue.text.trim();
 
-                // Если при редактировании символ уже выбран и пользователь не редактирует - не ищем
+                // If editing and symbol already selected and user is not editing - don't search
                 if (widget.alert != null &&
                     query == widget.alert!.symbol &&
                     textEditingValue.selection.baseOffset ==
                         textEditingValue.selection.extentOffset) {
-                  // Пользователь не редактирует - не показываем загрузку
+                  // User is not editing - don't show loading
                   return const Iterable<SymbolInfo>.empty();
                 }
 
                 if (query.isEmpty) {
-                  // Показываем популярные символы если текст пустой (только один раз)
+                  // Show popular symbols if text is empty (only once)
                   if (!_isSearchingSymbols) {
                     if (mounted) {
                       setState(() {
@@ -165,7 +168,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 }
 
                 if (query.length < 2) {
-                  // Сбрасываем загрузку если запрос слишком короткий
+                  // Reset loading if query is too short
                   if (_isSearchingSymbols && mounted) {
                     setState(() {
                       _isSearchingSymbols = false;
@@ -174,7 +177,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   return const Iterable<SymbolInfo>.empty();
                 }
 
-                // Ищем символы при вводе (только если еще не ищем)
+                // Search symbols on input (only if not already searching)
                 if (!_isSearchingSymbols && mounted) {
                   setState(() {
                     _isSearchingSymbols = true;
@@ -206,7 +209,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 FocusNode focusNode,
                 VoidCallback onFieldSubmitted,
               ) {
-                // Инициализируем контроллер только один раз при редактировании
+                // Initialize controller only once when editing
                 if (widget.alert != null && _symbolController.text.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (textEditingController.text != _symbolController.text) {
@@ -219,8 +222,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   controller: textEditingController,
                   focusNode: focusNode,
                   decoration: InputDecoration(
-                    labelText: 'Символ',
-                    hintText: 'Начните вводить символ (например, AAPL)',
+                    labelText: loc.t('home_symbol_label'),
+                    hintText: loc.t('home_symbol_hint'),
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.trending_up),
                     suffixIcon: _isSearchingSymbols
@@ -236,7 +239,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   ),
                   onChanged: (value) {
                     _symbolController.text = value;
-                    // Сбрасываем индикатор загрузки, если текст изменен и стал коротким
+                    // Reset loading indicator if text changed and became short
                     if (_isSearchingSymbols && value.trim().length < 2) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (mounted) {
@@ -251,7 +254,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     if (value == null ||
                         value.isEmpty ||
                         value.trim().isEmpty) {
-                      return 'Выберите или введите символ';
+                      return loc.t('create_alert_symbol_error');
                     }
                     return null;
                   },
@@ -325,18 +328,18 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _selectedTimeframe,
-              decoration: const InputDecoration(
-                labelText: 'ТФ',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.schedule),
+              decoration: InputDecoration(
+                labelText: loc.t('home_timeframe_label'),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.schedule),
               ),
               items: const [
-                DropdownMenuItem(value: '1m', child: Text('1м')),
-                DropdownMenuItem(value: '5m', child: Text('5м')),
-                DropdownMenuItem(value: '15m', child: Text('15м')),
-                DropdownMenuItem(value: '1h', child: Text('1ч')),
-                DropdownMenuItem(value: '4h', child: Text('4ч')),
-                DropdownMenuItem(value: '1d', child: Text('1д')),
+                DropdownMenuItem(value: '1m', child: Text('1m')),
+                DropdownMenuItem(value: '5m', child: Text('5m')),
+                DropdownMenuItem(value: '15m', child: Text('15m')),
+                DropdownMenuItem(value: '1h', child: Text('1h')),
+                DropdownMenuItem(value: '4h', child: Text('4h')),
+                DropdownMenuItem(value: '1d', child: Text('1d')),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -349,11 +352,11 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Описание (необязательно)',
-                hintText: 'Краткое описание алерта',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.description),
+              decoration: InputDecoration(
+                labelText: loc.t('create_alert_description_label'),
+                hintText: loc.t('create_alert_description_hint'),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.description),
               ),
               maxLines: 2,
             ),
@@ -363,16 +366,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     );
   }
 
-  Widget _buildRsiSettingsCard() {
+  Widget _buildRsiSettingsCard(AppLocalizations loc) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Настройки RSI',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('create_alert_rsi_settings_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Row(
@@ -380,10 +383,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 Expanded(
                   child: TextFormField(
                     initialValue: _rsiPeriod.toString(),
-                    decoration: const InputDecoration(
-                      labelText: 'Период RSI',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.timeline),
+                    decoration: InputDecoration(
+                      labelText: loc.t('home_rsi_period_label'),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.timeline),
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
@@ -395,10 +398,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 Expanded(
                   child: TextFormField(
                     initialValue: _hysteresis.toString(),
-                    decoration: const InputDecoration(
-                      labelText: 'Гистерезис',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.tune),
+                    decoration: InputDecoration(
+                      labelText: loc.t('create_alert_hysteresis_label'),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.tune),
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
@@ -409,9 +412,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Уровни RSI',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            Text(
+              loc.t('create_alert_levels_title'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             _buildLevelsSelector(),
@@ -429,9 +432,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             Expanded(
               child: TextFormField(
                 initialValue: _levels.isNotEmpty ? _levels[0].toString() : '30',
-                decoration: const InputDecoration(
-                  labelText: 'Нижний уровень',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: context.loc.t('create_alert_lower_level'),
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
@@ -448,9 +451,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             Expanded(
               child: TextFormField(
                 initialValue: _levels.length > 1 ? _levels[1].toString() : '70',
-                decoration: const InputDecoration(
-                  labelText: 'Верхний уровень',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: context.loc.t('create_alert_upper_level'),
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
@@ -473,10 +476,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         Wrap(
           spacing: 8,
           children: [
-            _buildPresetButton('30/70', [30, 70]),
-            _buildPresetButton('20/80', [20, 80]),
-            _buildPresetButton('25/75', [25, 75]),
-            _buildPresetButton('50', [50]),
+            _buildPresetButton(
+                context.loc.t('create_alert_presets_3070'), [30, 70]),
+            _buildPresetButton(
+                context.loc.t('create_alert_presets_2080'), [20, 80]),
+            _buildPresetButton(
+                context.loc.t('create_alert_presets_2575'), [25, 75]),
+            _buildPresetButton(context.loc.t('create_alert_presets_50'), [50]),
           ],
         ),
       ],
@@ -494,30 +500,38 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     );
   }
 
-  Widget _buildAlertSettingsCard() {
+  Widget _buildAlertSettingsCard(AppLocalizations loc) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Настройки алерта',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('create_alert_settings_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _mode,
-              decoration: const InputDecoration(
-                labelText: 'Тип алерта',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.notifications),
+              decoration: InputDecoration(
+                labelText: loc.t('create_alert_type_label'),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.notifications),
               ),
-              items: const [
+              items: [
                 DropdownMenuItem(
-                    value: 'cross', child: Text('Пересечение уровня')),
-                DropdownMenuItem(value: 'enter', child: Text('Вход в зону')),
-                DropdownMenuItem(value: 'exit', child: Text('Выход из зоны')),
+                  value: 'cross',
+                  child: Text(loc.t('create_alert_type_cross')),
+                ),
+                DropdownMenuItem(
+                  value: 'enter',
+                  child: Text(loc.t('create_alert_type_enter')),
+                ),
+                DropdownMenuItem(
+                  value: 'exit',
+                  child: Text(loc.t('create_alert_type_exit')),
+                ),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -533,10 +547,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 Expanded(
                   child: TextFormField(
                     initialValue: _cooldownSec.toString(),
-                    decoration: const InputDecoration(
-                      labelText: 'Кулдаун (сек)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.timer),
+                    decoration: InputDecoration(
+                      labelText: loc.t('create_alert_cooldown_label'),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.timer),
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
@@ -548,8 +562,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: 16),
             SwitchListTile(
-              title: const Text('Повторяющийся'),
-              subtitle: const Text('Алерт может срабатывать многократно'),
+              title: Text(loc.t('create_alert_repeatable')),
+              subtitle: Text(loc.t('create_alert_repeatable_sub')),
               value: _repeatable,
               onChanged: (value) {
                 setState(() {
@@ -558,8 +572,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               },
             ),
             SwitchListTile(
-              title: const Text('Звук'),
-              subtitle: const Text('Включить звуковое уведомление'),
+              title: Text(loc.t('create_alert_sound')),
+              subtitle: Text(loc.t('create_alert_sound_sub')),
               value: _soundEnabled,
               onChanged: (value) {
                 setState(() {
@@ -573,21 +587,24 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     );
   }
 
-  Widget _buildAdvancedSettingsCard() {
+  Widget _buildAdvancedSettingsCard(AppLocalizations loc) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Дополнительные настройки',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              loc.t('create_alert_advanced_title'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Гистерезис: ${0.5}',
-              style: TextStyle(fontSize: 16),
+            Text(
+              loc.t(
+                'create_alert_hysteresis_value',
+                params: {'value': _hysteresis.toStringAsFixed(1)},
+              ),
+              style: const TextStyle(fontSize: 16),
             ),
             Slider(
               value: _hysteresis,
@@ -603,7 +620,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Кулдаун: $_cooldownSec сек',
+              loc.t('create_alert_cooldown_value',
+                  params: {'seconds': '$_cooldownSec'}),
               style: const TextStyle(fontSize: 16),
             ),
             Slider(
@@ -611,7 +629,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               min: 60,
               max: 3600,
               divisions: 59,
-              label: '$_cooldownSec сек',
+              label: loc.locale.languageCode == 'ru'
+                  ? '$_cooldownSec сек'
+                  : '$_cooldownSec sec',
               onChanged: (value) {
                 setState(() {
                   _cooldownSec = value.round();
@@ -624,20 +644,22 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(AppLocalizations loc) {
     return Row(
       children: [
         Expanded(
           child: OutlinedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
+            child: Text(loc.t('create_alert_cancel')),
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton(
             onPressed: _saveAlert,
-            child: Text(widget.alert == null ? 'Создать' : 'Сохранить'),
+            child: Text(widget.alert == null
+                ? loc.t('create_alert_create')
+                : loc.t('create_alert_save')),
           ),
         ),
       ],
@@ -654,13 +676,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     });
 
     try {
-      // Валидация символа
+      final loc = context.loc;
+      // Symbol validation
       final symbol = _symbolController.text.trim().toUpperCase();
       if (symbol.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Пожалуйста, выберите или введите символ')),
+            SnackBar(content: Text(loc.t('create_alert_symbol_error'))),
           );
         }
         return;
@@ -694,15 +716,22 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              widget.alert == null ? 'Алерт создан' : 'Алерт обновлен',
+              widget.alert == null
+                  ? loc.t('create_alert_created')
+                  : loc.t('create_alert_updated'),
             ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
+          SnackBar(
+            content: Text(
+              loc.t('alerts_error_generic', params: {'message': '$e'}),
+            ),
+          ),
         );
       }
     } finally {
@@ -715,20 +744,21 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   }
 
   Future<void> _deleteAlert() async {
+    final loc = context.loc;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить алерт'),
-        content: const Text('Вы уверены, что хотите удалить этот алерт?'),
+        title: Text(loc.t('create_alert_delete_title')),
+        content: Text(loc.t('create_alert_delete_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
+            child: Text(loc.t('create_alert_cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Удалить'),
+            child: Text(loc.t('common_delete')),
           ),
         ],
       ),
@@ -743,13 +773,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         if (mounted) {
           Navigator.pop(context, true);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Алерт удален')),
+            SnackBar(content: Text(loc.t('create_alert_deleted'))),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка: $e')),
+            SnackBar(
+              content: Text(
+                loc.t('alerts_error_generic', params: {'message': '$e'}),
+              ),
+            ),
           );
         }
       }

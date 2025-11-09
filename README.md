@@ -1,134 +1,134 @@
 # RSI Widget App
 
-Мобильное приложение для RSI алертов и виджетов на iOS и Android.
+Mobile application for RSI alerts and widgets on iOS and Android.
 
-## Описание
+## Description
 
-RSI Widget App - это кросс-платформенное мобильное приложение, которое:
-- Показывает график RSI выбранного инструмента (акции, крипто, FX)
-- Присылает уведомления при пересечении заданных уровней RSI
-- Работает автономно в формате виджета на экране телефона
-- Поддерживает iOS и Android с единым кодом
+RSI Widget App is a cross-platform mobile application that:
+- Shows RSI chart for selected instrument (stocks, crypto, FX)
+- Sends notifications when RSI crosses specified levels
+- Works autonomously as a widget on phone screen
+- Supports iOS and Android with unified codebase
 
-## Функции
+## Features
 
-### Основные возможности
-- **RSI График**: Отображение RSI с настраиваемыми уровнями (30/70, 20/80, пользовательские)
-- **Алерты**: Уведомления при пересечении уровней RSI с гистерезисом
-- **Виджеты**: iOS WidgetKit и Android AppWidget с мини-графиками
-- **Множественные инструменты**: Акции, форекс, криптовалюты
-- **Таймфреймы**: 1m, 5m, 15m, 1h, 4h, 1d
+### Main Capabilities
+- **RSI Chart**: Display RSI with configurable levels (30/70, 20/80, custom)
+- **Alerts**: Notifications on RSI level crossings with hysteresis
+- **Widgets**: iOS WidgetKit and Android AppWidget with mini-charts
+- **Multiple Instruments**: Stocks, forex, cryptocurrencies
+- **Timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
 
-### Технические особенности
-- **Кросс-платформа**: Flutter для iOS и Android
-- **Локальная база данных**: Isar для кэширования данных
-- **Push уведомления**: Firebase Cloud Messaging
-- **Бэкенд**: Cloudflare Workers с D1 базой данных
-- **Источники данных**: Yahoo Finance (бесплатно)
+### Technical Features
+- **Cross-platform**: Flutter for iOS and Android
+- **Local Database**: Isar for data caching
+- **Push Notifications**: Firebase Cloud Messaging
+- **Backend**: Cloudflare Workers with D1 database
+- **Data Sources**: Yahoo Finance (free)
 
-## Архитектура
+## Architecture
 
-### Клиент (Flutter)
-- **UI**: Material Design с темной темой
-- **Графики**: fl_chart для отображения RSI
-- **База данных**: Isar для локального хранения
-- **Уведомления**: flutter_local_notifications + Firebase
+### Client (Flutter)
+- **UI**: Material Design with dark theme
+- **Charts**: fl_chart for RSI display
+- **Database**: Isar for local storage
+- **Notifications**: flutter_local_notifications + Firebase
 
-### Бэкенд (Cloudflare Workers)
-- **Cron задачи**: Проверка алертов каждую минуту
-- **RSI Engine**: Расчет RSI по алгоритму Wilder
-- **FCM**: Отправка push уведомлений
-- **База данных**: D1 (SQLite) для хранения правил
+### Backend (Cloudflare Workers)
+- **Cron Jobs**: Alert checks every minute
+- **RSI Engine**: RSI calculation using Wilder's algorithm
+- **FCM**: Push notification sending
+- **Database**: D1 (SQLite) for rule storage
 
-### Виджеты
-- **iOS**: WidgetKit с SwiftUI
-- **Android**: AppWidget с RemoteViews
+### Widgets
+- **iOS**: WidgetKit with SwiftUI
+- **Android**: AppWidget with RemoteViews
 
-## Установка
+## Installation
 
-### Требования
+### Requirements
 - Flutter 3.3.0+
 - Dart 3.0+
 - iOS 12.0+ / Android API 21+
-- Firebase проект
-- Cloudflare Workers аккаунт
+- Firebase project
+- Cloudflare Workers account
 
-### Настройка проекта
+### Project Setup
 
-1. **Клонирование репозитория**
+1. **Clone repository**
 ```bash
-git clone https://github.com/your-repo/rsi-widget-app.git
-cd rsi-widget-app
+git clone https://github.com/your-repo/rsi-widget.git
+cd rsi-widget
 ```
 
-2. **Установка зависимостей**
+2. **Install dependencies**
 ```bash
 flutter pub get
 ```
 
-3. **Генерация кода**
+3. **Code generation**
 ```bash
 flutter packages pub run build_runner build
 ```
 
-### Настройка Firebase
+### Firebase Setup
 
-1. Создайте проект в [Firebase Console](https://console.firebase.google.com)
-2. Добавьте iOS и Android приложения
-3. Скачайте конфигурационные файлы:
+1. Create project in [Firebase Console](https://console.firebase.google.com)
+2. Add iOS and Android apps
+3. Download configuration files:
    - `ios/Runner/GoogleService-Info.plist`
    - `android/app/google-services.json`
-4. Включите Cloud Messaging в консоли Firebase
+4. Enable Cloud Messaging in Firebase console
 
-### Настройка Cloudflare Workers
+### Cloudflare Workers Setup
 
-1. Установите Wrangler CLI:
+1. Install Wrangler CLI:
 ```bash
 npm install -g wrangler
 ```
 
-2. Войдите в аккаунт:
+2. Login to account:
 ```bash
 wrangler login
 ```
 
-3. Создайте D1 базу данных:
+3. Create D1 database:
 ```bash
 wrangler d1 create rsi-db
 ```
 
-4. Примените схему:
+4. Apply schema:
 ```bash
 wrangler d1 execute rsi-db --file=workers/schema.sql
 ```
 
-5. Создайте KV namespace:
+5. Create KV namespace:
 ```bash
 wrangler kv:namespace create "KV"
 ```
 
-6. Установите секреты:
+6. Set secrets:
 ```bash
 wrangler secret put FCM_SERVER_KEY
 ```
 
-7. Деплой Workers:
+7. Deploy Workers:
 ```bash
 cd workers
 wrangler deploy
 ```
 
-### Настройка приложения
+### App Configuration
 
-1. **Обновите конфигурацию** в `lib/main.dart`:
+1. **Update configuration** in `lib/main.dart`:
 ```dart
-// Замените на ваш Workers URL
+// Replace with your Workers URL
 final yahooService = YahooProtoSource('https://your-worker.workers.dev');
 ```
 
-2. **Настройте Firebase** в `lib/services/firebase_service.dart`
+2. **Configure Firebase** in `lib/services/firebase_service.dart`
 
-3. **Соберите приложение**:
+3. **Build application**:
 ```bash
 # iOS
 flutter build ios
@@ -137,36 +137,36 @@ flutter build ios
 flutter build apk
 ```
 
-## Использование
+## Usage
 
-### Создание алерта
-1. Откройте приложение
-2. Нажмите "+" для создания алерта
-3. Выберите символ (AAPL, MSFT, EURUSD=X, etc.)
-4. Настройте таймфрейм и уровни RSI
-5. Сохраните алерт
+### Creating Alert
+1. Open application
+2. Tap "+" to create alert
+3. Select symbol (AAPL, MSFT, EURUSD=X, etc.)
+4. Configure timeframe and RSI levels
+5. Save alert
 
-### Добавление виджета
-1. **iOS**: Долгое нажатие на экран → "+" → RSI Widget
-2. **Android**: Долгое нажатие на экран → Виджеты → RSI Widget
+### Adding Widget
+1. **iOS**: Long press on screen → "+" → RSI Widget
+2. **Android**: Long press on screen → Widgets → RSI Widget
 
-### Настройка уведомлений
-1. Откройте Настройки в приложении
-2. Включите уведомления
-3. Настройте звук и вибрацию
+### Notification Settings
+1. Open Settings in app
+2. Enable notifications
+3. Configure sound and vibration
 
 ## API
 
 ### Cloudflare Workers Endpoints
 
-- `GET /yf/candles` - Получение свечей
-- `GET /yf/quote` - Текущая цена
-- `GET /yf/info` - Информация о символе
-- `POST /device/register` - Регистрация устройства
-- `POST /alerts/create` - Создание алерта
-- `GET /alerts/:userId` - Получение алертов пользователя
+- `GET /yf/candles` - Get candles
+- `GET /yf/quote` - Current price
+- `GET /yf/info` - Symbol information
+- `POST /device/register` - Device registration
+- `POST /alerts/create` - Create alert
+- `GET /alerts/:userId` - Get user alerts
 
-### Модели данных
+### Data Models
 
 ```dart
 class AlertRule {
@@ -181,78 +181,78 @@ class AlertRule {
 }
 ```
 
-## Разработка
+## Development
 
-### Структура проекта
+### Project Structure
 ```
 lib/
-├── main.dart                 # Точка входа
-├── models.dart              # Модели данных
-├── services/                # Сервисы
-│   ├── rsi_service.dart     # RSI расчеты
+├── main.dart                 # Entry point
+├── models.dart              # Data models
+├── services/                # Services
+│   ├── rsi_service.dart     # RSI calculations
 │   ├── yahoo_proto.dart     # Yahoo Finance API
 │   ├── firebase_service.dart # Firebase
-│   └── notification_service.dart # Уведомления
-├── screens/                 # Экраны
-│   ├── home_screen.dart     # Главный экран
-│   ├── alerts_screen.dart   # Управление алертами
-│   └── settings_screen.dart # Настройки
-└── widgets/                 # Виджеты
-    └── rsi_chart.dart       # RSI график
+│   └── notification_service.dart # Notifications
+├── screens/                 # Screens
+│   ├── home_screen.dart     # Main screen
+│   ├── alerts_screen.dart   # Alert management
+│   └── settings_screen.dart # Settings
+└── widgets/                 # Widgets
+    └── rsi_chart.dart       # RSI chart
 
 workers/
 ├── src/
 │   ├── index.ts            # Workers entry point
-│   ├── rsi-engine.ts       # RSI движок
-│   ├── fcm-service.ts      # FCM сервис
-│   └── yahoo-service.ts    # Yahoo сервис
-├── schema.sql              # Схема D1
-└── wrangler.toml           # Конфигурация Workers
+│   ├── rsi-engine.ts       # RSI engine
+│   ├── fcm-service.ts      # FCM service
+│   └── yahoo-service.ts    # Yahoo service
+├── schema.sql              # D1 schema
+└── wrangler.toml           # Workers configuration
 ```
 
-### Команды разработки
+### Development Commands
 
 ```bash
-# Запуск в режиме разработки
+# Run in development mode
 flutter run
 
-# Генерация кода
+# Code generation
 flutter packages pub run build_runner build --delete-conflicting-outputs
 
-# Тестирование
+# Testing
 flutter test
 
-# Анализ кода
+# Code analysis
 flutter analyze
 
-# Сборка релиза
+# Release build
 flutter build apk --release
 flutter build ios --release
 ```
 
-## Лицензия
+## License
 
-MIT License - см. файл [LICENSE](LICENSE)
+MIT License - see [LICENSE](LICENSE) file
 
-## Поддержка
+## Support
 
 - Email: support@rsiwidget.app
 - GitHub Issues: [github.com/rsiwidget/issues](https://github.com/rsiwidget/issues)
 - Telegram: @rsiwidget_support
 
-## Вклад в проект
+## Contributing
 
-1. Форкните репозиторий
-2. Создайте ветку для функции (`git checkout -b feature/amazing-feature`)
-3. Зафиксируйте изменения (`git commit -m 'Add amazing feature'`)
-4. Отправьте в ветку (`git push origin feature/amazing-feature`)
-5. Откройте Pull Request
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
 ## Roadmap
 
-- [ ] Поддержка больше источников данных
-- [ ] Синхронизация между устройствами
-- [ ] Бэктест алертов
-- [ ] Темы оформления
-- [ ] Экспорт/импорт настроек
-- [ ] Аналитика и статистика
+- [ ] Support for more data sources
+- [ ] Sync between devices
+- [ ] Alert backtesting
+- [ ] Theme customization
+- [ ] Settings export/import
+- [ ] Analytics and statistics

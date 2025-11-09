@@ -1,103 +1,103 @@
-# Инструкции по развертыванию RSI Widget App
+# Deployment Instructions for RSI Widget App
 
-## Обзор
+## Overview
 
-Этот документ содержит пошаговые инструкции по развертыванию RSI Widget App, включая настройку Firebase, Cloudflare Workers и сборку приложения.
+This document provides step-by-step instructions for deploying the RSI Widget App, including configuring Firebase, Cloudflare Workers, and building the application.
 
-## Предварительные требования
+## Prerequisites
 
 - Flutter 3.3.0+
 - Node.js 18+
 - Firebase CLI
-- Cloudflare аккаунт
-- iOS/Android разработка настроена
+- Cloudflare account
+- iOS/Android tooling installed
 
-## 1. Настройка Firebase
+## 1. Configure Firebase
 
-### 1.1 Создание проекта Firebase
+### 1.1 Create a Firebase project
 
-1. Перейдите в [Firebase Console](https://console.firebase.google.com)
-2. Нажмите "Создать проект"
-3. Введите название: `rsi-widget-app`
-4. Включите Google Analytics (опционально)
-5. Создайте проект
+1. Visit [Firebase Console](https://console.firebase.google.com)
+2. Click **Create project**
+3. Enter the project name: `rsi-widget-app`
+4. Enable Google Analytics (optional)
+5. Finish project creation
 
-### 1.2 Настройка аутентификации
+### 1.2 Set up authentication
 
-1. В консоли Firebase перейдите в "Authentication"
-2. Нажмите "Начать"
-3. Включите "Анонимная" аутентификация
+1. In Firebase Console, open **Authentication**
+2. Click **Get started**
+3. Enable **Anonymous** authentication
 
-### 1.3 Настройка Cloud Messaging
+### 1.3 Configure Cloud Messaging
 
-1. Перейдите в "Cloud Messaging"
-2. Нажмите "Создать первую кампанию"
-3. Настройте уведомления (позже)
+1. Open **Cloud Messaging**
+2. Click **Create your first campaign**
+3. Configure notifications (can be done later)
 
-### 1.4 Добавление приложений
+### 1.4 Add mobile apps
 
 #### iOS
-1. Нажмите "Добавить приложение" → iOS
-2. Введите Bundle ID: `com.example.rsi_widget`
-3. Скачайте `GoogleService-Info.plist`
-4. Поместите в `ios/Runner/GoogleService-Info.plist`
+1. Click **Add app** → iOS
+2. Bundle ID: `com.example.rsi_widget`
+3. Download `GoogleService-Info.plist`
+4. Place it in `ios/Runner/GoogleService-Info.plist`
 
 #### Android
-1. Нажмите "Добавить приложение" → Android
-2. Введите Package name: `com.example.rsi_widget`
-3. Скачайте `google-services.json`
-4. Поместите в `android/app/google-services.json`
+1. Click **Add app** → Android
+2. Package name: `com.example.rsi_widget`
+3. Download `google-services.json`
+4. Place it in `android/app/google-services.json`
 
-### 1.5 Получение FCM ключа
+### 1.5 Retrieve the FCM key
 
-1. Перейдите в "Настройки проекта" → "Общие"
-2. Найдите "Серверные ключи"
-3. Скопируйте "Ключ сервера" (будет нужен для Cloudflare Workers)
+1. Go to **Project settings** → **General**
+2. Locate the **Server keys**
+3. Copy the **Server key** (required for Cloudflare Workers)
 
-## 2. Настройка Cloudflare Workers
+## 2. Configure Cloudflare Workers
 
-### 2.1 Установка Wrangler CLI
+### 2.1 Install Wrangler CLI
 
 ```bash
 npm install -g wrangler
 ```
 
-### 2.2 Вход в аккаунт
+### 2.2 Log in
 
 ```bash
 wrangler login
 ```
 
-### 2.3 Создание D1 базы данных
+### 2.3 Create a D1 database
 
 ```bash
 cd workers
 wrangler d1 create rsi-db
 ```
 
-Сохраните полученный `database_id` и `database_name`.
+Save the generated `database_id` and `database_name`.
 database_name = "rsi-db"
 database_id = "548f70f8-9fcb-4bca-952d-5f629c8ebd37"
 
-### 2.4 Применение схемы базы данных
+### 2.4 Apply the database schema
 
 ```bash
 wrangler d1 execute rsi-db --file=schema.sql
 ```
 
-### 2.5 Создание KV namespace
+### 2.5 Create a KV namespace
 
 ```bash
 wrangler kv:namespace create "KV"
 ```
 
-Сохраните полученные `id` и `preview_id`.
+Save the returned `id` and `preview_id`.
 binding = "KV"
 id = "537eb17689cb4cb39a13ae58dedaba57"
 
-### 2.6 Настройка wrangler.toml
+### 2.6 Configure `wrangler.toml`
 
-Обновите `workers/wrangler.toml`:
+Update `workers/wrangler.toml`:
 
 ```toml
 name = "rsi-workers"
@@ -123,17 +123,17 @@ YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
 FCM_ENDPOINT = "https://fcm.googleapis.com/fcm/send"
 ```
 
-### 2.7 Установка секретов
+### 2.7 Add secrets
 
 ```bash
-# FCM ключ сервера
+# FCM server key
 wrangler secret put FCM_SERVER_KEY
 
-# Другие секреты при необходимости
+# Additional secrets if needed
 wrangler secret put YAHOO_API_KEY
 ```
 
-### 2.8 Деплой Workers
+### 2.8 Deploy Workers
 
 ```bash
 cd workers
@@ -141,239 +141,239 @@ npm install
 wrangler deploy
 ```
 
-Сохраните полученный URL (например: `https://rsi-workers.your-subdomain.workers.dev`)
+Save the deployment URL (for example: `https://rsi-workers.your-subdomain.workers.dev`)
 https://rsi-workers.vovan4ikukraine.workers.dev
 
-## 3. Настройка Flutter приложения
+## 3. Configure the Flutter app
 
-### 3.1 Обновление конфигурации
+### 3.1 Update configuration
 
-В `lib/services/yahoo_proto.dart` замените URL:
+Replace the endpoint in `lib/services/yahoo_proto.dart`:
 
 ```dart
 final yahooService = YahooProtoSource('https://your-worker-url.workers.dev');
 ```
 
-### 3.2 Настройка Firebase в Flutter
+### 3.2 Configure Firebase for Flutter
 
-Убедитесь, что файлы конфигурации на месте:
+Ensure the config files are present:
 - `ios/Runner/GoogleService-Info.plist`
 - `android/app/google-services.json`
 
-### 3.3 Установка зависимостей
+### 3.3 Install dependencies
 
 ```bash
 flutter pub get
 ```
 
-### 3.4 Генерация кода
+### 3.4 Generate code
 
 ```bash
 flutter packages pub run build_runner build --delete-conflicting-outputs
 ```
 
-## 4. Сборка приложения
+## 4. Build the app
 
 ### 4.1 iOS
 
 ```bash
-# Генерация кода
+# Code generation
 flutter packages pub run build_runner build
 
-# Сборка для iOS
+# iOS release build
 flutter build ios --release
 
-# Или для симулятора
+# Debug build for simulator
 flutter build ios --debug
 ```
 
 ### 4.2 Android
 
 ```bash
-# Сборка APK
+# Build APK
 flutter build apk --release
 
-# Сборка App Bundle (для Google Play)
+# Build App Bundle (for Google Play)
 flutter build appbundle --release
 ```
 
-## 5. Настройка виджетов
+## 5. Configure widgets
 
 ### 5.1 iOS WidgetKit
 
-1. Откройте проект в Xcode: `ios/Runner.xcworkspace`
-2. Добавьте новый Target: File → New → Target → Widget Extension
-3. Название: `RSIWidget`
-4. Скопируйте код из `ios/RSIWidget/RSIWidget.swift`
-5. Настройте Info.plist для виджета
+1. Open the project in Xcode: `ios/Runner.xcworkspace`
+2. Add a new target: File → New → Target → Widget Extension
+3. Name it `RSIWidget`
+4. Copy the code from `ios/RSIWidget/RSIWidget.swift`
+5. Configure the widget’s Info.plist
 
 ### 5.2 Android AppWidget
 
-1. Убедитесь, что файлы виджета на месте:
+1. Ensure the widget files are present:
    - `android/app/src/main/java/com/example/rsi_widget/RSIWidgetProvider.java`
    - `android/app/src/main/res/layout/rsi_widget.xml`
    - `android/app/src/main/res/xml/rsi_widget_info.xml`
 
-2. Обновите `android/app/src/main/AndroidManifest.xml`
+2. Update `android/app/src/main/AndroidManifest.xml`
 
-## 6. Тестирование
+## 6. Testing
 
-### 6.1 Локальное тестирование
+### 6.1 Local testing
 
 ```bash
-# Запуск в режиме разработки
+# Run in development mode
 flutter run
 
-# Тестирование на устройстве
+# Test on a device
 flutter run --release
 ```
 
-### 6.2 Тестирование Workers
+### 6.2 Test Workers
 
 ```bash
-# Локальный запуск
+# Run locally
 cd workers
 wrangler dev
 
-# Тестирование API
+# Test the API
 curl https://your-worker-url.workers.dev/yf/candles?symbol=AAPL&tf=15m
 ```
 
-### 6.3 Тестирование уведомлений
+### 6.3 Test notifications
 
-1. Создайте алерт в приложении
-2. Проверьте, что данные сохраняются в D1
-3. Дождитесь срабатывания алерта
-4. Проверьте получение push уведомления
+1. Create an alert in the app
+2. Confirm the data is stored in D1
+3. Wait for the alert to trigger
+4. Verify the push notification is delivered
 
-## 7. Мониторинг и отладка
+## 7. Monitoring and debugging
 
 ### 7.1 Cloudflare Workers
 
 ```bash
-# Просмотр логов
+# View logs
 wrangler tail
 
-# Просмотр метрик
+# View metrics
 wrangler analytics
 ```
 
 ### 7.2 Firebase
 
-1. Перейдите в Firebase Console
-2. Cloud Messaging → Статистика
-3. Authentication → Пользователи
+1. Open Firebase Console
+2. Cloud Messaging → Statistics
+3. Authentication → Users
 
 ### 7.3 Flutter
 
 ```bash
-# Анализ кода
+# Static analysis
 flutter analyze
 
-# Тестирование
+# Unit tests
 flutter test
 
-# Профилирование
+# Profiling
 flutter run --profile
 ```
 
-## 8. Производственное развертывание
+## 8. Production deployment
 
 ### 8.1 App Store (iOS)
 
-1. Создайте App Store Connect аккаунт
-2. Создайте новое приложение
-3. Загрузите билд через Xcode или Application Loader
-4. Настройте метаданные и скриншоты
-5. Отправьте на ревью
+1. Create an App Store Connect account
+2. Create a new app
+3. Upload the build via Xcode or Transporter
+4. Configure metadata and screenshots
+5. Submit for review
 
 ### 8.2 Google Play (Android)
 
-1. Создайте Google Play Console аккаунт
-2. Создайте новое приложение
-3. Загрузите AAB файл
-4. Настройте магазин
-5. Отправьте на ревью
+1. Create a Google Play Console account
+2. Create a new app
+3. Upload the AAB file
+4. Configure the store listing
+5. Submit for review
 
-### 8.3 Настройка домена
+### 8.3 Domain configuration
 
-1. Настройте кастомный домен для Workers
-2. Обновите CORS настройки
-3. Настройте SSL сертификат
+1. Assign a custom domain for Workers
+2. Update CORS settings
+3. Configure the SSL certificate
 
-## 9. Обслуживание
+## 9. Maintenance
 
-### 9.1 Регулярные задачи
+### 9.1 Routine tasks
 
-- Мониторинг логов Workers
-- Проверка лимитов API
-- Обновление зависимостей
-- Резервное копирование D1
+- Monitor Workers logs
+- Check API usage limits
+- Update dependencies
+- Back up the D1 database
 
-### 9.2 Масштабирование
+### 9.2 Scaling
 
-- Настройка дополнительных Workers
-- Оптимизация запросов к Yahoo Finance
-- Кэширование данных в KV
-- Мониторинг производительности
+- Add additional Workers
+- Optimize requests to Yahoo Finance
+- Cache data in KV
+- Monitor performance metrics
 
-## 10. Безопасность
+## 10. Security
 
-### 10.1 Секреты
+### 10.1 Secrets
 
-- Никогда не коммитьте секреты в репозиторий
-- Используйте `wrangler secret put` для всех ключей
-- Регулярно ротируйте ключи
+- Never commit secrets to the repository
+- Use `wrangler secret put` for all keys
+- Rotate keys regularly
 
 ### 10.2 CORS
 
-- Настройте правильные CORS заголовки
-- Ограничьте доступ по доменам
-- Используйте HTTPS везде
+- Configure the appropriate CORS headers
+- Restrict access by domain
+- Enforce HTTPS everywhere
 
-### 10.3 Валидация
+### 10.3 Validation
 
-- Валидируйте все входящие данные
-- Ограничьте размер запросов
-- Используйте rate limiting
+- Validate all incoming data
+- Limit request sizes
+- Apply rate limiting
 
-## Устранение неполадок
+## Troubleshooting
 
-### Проблемы с Firebase
+### Firebase issues
 
 ```bash
-# Проверка конфигурации
+# Check configuration
 firebase projects:list
 firebase use --add
 ```
 
-### Проблемы с Workers
+### Workers issues
 
 ```bash
-# Проверка статуса
+# Check authentication
 wrangler whoami
 
-# Переустановка зависимостей
+# Reinstall dependencies
 rm -rf node_modules package-lock.json
 npm install
 ```
 
-### Проблемы с Flutter
+### Flutter issues
 
 ```bash
-# Очистка кэша
+# Clear cache
 flutter clean
 flutter pub get
 
-# Пересборка
+# Rebuild generated code
 flutter packages pub run build_runner build --delete-conflicting-outputs
 ```
 
-## Поддержка
+## Support
 
-При возникновении проблем:
+If you run into issues:
 
-1. Проверьте логи в Cloudflare Dashboard
-2. Проверьте Firebase Console
-3. Используйте `flutter doctor` для диагностики
-4. Создайте issue в GitHub репозитории
+1. Review logs in the Cloudflare Dashboard
+2. Check Firebase Console
+3. Run `flutter doctor` for diagnostics
+4. Create an issue in the GitHub repository

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
 import 'create_alert_screen.dart';
+import '../localization/app_localizations.dart';
 
 class AlertsScreen extends StatefulWidget {
   final Isar isar;
@@ -44,8 +45,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
         _isLoading = false;
       });
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки данных: $e')),
+          SnackBar(
+            content: Text(
+              loc.t(
+                'alerts_error_loading',
+                params: {'message': '$e'},
+              ),
+            ),
+          ),
         );
       }
     }
@@ -64,9 +73,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.loc;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RSI Алерты'),
+        title: Text(loc.t('alerts_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
@@ -77,9 +88,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
               });
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'all', child: Text('Все')),
-              const PopupMenuItem(value: 'active', child: Text('Активные')),
-              const PopupMenuItem(value: 'inactive', child: Text('Неактивные')),
+              PopupMenuItem(value: 'all', child: Text(loc.t('common_all'))),
+              PopupMenuItem(
+                  value: 'active', child: Text(loc.t('alerts_filter_active'))),
+              PopupMenuItem(
+                  value: 'inactive',
+                  child: Text(loc.t('alerts_filter_inactive'))),
             ],
             child: const Icon(Icons.filter_list),
           ),
@@ -91,18 +105,18 @@ class _AlertsScreenState extends State<AlertsScreen> {
               onRefresh: _loadData,
               child: Column(
                 children: [
-                  // Статистика
-                  _buildStatsCard(),
+                  // Statistics
+                  _buildStatsCard(loc),
 
-                  // Список алертов
+                  // Alerts list
                   Expanded(
                     child: _filteredAlerts.isEmpty
-                        ? _buildEmptyState()
+                        ? _buildEmptyState(loc)
                         : ListView.builder(
                             itemCount: _filteredAlerts.length,
                             itemBuilder: (context, index) {
                               final alert = _filteredAlerts[index];
-                              return _buildAlertCard(alert);
+                              return _buildAlertCard(loc, alert);
                             },
                           ),
                   ),
@@ -112,11 +126,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createAlert(),
         child: const Icon(Icons.add),
+        tooltip: loc.t('home_create_alert'),
       ),
     );
   }
 
-  Widget _buildStatsCard() {
+  Widget _buildStatsCard(AppLocalizations loc) {
     final activeCount = _alerts.where((a) => a.active).length;
     final totalCount = _alerts.length;
     final recentEvents = _events
@@ -134,9 +149,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildStatItem('Всего', totalCount.toString(), Colors.blue),
-            _buildStatItem('Активные', activeCount.toString(), Colors.green),
-            _buildStatItem('За неделю', recentEvents.toString(), Colors.orange),
+            _buildStatItem(
+                loc.t('alerts_stat_total'), totalCount.toString(), Colors.blue),
+            _buildStatItem(loc.t('alerts_stat_active'), activeCount.toString(),
+                Colors.green),
+            _buildStatItem(loc.t('alerts_stat_week'), recentEvents.toString(),
+                Colors.orange),
           ],
         ),
       ),
@@ -165,7 +183,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations loc) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -177,7 +195,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Нет алертов',
+            loc.t('alerts_empty_title'),
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
@@ -185,7 +203,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Создайте свой первый RSI алерт',
+            loc.t('alerts_empty_subtitle'),
             style: TextStyle(
               color: Colors.grey[500],
             ),
@@ -194,14 +212,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
           ElevatedButton.icon(
             onPressed: _createAlert,
             icon: const Icon(Icons.add_alert),
-            label: const Text('Создать алерт'),
+            label: Text(loc.t('home_create_alert')),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAlertCard(AlertRule alert) {
+  Widget _buildAlertCard(AppLocalizations loc, AlertRule alert) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
@@ -220,7 +238,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('${alert.timeframe} • RSI(${alert.rsiPeriod})'),
-            Text('Уровни: ${alert.levels.join('/')}'),
+            Text(
+              loc.t(
+                'alerts_levels_prefix',
+                params: {'levels': alert.levels.join('/')},
+              ),
+            ),
             if (alert.description != null) Text(alert.description!),
           ],
         ),
@@ -233,37 +256,42 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 children: [
                   Icon(alert.active ? Icons.pause : Icons.play_arrow),
                   const SizedBox(width: 8),
-                  Text(alert.active ? 'Отключить' : 'Включить'),
+                  Text(alert.active
+                      ? loc.t('common_disable')
+                      : loc.t('common_enable')),
                 ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'edit',
               child: Row(
                 children: [
-                  Icon(Icons.edit),
-                  SizedBox(width: 8),
-                  Text('Редактировать'),
+                  const Icon(Icons.edit),
+                  const SizedBox(width: 8),
+                  Text(loc.t('common_edit')),
                 ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'duplicate',
               child: Row(
                 children: [
-                  Icon(Icons.copy),
-                  SizedBox(width: 8),
-                  Text('Дублировать'),
+                  const Icon(Icons.copy),
+                  const SizedBox(width: 8),
+                  Text(loc.t('common_duplicate')),
                 ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'delete',
               child: Row(
                 children: [
-                  Icon(Icons.delete, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('Удалить', style: TextStyle(color: Colors.red)),
+                  const Icon(Icons.delete, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Text(
+                    loc.t('common_delete'),
+                    style: const TextStyle(color: Colors.red),
+                  ),
                 ],
               ),
             ),
@@ -326,17 +354,23 @@ class _AlertsScreenState extends State<AlertsScreen> {
       });
 
       if (!mounted) return;
+      final loc = context.loc;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            alert.active ? 'Алерт включен' : 'Алерт отключен',
+            alert.active ? loc.t('alerts_enabled') : loc.t('alerts_disabled'),
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
+      final loc = context.loc;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        SnackBar(
+          content: Text(
+            loc.t('alerts_error_generic', params: {'message': '$e'}),
+          ),
+        ),
       );
     }
   }
@@ -353,7 +387,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ..cooldownSec = alert.cooldownSec
         ..active = true
         ..createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000
-        ..description = '${alert.description ?? ''} (копия)';
+        ..description = '${alert.description ?? ''} (copy)';
 
       await widget.isar.writeTxn(() {
         return widget.isar.alertRules.put(newAlert);
@@ -362,33 +396,40 @@ class _AlertsScreenState extends State<AlertsScreen> {
       _loadData();
 
       if (!mounted) return;
+      final loc = context.loc;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Алерт скопирован')),
+        SnackBar(content: Text(loc.t('alerts_duplicate_success'))),
       );
     } catch (e) {
       if (!mounted) return;
+      final loc = context.loc;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        SnackBar(
+          content: Text(
+            loc.t('alerts_error_generic', params: {'message': '$e'}),
+          ),
+        ),
       );
     }
   }
 
   Future<void> _deleteAlert(AlertRule alert) async {
+    final loc = context.loc;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить алерт'),
-        content:
-            Text('Вы уверены, что хотите удалить алерт для ${alert.symbol}?'),
+        title: Text(loc.t('alerts_delete_title')),
+        content: Text(
+            loc.t('alerts_delete_message', params: {'symbol': alert.symbol})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
+            child: Text(loc.t('common_cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Удалить'),
+            child: Text(loc.t('common_delete')),
           ),
         ],
       ),
@@ -404,12 +445,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Алерт удален')),
+          SnackBar(content: Text(loc.t('alerts_delete_success'))),
         );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
+          SnackBar(
+            content: Text(
+              loc.t('alerts_error_generic', params: {'message': '$e'}),
+            ),
+          ),
         );
       }
     }

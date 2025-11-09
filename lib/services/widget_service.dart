@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import 'yahoo_proto.dart';
 
-/// Сервис для обновления Android виджета с данными watchlist
+/// Service for updating Android widget with watchlist data
 class WidgetService {
   static const MethodChannel _channel =
       MethodChannel('com.example.rsi_widget/widget');
@@ -17,35 +17,35 @@ class WidgetService {
     required this.yahooService,
   });
 
-  /// Обновляет виджет с текущими данными watchlist
+  /// Updates widget with current watchlist data
   Future<void> updateWidget({
     String? timeframe,
     int? rsiPeriod,
   }) async {
     try {
-      // Загружаем сохраненные настройки из виджета (если таймфрейм был изменен в виджете)
+      // Load saved settings from widget (if timeframe was changed in widget)
       final prefs = await SharedPreferences.getInstance();
       final savedTimeframe = prefs.getString('rsi_widget_timeframe');
       final savedPeriod = prefs.getInt('rsi_widget_period');
 
-      // Используем переданные параметры или сохраненные в виджете
+      // Use passed parameters or saved in widget
       final finalTimeframe = timeframe ?? savedTimeframe ?? '15m';
       final finalPeriod = rsiPeriod ?? savedPeriod ?? 14;
 
-      // Сохраняем используемые значения
+      // Save used values
       await prefs.setString('rsi_widget_timeframe', finalTimeframe);
       await prefs.setInt('rsi_widget_period', finalPeriod);
 
-      // Загружаем watchlist
+      // Load watchlist
       final watchlistItems = await isar.watchlistItems.where().findAll();
 
-      // Сохраняем список символов в SharedPreferences для виджета
+      // Save symbol list in SharedPreferences for widget
       final watchlistSymbols =
           watchlistItems.map((item) => item.symbol).toList();
       await prefs.setString('watchlist_symbols', jsonEncode(watchlistSymbols));
 
       if (watchlistItems.isEmpty) {
-        // Нет элементов - отправляем пустой список
+        // No items - send empty list
         await _channel.invokeMethod('updateWidget', {
           'watchlistData': '[]',
           'timeframe': timeframe,
@@ -53,12 +53,12 @@ class WidgetService {
         return;
       }
 
-      // Загружаем RSI данные для каждого символа
+      // Load RSI data for each symbol
       final widgetData = <Map<String, dynamic>>[];
 
       for (final item in watchlistItems) {
         try {
-          // Загружаем свечи
+          // Load candles
           final candles = await yahooService.fetchCandles(
             item.symbol,
             finalTimeframe,
@@ -67,7 +67,7 @@ class WidgetService {
 
           if (candles.isEmpty) continue;
 
-          // Рассчитываем RSI
+          // Calculate RSI
           final closes = candles.map((c) => c.close).toList();
           final rsiValues = _calculateRSI(closes, finalPeriod);
 
@@ -79,7 +79,7 @@ class WidgetService {
               closes.length > 1 ? closes[closes.length - 2] : currentPrice;
           final change = currentPrice - previousPrice;
 
-          // Берем последние 20 значений для графика
+          // Take last 20 values for chart
           final chartValues = rsiValues.length > 20
               ? rsiValues.sublist(rsiValues.length - 20)
               : rsiValues;
@@ -92,16 +92,16 @@ class WidgetService {
             'rsiValues': chartValues,
           });
         } catch (e) {
-          // Пропускаем символы с ошибками
+          // Skip symbols with errors
           print('Error loading data for ${item.symbol}: $e');
           continue;
         }
       }
 
-      // Преобразуем в JSON
+      // Convert to JSON
       final jsonData = jsonEncode(widgetData);
 
-      // Обновляем виджет через MethodChannel
+      // Update widget via MethodChannel
       await _channel.invokeMethod('updateWidget', {
         'watchlistData': jsonData,
         'timeframe': finalTimeframe,
@@ -114,7 +114,7 @@ class WidgetService {
     }
   }
 
-  /// Рассчитывает RSI по алгоритму Wilder
+  /// Calculates RSI using Wilder's algorithm
   List<double> _calculateRSI(List<double> closes, int period) {
     if (closes.length < period + 1) {
       return [];
@@ -122,7 +122,7 @@ class WidgetService {
 
     final rsiValues = <double>[];
 
-    // Расчет первых средних значений
+    // Calculate initial average values
     double gain = 0, loss = 0;
     for (int i = 1; i <= period; i++) {
       final change = closes[i] - closes[i - 1];
@@ -136,17 +136,17 @@ class WidgetService {
     double au = gain / period; // Average Up
     double ad = loss / period; // Average Down
 
-    // Инкрементальный расчет для остальных точек
+    // Incremental calculation for remaining points
     for (int i = period + 1; i < closes.length; i++) {
       final change = closes[i] - closes[i - 1];
       final u = change > 0 ? change : 0.0;
       final d = change < 0 ? -change : 0.0;
 
-      // Обновление по формуле Wilder
+      // Update using Wilder's formula
       au = (au * (period - 1) + u) / period;
       ad = (ad * (period - 1) + d) / period;
 
-      // Расчет RSI
+      // Calculate RSI
       if (ad == 0) {
         rsiValues.add(100.0);
       } else {

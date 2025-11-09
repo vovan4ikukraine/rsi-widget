@@ -1,6 +1,6 @@
--- Схема базы данных для RSI Widget App
+-- Database schema for RSI Widget App
 
--- Таблица инструментов
+-- Instruments table
 CREATE TABLE IF NOT EXISTS instrument (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   symbol TEXT NOT NULL UNIQUE,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS instrument (
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Таблица устройств пользователей
+-- User devices table
 CREATE TABLE IF NOT EXISTS device (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS device (
   last_seen INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Таблица правил алертов
+-- Alert rules table
 CREATE TABLE IF NOT EXISTS alert_rule (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
@@ -46,22 +46,22 @@ CREATE TABLE IF NOT EXISTS alert_rule (
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Таблица состояний алертов
+-- Alert states table
 CREATE TABLE IF NOT EXISTS alert_state (
   rule_id INTEGER PRIMARY KEY,
   last_rsi REAL,
   last_bar_ts INTEGER,
   last_fire_ts INTEGER,
   last_side TEXT,              -- above|below|between
-  was_above_upper INTEGER,     -- для гистерезиса
-  was_below_lower INTEGER,      -- для гистерезиса
-  last_au REAL,                -- для инкрементального RSI
-  last_ad REAL,                -- для инкрементального RSI
+  was_above_upper INTEGER,     -- for hysteresis
+  was_below_lower INTEGER,      -- for hysteresis
+  last_au REAL,                -- for incremental RSI
+  last_ad REAL,                -- for incremental RSI
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
 );
 
--- Таблица событий алертов
+-- Alert events table
 CREATE TABLE IF NOT EXISTS alert_event (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   rule_id INTEGER NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS alert_event (
   FOREIGN KEY (rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
 );
 
--- Таблица RSI данных (кэш)
+-- RSI data table (cache)
 CREATE TABLE IF NOT EXISTS rsi_data (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   symbol TEXT NOT NULL,
@@ -86,13 +86,13 @@ CREATE TABLE IF NOT EXISTS rsi_data (
   timestamp INTEGER NOT NULL,
   rsi REAL NOT NULL,
   close REAL NOT NULL,
-  au REAL,                     -- для инкрементального расчета
-  ad REAL,                     -- для инкрементального расчета
+  au REAL,                     -- for incremental calculation
+  ad REAL,                     -- for incremental calculation
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
   UNIQUE(symbol, timeframe, timestamp)
 );
 
--- Таблица пользователей
+-- Users table
 CREATE TABLE IF NOT EXISTS user (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE,
@@ -102,14 +102,14 @@ CREATE TABLE IF NOT EXISTS user (
   last_active INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Таблица настроек приложения
+-- App settings table
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Индексы для оптимизации запросов
+-- Indexes for query optimization
 CREATE INDEX IF NOT EXISTS idx_device_user_id ON device(user_id);
 CREATE INDEX IF NOT EXISTS idx_device_fcm_token ON device(fcm_token);
 CREATE INDEX IF NOT EXISTS idx_device_active ON device(is_active);
@@ -127,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_alert_event_is_read ON alert_event(is_read);
 CREATE INDEX IF NOT EXISTS idx_rsi_data_symbol_timeframe ON rsi_data(symbol, timeframe);
 CREATE INDEX IF NOT EXISTS idx_rsi_data_timestamp ON rsi_data(timestamp);
 
--- Представления для удобства
+-- Views for convenience
 CREATE VIEW IF NOT EXISTS active_alerts AS
 SELECT 
   ar.id,
@@ -161,7 +161,7 @@ SELECT
 FROM device d
 WHERE d.is_active = 1;
 
--- Триггеры для автоматического обновления updated_at
+-- Triggers for automatic updated_at update
 CREATE TRIGGER IF NOT EXISTS update_alert_rule_updated_at
   AFTER UPDATE ON alert_rule
   BEGIN
@@ -174,10 +174,10 @@ CREATE TRIGGER IF NOT EXISTS update_alert_state_updated_at
     UPDATE alert_state SET updated_at = strftime('%s', 'now') WHERE rule_id = NEW.rule_id;
   END;
 
--- Функции для работы с JSON (если поддерживается)
--- В SQLite нет встроенной поддержки JSON, но можно использовать простые функции
+-- Functions for working with JSON (if supported)
+-- SQLite doesn't have built-in JSON support, but simple functions can be used
 
--- Вставка тестовых данных
+-- Insert test data
 INSERT OR IGNORE INTO instrument (symbol, name, type, provider, currency, exchange) VALUES
 ('AAPL', 'Apple Inc.', 'stock', 'YF_PROTO', 'USD', 'NASDAQ'),
 ('MSFT', 'Microsoft Corporation', 'stock', 'YF_PROTO', 'USD', 'NASDAQ'),
@@ -189,7 +189,7 @@ INSERT OR IGNORE INTO instrument (symbol, name, type, provider, currency, exchan
 ('BTC-USD', 'Bitcoin USD', 'crypto', 'YF_PROTO', 'USD', 'CRYPTO'),
 ('ETH-USD', 'Ethereum USD', 'crypto', 'YF_PROTO', 'USD', 'CRYPTO');
 
--- Настройки по умолчанию
+-- Default settings
 INSERT OR IGNORE INTO app_settings (key, value) VALUES
 ('max_free_alerts', '5'),
 ('max_premium_alerts', '50'),

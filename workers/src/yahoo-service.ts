@@ -27,7 +27,7 @@ export class YahooService {
     constructor(private endpoint: string) { }
 
     /**
-     * Получение свечей для символа
+     * Get candles for symbol
      */
     async getCandles(
         symbol: string,
@@ -40,31 +40,31 @@ export class YahooService {
         try {
             const interval = this.getYahooInterval(timeframe);
 
-            // Используем period1 и period2 для явного указания периода
-            // Это гарантирует получение достаточного количества торговых дней
-            const now = Math.floor(Date.now() / 1000); // Unix timestamp в секундах
+            // Use period1 and period2 for explicit period specification
+            // This guarantees getting sufficient number of trading days
+            const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
             let period1: number;
             let period2: number = now;
 
             if (timeframe === '4h') {
-                // Для 4h нужно минимум 15 свечей
-                // В торговый день обычно 1-2 свечи 4h (зависит от времени открытия/закрытия)
-                // Берем 2 года назад для гарантии получения достаточного количества торговых дней
-                // 2 года = ~730 календарных дней = ~500 торговых дней = более чем достаточно
-                period1 = now - (730 * 24 * 60 * 60); // 730 дней назад (2 года)
+                // For 4h need at least 15 candles
+                // In a trading day usually 1-2 4h candles (depends on open/close time)
+                // Take 2 years ago to guarantee getting sufficient number of trading days
+                // 2 years = ~730 calendar days = ~500 trading days = more than enough
+                period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
             } else if (timeframe === '1d') {
-                // Для 1d нужно минимум 15 торговых дней
-                // Берем 2 года назад для гарантии (около 500 торговых дней)
-                period1 = now - (730 * 24 * 60 * 60); // 730 дней назад (2 года)
+                // For 1d need at least 15 trading days
+                // Take 2 years ago to guarantee (about 500 trading days)
+                period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
             } else if (timeframe === '1h') {
-                period1 = now - (60 * 24 * 60 * 60); // 60 дней назад
+                period1 = now - (60 * 24 * 60 * 60); // 60 days ago
             } else {
-                // Для минутных таймфреймов используем короткий период
-                period1 = now - (5 * 24 * 60 * 60); // 5 дней назад
+                // For minute timeframes use short period
+                period1 = now - (5 * 24 * 60 * 60); // 5 days ago
             }
 
-            // Формируем URL с period1 и period2
-            // Используем period1/period2 вместо range для точного контроля периода
+            // Build URL with period1 and period2
+            // Use period1/period2 instead of range for precise period control
             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&period1=${period1}&period2=${period2}`;
 
             console.log(`Requesting candles for ${symbol} ${timeframe}: period1=${period1} (${new Date(period1 * 1000).toISOString()}), period2=${period2} (${new Date(period2 * 1000).toISOString()}), interval=${interval}`);
@@ -104,18 +104,18 @@ export class YahooService {
                 }
             }
 
-            // Логируем количество полученных свечей для отладки
+            // Log number of fetched candles for debugging
             console.log(`Fetched ${candles.length} candles for ${symbol} ${timeframe} (period1: ${new Date(period1 * 1000).toISOString()}, period2: ${new Date(period2 * 1000).toISOString()})`);
 
-            // Фильтрация по лимиту (берем последние N свечей)
+            // Filter by limit (take last N candles)
             if (options.limit && candles.length > options.limit) {
                 const filtered = candles.slice(-options.limit);
                 console.log(`Filtered to ${filtered.length} candles (limit: ${options.limit})`);
                 return filtered;
             }
 
-            // Если для больших таймфреймов нет данных, возвращаем пустой массив
-            // вместо ошибки - клиент сам обработает это
+            // If no data for large timeframes, return empty array
+            // instead of error - client will handle it
             if (candles.length === 0 && (timeframe === '4h' || timeframe === '1d')) {
                 console.warn(`No candles returned for ${symbol} ${timeframe}. Market might be closed or insufficient historical data.`);
             }
@@ -128,7 +128,7 @@ export class YahooService {
     }
 
     /**
-     * Получение текущей цены
+     * Get current price
      */
     async getQuote(symbol: string): Promise<QuoteData> {
         try {
@@ -167,7 +167,7 @@ export class YahooService {
     }
 
     /**
-     * Получение информации о символе
+     * Get symbol information
      */
     async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
         try {
@@ -206,47 +206,47 @@ export class YahooService {
     }
 
     /**
-     * Поиск символов
+     * Search symbols
      */
     async searchSymbols(query: string): Promise<SymbolInfo[]> {
         try {
-            // Простой поиск по популярным символам
+            // Simple search through popular symbols
             const popularSymbols = [
-                // Акции США - Технологии
+                // US Stocks - Technology
                 'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
                 'AMD', 'INTC', 'CRM', 'ADBE', 'PYPL', 'UBER', 'SQ', 'NOW', 'SNOW',
                 'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
 
-                // Акции США - Финансы
+                // US Stocks - Finance
                 'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW',
 
-                // Акции США - Потребительские товары
+                // US Stocks - Consumer Goods
                 'WMT', 'TGT', 'HD', 'NKE', 'SBUX', 'MCD', 'DIS', 'NFLX',
 
-                // Акции США - Энергетика
+                // US Stocks - Energy
                 'XOM', 'CVX', 'COP', 'SLB', 'EOG',
 
-                // Акции США - Здравоохранение
+                // US Stocks - Healthcare
                 'JNJ', 'PFE', 'UNH', 'ABBV', 'TMO', 'ABT', 'MRK',
 
-                // Индексы
+                // Indices
                 '^GSPC', '^DJI', '^IXIC', '^RUT',
 
-                // Форекс - Major pairs
+                // Forex - Major pairs
                 'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X',
                 'USDCHF=X', 'NZDUSD=X', 'EURGBP=X', 'EURJPY=X', 'GBPJPY=X',
                 'EURCHF=X', 'AUDJPY=X', 'NZDJPY=X', 'CADJPY=X', 'CHFJPY=X',
 
-                // Форекс - Cross pairs
+                // Forex - Cross pairs
                 'EURCAD=X', 'EURAUD=X', 'EURNZD=X', 'GBPCAD=X', 'GBPAUD=X',
                 'GBPNZD=X', 'AUDCAD=X', 'AUDNZD=X', 'CADCHF=X',
 
-                // Криптовалюты
+                // Cryptocurrencies
                 'BTC-USD', 'ETH-USD', 'BNB-USD', 'ADA-USD', 'SOL-USD',
                 'XRP-USD', 'DOGE-USD', 'DOT-USD', 'MATIC-USD', 'AVAX-USD',
                 'LINK-USD', 'UNI-USD', 'ATOM-USD', 'ALGO-USD', 'VET-USD',
 
-                // Товары
+                // Commodities
                 'GC=F', 'SI=F', 'CL=F', 'NG=F', 'ZC=F', 'ZS=F',
 
                 // ETF
@@ -279,7 +279,7 @@ export class YahooService {
     }
 
     /**
-     * Преобразование таймфрейма в интервал Yahoo
+     * Convert timeframe to Yahoo interval
      */
     private getYahooInterval(timeframe: string): string {
         const intervals: Record<string, string> = {
@@ -298,7 +298,7 @@ export class YahooService {
     }
 
     /**
-     * Определение типа символа
+     * Determine symbol type
      */
     private getSymbolType(symbol: string): string {
         if (symbol.includes('=X')) return 'forex';
@@ -307,7 +307,7 @@ export class YahooService {
     }
 
     /**
-     * Кэширование данных
+     * Data caching
      */
     async getCachedCandles(
         symbol: string,
@@ -323,7 +323,7 @@ export class YahooService {
                 const cacheTime = data.timestamp;
                 const now = Date.now();
 
-                // Кэш действителен 5 минут
+                // Cache valid for 5 minutes
                 if (now - cacheTime < 5 * 60 * 1000) {
                     return data.candles;
                 }
@@ -337,7 +337,7 @@ export class YahooService {
     }
 
     /**
-     * Сохранение данных в кэш
+     * Save data to cache
      */
     async setCachedCandles(
         symbol: string,
