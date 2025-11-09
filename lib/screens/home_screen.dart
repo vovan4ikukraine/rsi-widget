@@ -7,6 +7,7 @@ import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
+import '../services/symbol_search_service.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -46,6 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _upperLevelController = TextEditingController();
   final TextEditingController _symbolController = TextEditingController();
   bool _isSearchingSymbols = false;
+  late final SymbolSearchService _symbolSearchService;
+  List<SymbolInfo> _popularSymbols = [];
 
   @override
   void initState() {
@@ -54,8 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
       isar: widget.isar,
       yahooService: _yahooService,
     );
+    _symbolSearchService = SymbolSearchService(_yahooService);
     _setupMethodChannel();
     _loadSavedState();
+    _loadPopularSymbols();
   }
 
   void _setupMethodChannel() {
@@ -98,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
 
     // Initialize symbol controller
-    _symbolController.text = _selectedSymbol;
+    _syncSymbolFieldText(_selectedSymbol);
     // Initialize controllers (without text, use hintText)
     _clearControllers();
 
@@ -106,6 +111,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _loadAlerts();
     _loadRsiData();
+  }
+
+  Future<void> _loadPopularSymbols() async {
+    try {
+      final popular = await _symbolSearchService.getPopularSymbols();
+      if (!mounted) return;
+      setState(() {
+        _popularSymbols = popular;
+      });
+    } catch (e) {
+      debugPrint('Failed to load curated symbols: $e');
+    }
   }
 
   Future<void> _saveState() async {
@@ -123,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _lowerLevelController.dispose();
     _upperLevelController.dispose();
     _symbolController.dispose();
+    _symbolSearchService.cancelPending();
     super.dispose();
   }
 
@@ -134,8 +152,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadRsiData() async {
-    // Save previous symbol for rollback in case of error
+  void _syncSymbolFieldText(String value) {
+    _symbolController.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+  }
+
+  Future<void> _loadRsiData({String? symbol}) async {
+    final requestedSymbol = (symbol ?? _selectedSymbol).trim().toUpperCase();
+    if (requestedSymbol.isEmpty) {
+      return;
+    }
+
     final previousSymbol = _selectedSymbol;
 
     setState(() {
@@ -154,50 +183,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final candles = await _yahooService.fetchCandles(
-        _selectedSymbol,
+        requestedSymbol,
         _selectedTimeframe,
         limit: limit,
       );
 
       debugPrint(
-          'HomeScreen: Received ${candles.length} candles for $_selectedSymbol $_selectedTimeframe (limit was $limit)');
+          'HomeScreen: Received ${candles.length} candles for $requestedSymbol $_selectedTimeframe (limit was $limit)');
 
       if (candles.isEmpty) {
-        // Rollback symbol if no data
-        setState(() {
-          _selectedSymbol = previousSymbol;
-          _symbolController.text = previousSymbol;
-        });
-
-        String message = loc.t('home_no_data_for_timeframe',
-            params: {'timeframe': _selectedTimeframe});
-        // Add hint for large timeframes and weekends
-        if (_selectedTimeframe == '4h' || _selectedTimeframe == '1d') {
-          final now = DateTime.now();
-          final dayOfWeek = now.weekday; // 1 = Monday, 7 = Sunday
-          if (dayOfWeek == 6 || dayOfWeek == 7) {
-            message += '\n${loc.t('home_weekend_hint')}';
-          } else {
-            message += '\n${loc.t('home_large_timeframe_hint')}';
-          }
-        } else {
-          message += '\n${loc.t('home_check_symbol_hint')}';
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              duration: const Duration(seconds: 6),
-            ),
-          );
-        }
-        setState(() {
-          _rsiValues = [];
-          _rsiTimestamps = [];
-          _currentRsi = 0.0;
-        });
-        return;
+        throw YahooException(
+            'No data for $requestedSymbol $_selectedTimeframe');
       }
 
       final closes = candles.map((c) => c.close).toList();
@@ -285,29 +281,49 @@ class _HomeScreenState extends State<HomeScreen> {
           : rsiTimestamps;
 
       setState(() {
+        _selectedSymbol = requestedSymbol;
         _rsiValues = chartRsiValues;
         _rsiTimestamps = chartRsiTimestamps;
         _currentRsi = rsiValues.isNotEmpty ? rsiValues.last : 0.0;
+        _syncSymbolFieldText(requestedSymbol);
       });
+      await _saveState();
     } catch (e, stackTrace) {
-      // Rollback symbol on error
-      setState(() {
-        _selectedSymbol = previousSymbol;
-        _symbolController.text = previousSymbol;
-      });
+      if (symbol != null) {
+        _syncSymbolFieldText(previousSymbol);
+      }
       // Detailed error logging
       debugPrint('Error loading RSI data:');
-      debugPrint('Symbol: $_selectedSymbol');
+      debugPrint('Symbol: $requestedSymbol');
       debugPrint('Timeframe: $_selectedTimeframe');
       debugPrint('Error: $e');
       debugPrint('Stack trace: $stackTrace');
 
       if (mounted) {
+        String message;
+        if (e is YahooException && e.message.contains('No data')) {
+          message = loc.t('home_no_data_for_timeframe',
+              params: {'timeframe': _selectedTimeframe});
+          if (_selectedTimeframe == '4h' || _selectedTimeframe == '1d') {
+            final now = DateTime.now();
+            final dayOfWeek = now.weekday;
+            if (dayOfWeek == 6 || dayOfWeek == 7) {
+              message += '\n${loc.t('home_weekend_hint')}';
+            } else {
+              message += '\n${loc.t('home_large_timeframe_hint')}';
+            }
+          } else {
+            message += '\n${loc.t('home_check_symbol_hint')}';
+          }
+        } else {
+          message = symbol == null
+              ? loc.t('common_error')
+              : loc.t('home_instrument_not_found');
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              loc.t('home_instrument_not_found'),
-            ),
+            content: Text(message),
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: loc.t('common_details'),
@@ -322,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(loc.t('home_error_label_symbol',
-                              params: {'symbol': _selectedSymbol})),
+                              params: {'symbol': requestedSymbol})),
                           Text(loc.t('home_error_label_timeframe',
                               params: {'timeframe': _selectedTimeframe})),
                           const SizedBox(height: 8),
@@ -415,29 +431,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 behavior: HitTestBehavior.opaque,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Symbol and timeframe selection
                       _buildSymbolSelector(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // RSI settings
                       _buildRsiSettingsCard(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Current RSI
                       _buildCurrentRsiCard(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // RSI chart
                       _buildRsiChart(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Active alerts
                       _buildActiveAlerts(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Quick actions
                       _buildQuickActions(),
@@ -463,11 +480,26 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              loc.t('home_instrument_label'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    loc.t('home_instrument_label'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.bookmark_add),
+                  tooltip: loc.t('home_add_watchlist'),
+                  onPressed: () => _addToWatchlist(_selectedSymbol),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -476,57 +508,44 @@ class _HomeScreenState extends State<HomeScreen> {
                     optionsBuilder: (TextEditingValue textEditingValue) async {
                       final query = textEditingValue.text.trim();
 
-                      // If field is empty - show all popular symbols
                       if (query.isEmpty) {
-                        // Reset loading flag if it was set
-                        if (_isSearchingSymbols && mounted) {
-                          setState(() {
-                            _isSearchingSymbols = false;
-                          });
+                        if (_popularSymbols.isEmpty) {
+                          try {
+                            final popular =
+                                await _symbolSearchService.getPopularSymbols();
+                            if (mounted) {
+                              setState(() {
+                                _popularSymbols = popular;
+                              });
+                            }
+                            return popular.take(40);
+                          } catch (_) {
+                            return const Iterable<SymbolInfo>.empty();
+                          }
                         }
-
-                        // Show all popular symbols
-                        try {
-                          final popularSymbols =
-                              await _yahooService.fetchPopularSymbols();
-                          return popularSymbols.map((s) => SymbolInfo(
-                                symbol: s,
-                                name: s,
-                                type: 'unknown',
-                                currency: 'USD',
-                                exchange: 'Unknown',
-                              ));
-                        } catch (e) {
-                          return const Iterable<SymbolInfo>.empty();
-                        }
+                        return _popularSymbols.take(40);
                       }
 
-                      // For single character also show popular symbols, but filtered
                       if (query.length == 1) {
-                        if (_isSearchingSymbols && mounted) {
-                          setState(() {
-                            _isSearchingSymbols = false;
-                          });
+                        final upper = query.toUpperCase();
+                        if (_popularSymbols.isEmpty) {
+                          try {
+                            final popular =
+                                await _symbolSearchService.getPopularSymbols();
+                            if (mounted) {
+                              setState(() {
+                                _popularSymbols = popular;
+                              });
+                            }
+                          } catch (_) {
+                            return const Iterable<SymbolInfo>.empty();
+                          }
                         }
-                        try {
-                          final popularSymbols =
-                              await _yahooService.fetchPopularSymbols();
-                          // Filter by first character
-                          final filtered = popularSymbols.where((s) =>
-                              s.toUpperCase().startsWith(query.toUpperCase()));
-                          return filtered.map((s) => SymbolInfo(
-                                symbol: s,
-                                name: s,
-                                type: 'unknown',
-                                currency: 'USD',
-                                exchange: 'Unknown',
-                              ));
-                        } catch (e) {
-                          return const Iterable<SymbolInfo>.empty();
-                        }
+                        return _popularSymbols
+                            .where((symbol) => _matchesSymbol(symbol, upper))
+                            .take(25);
                       }
 
-                      // For search with 2+ characters
                       if (!_isSearchingSymbols && mounted) {
                         setState(() {
                           _isSearchingSymbols = true;
@@ -534,16 +553,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
 
                       try {
-                        final results =
-                            await _yahooService.searchSymbols(query);
-                        if (mounted) {
-                          setState(() {
-                            _isSearchingSymbols = false;
-                          });
+                        final suggestions = await _symbolSearchService
+                            .resolveSuggestions(query);
+                        if (!mounted) {
+                          return const Iterable<SymbolInfo>.empty();
                         }
-                        // Show all results, don't limit
-                        return results;
+                        setState(() {
+                          _isSearchingSymbols = false;
+                        });
+                        if (suggestions.isEmpty) {
+                          return const Iterable<SymbolInfo>.empty();
+                        }
+                        return suggestions;
                       } catch (e) {
+                        debugPrint('Symbol search failed: $e');
                         if (mounted) {
                           setState(() {
                             _isSearchingSymbols = false;
@@ -579,17 +602,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             _symbolController.clear();
                           }
                         },
-                        onFieldSubmitted: (String value) {
+                        onFieldSubmitted: (String value) async {
                           // Allow direct symbol input even if it's not in the list
                           final trimmedValue = value.trim().toUpperCase();
-                          if (trimmedValue.isNotEmpty &&
-                              trimmedValue != _selectedSymbol) {
-                            setState(() {
-                              _selectedSymbol = trimmedValue;
-                              _symbolController.text = trimmedValue;
-                            });
-                            _saveState();
-                            _loadRsiData();
+                          if (trimmedValue.isNotEmpty) {
+                            final normalized = trimmedValue.toUpperCase();
+                            _syncSymbolFieldText(normalized);
+                            if (normalized != _selectedSymbol) {
+                              await _loadRsiData(symbol: normalized);
+                            }
                           }
                           // Remove focus on submit
                           focusNode.unfocus();
@@ -617,15 +638,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       );
                     },
-                    onSelected: (SymbolInfo selection) {
-                      _symbolController.text = selection.symbol;
-                      // Update symbol and load data
-                      // If loading fails, symbol will be rolled back in _loadRsiData
-                      setState(() {
-                        _selectedSymbol = selection.symbol;
-                      });
-                      _saveState();
-                      _loadRsiData();
+                    onSelected: (SymbolInfo selection) async {
+                      final normalized = selection.symbol.toUpperCase();
+                      _syncSymbolFieldText(normalized);
+                      if (normalized != _selectedSymbol) {
+                        await _loadRsiData(symbol: normalized);
+                      }
                       // Remove focus after selection
                       FocusScope.of(context).unfocus();
                     },
@@ -634,6 +652,25 @@ class _HomeScreenState extends State<HomeScreen> {
                       AutocompleteOnSelected<SymbolInfo> onSelected,
                       Iterable<SymbolInfo> options,
                     ) {
+                      if (options.isEmpty) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4.0,
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: Center(
+                                child: Text(
+                                  loc.t('search_no_results'),
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
                       return Align(
                         alignment: Alignment.topLeft,
                         child: Material(
@@ -654,37 +691,82 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: Padding(
                                     padding: const EdgeInsets.all(16.0),
                                     child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                option.symbol,
-                                                style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold),
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 4,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    option.symbol,
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  if (option.type.isNotEmpty)
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors
+                                                            .blueGrey[900],
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
+                                                      ),
+                                                      child: Text(
+                                                        option.displayType,
+                                                        style: const TextStyle(
+                                                          fontSize: 10,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
-                                              if (option.name != option.symbol)
-                                                Text(
-                                                  option.name,
-                                                  style: TextStyle(
+                                              if (option.name.isNotEmpty &&
+                                                  option.name != option.symbol)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 4.0),
+                                                  child: Text(
+                                                    option.name,
+                                                    style: TextStyle(
                                                       fontSize: 12,
-                                                      color: Colors.grey[600]),
+                                                      color: Colors.grey[500],
+                                                    ),
+                                                  ),
+                                                ),
+                                              if (option
+                                                  .shortExchange.isNotEmpty)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 2.0),
+                                                  child: Text(
+                                                    option.shortExchange,
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
                                                 ),
                                             ],
                                           ),
                                         ),
-                                        if (option.type != 'unknown')
-                                          Chip(
-                                            label: Text(
-                                              option.type,
-                                              style:
-                                                  const TextStyle(fontSize: 10),
-                                            ),
-                                            padding: EdgeInsets.zero,
-                                          ),
                                       ],
                                     ),
                                   ),
@@ -697,13 +779,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.bookmark_add),
-                  tooltip: loc.t('home_add_watchlist'),
-                  onPressed: () => _addToWatchlist(_selectedSymbol),
-                ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _selectedTimeframe,
@@ -715,7 +791,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           horizontal: 12, vertical: 16),
                     ),
                     isExpanded: true,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                     items: const [
                       DropdownMenuItem(value: '1m', child: Text('1m')),
                       DropdownMenuItem(value: '5m', child: Text('5m')),
@@ -1196,6 +1275,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+  }
+
+  bool _matchesSymbol(SymbolInfo info, String upper) {
+    final symbolUpper = info.symbol.toUpperCase();
+    final nameUpper = info.name.toUpperCase();
+    return symbolUpper.startsWith(upper) || nameUpper.startsWith(upper);
   }
 
   RsiZone _getRsiZone(double rsi) {

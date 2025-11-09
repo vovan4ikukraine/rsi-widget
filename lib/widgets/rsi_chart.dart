@@ -38,7 +38,7 @@ class RsiChart extends StatelessWidget {
       return _buildEmptyChart(context);
     }
 
-    return Container(
+    final chart = Container(
       height: isInteractive ? 200 : 50, // Fixed height 50 for compact mode
       padding: isInteractive
           ? const EdgeInsets.only(left: 4, right: 4, top: 8, bottom: 8)
@@ -47,6 +47,7 @@ class RsiChart extends StatelessWidget {
         LineChartData(
           minY: 0,
           maxY: 100,
+          clipData: const FlClipData.all(),
           gridData: showGrid ? _buildGridData() : const FlGridData(show: false),
           titlesData:
               showLabels ? _buildTitlesData() : const FlTitlesData(show: false),
@@ -58,6 +59,10 @@ class RsiChart extends StatelessWidget {
               : _buildCompactLineTouchData(), // Compact mode with tooltip
         ),
       ),
+    );
+
+    return ClipRect(
+      child: chart,
     );
   }
 
@@ -108,36 +113,15 @@ class RsiChart extends StatelessWidget {
       show: true,
       rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      bottomTitles: AxisTitles(
-        sideTitles: SideTitles(
-          showTitles: isInteractive, // Show dates only in interactive mode
-          reservedSize:
-              isInteractive ? 40 : 0, // In compact mode don't reserve space
-          interval: _calculateTimeInterval(),
-          getTitlesWidget: (value, meta) {
-            final label = _formatTimeLabel(value);
-            if (label.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                label,
-                style: const TextStyle(fontSize: 10),
-                textAlign: TextAlign.center,
-              ),
-            );
-          },
-        ),
+      bottomTitles: const AxisTitles(
+        sideTitles: SideTitles(showTitles: false),
       ),
       leftTitles: AxisTitles(
         sideTitles: SideTitles(
-          showTitles: showLabels, // Show labels only if showLabels = true
-          reservedSize: isInteractive
-              ? 30
-              : 25, // Reduced from 40 to 30 for interactive mode
-          interval:
-              isInteractive ? 20 : 25, // For compact mode: 0, 25, 50, 75, 100
+          showTitles: showLabels,
+          reservedSize: isInteractive ? 30 : 25,
+          interval: isInteractive ? 20 : 25,
           getTitlesWidget: (value, meta) {
-            // In compact mode show only main values
             if (!isInteractive &&
                 value != 0 &&
                 value != 25 &&
@@ -150,10 +134,7 @@ class RsiChart extends StatelessWidget {
               padding: const EdgeInsets.only(right: 2),
               child: Text(
                 value.toInt().toString(),
-                style: TextStyle(
-                  fontSize:
-                      isInteractive ? 10 : 8, // Smaller font for compact mode
-                ),
+                style: TextStyle(fontSize: isInteractive ? 10 : 8),
                 textAlign: TextAlign.right,
               ),
             );
@@ -234,13 +215,24 @@ class RsiChart extends StatelessWidget {
       enabled: true,
       touchTooltipData: LineTouchTooltipData(
         getTooltipColor: (spot) => Colors.blue.withValues(alpha: 0.8),
+        tooltipMargin: 8,
+        fitInsideHorizontally: true,
+        fitInsideVertically: true,
         getTooltipItems: (touchedSpots) {
-          return touchedSpots.map((spot) {
-            return LineTooltipItem(
-              spot.y.toStringAsFixed(1),
+          final firstSpot = touchedSpots.first;
+          final index = firstSpot.x.toInt().clamp(0, timestamps.length - 1);
+          final timestamp = timestamps[index];
+          final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+
+          final formatted = _formatTooltipDate(date);
+          final currentValue = firstSpot.y.toStringAsFixed(1);
+
+          return [
+            LineTooltipItem(
+              'RSI: $currentValue\n$formatted',
               const TextStyle(color: Colors.white, fontSize: 11),
-            );
-          }).toList();
+            ),
+          ];
         },
         tooltipPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
@@ -273,45 +265,23 @@ class RsiChart extends StatelessWidget {
       enabled: true,
       touchTooltipData: LineTouchTooltipData(
         getTooltipColor: (spot) => Colors.blue.withValues(alpha: 0.8),
+        tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        tooltipMargin: 12,
+        fitInsideHorizontally: true,
+        fitInsideVertically: true,
         getTooltipItems: (touchedSpots) {
-          return touchedSpots.map((spot) {
-            final index = spot.x.toInt();
-            String dateTimeStr = '';
+          if (touchedSpots.isEmpty) return [];
+          final spot = touchedSpots.first;
+          final index = spot.x.toInt().clamp(0, timestamps.length - 1);
+          final date = DateTime.fromMillisecondsSinceEpoch(timestamps[index]);
+          final formatted = _formatTooltipDate(date);
 
-            // Get date and time for this point
-            if (index >= 0 && index < timestamps.length) {
-              final timestamp = timestamps[index];
-              final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-
-              // Format date and time depending on timeframe
-              switch (timeframe) {
-                case '1m':
-                case '5m':
-                case '15m':
-                case '30m':
-                  dateTimeStr =
-                      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-                  break;
-                case '1h':
-                case '4h':
-                  dateTimeStr =
-                      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:00';
-                  break;
-                case '1d':
-                  dateTimeStr =
-                      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-                  break;
-                default:
-                  dateTimeStr =
-                      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-              }
-            }
-
-            return LineTooltipItem(
-              'RSI: ${spot.y.toStringAsFixed(1)}\n$dateTimeStr',
+          return [
+            LineTooltipItem(
+              'RSI: ${spot.y.toStringAsFixed(1)}\n$formatted',
               const TextStyle(color: Colors.white, fontSize: 12),
-            );
-          }).toList();
+            ),
+          ];
         },
       ),
       getTouchedSpotIndicator: (barData, spotIndexes) {
@@ -335,6 +305,25 @@ class RsiChart extends StatelessWidget {
     );
   }
 
+  String _formatTooltipDate(DateTime date) {
+    switch (timeframe) {
+      case '1m':
+      case '5m':
+      case '15m':
+      case '30m':
+        return '${_two(date.day)}/${_two(date.month)}/${date.year} ${_two(date.hour)}:${_two(date.minute)}';
+      case '1h':
+      case '4h':
+        return '${_two(date.day)}/${_two(date.month)}/${date.year} ${_two(date.hour)}:00';
+      case '1d':
+        return '${_two(date.day)}/${_two(date.month)}/${date.year}';
+      default:
+        return '${_two(date.day)}/${_two(date.month)}/${date.year} ${_two(date.hour)}:${_two(date.minute)}';
+    }
+  }
+
+  String _two(int value) => value.toString().padLeft(2, '0');
+
   Color _getRsiColor(double rsi) {
     if (rsi < 30) return Colors.red;
     if (rsi > 70) return Colors.green;
@@ -345,49 +334,6 @@ class RsiChart extends StatelessWidget {
     if (level <= 30) return Colors.red;
     if (level >= 70) return Colors.green;
     return Colors.orange;
-  }
-
-  double _calculateTimeInterval() {
-    final length = rsiValues.length;
-    // Calculate interval depending on number of points
-    // For large timeframes show fewer labels
-    if (length <= 10) return 1;
-    if (length <= 20) return 2;
-    if (length <= 50) return length / 5;
-    if (length <= 100) return length / 4;
-    if (length <= 200) return length / 3;
-    return length / 2; // For very large charts show only 2 labels
-  }
-
-  String _formatTimeLabel(double value) {
-    final index = value.toInt();
-    if (index < 0 || index >= rsiValues.length || index >= timestamps.length) {
-      return '';
-    }
-
-    // Use real timestamps for date formatting
-    final timestamp = timestamps[index];
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-
-    // Format depending on timeframe
-    switch (timeframe) {
-      case '1m':
-      case '5m':
-      case '15m':
-      case '30m':
-        // For minute timeframes show time
-        return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      case '1h':
-      case '4h':
-        // For hourly timeframes show date and hour
-        return '${date.day}/${date.month} ${date.hour.toString().padLeft(2, '0')}';
-      case '1d':
-        // For daily timeframes show only date
-        return '${date.day}/${date.month}';
-      default:
-        // By default show date and time
-        return '${date.day}/${date.month} ${date.hour.toString().padLeft(2, '0')}';
-    }
   }
 }
 

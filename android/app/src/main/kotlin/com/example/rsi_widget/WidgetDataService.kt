@@ -1,7 +1,6 @@
 package com.example.rsi_widget
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,11 +28,11 @@ object WidgetDataService {
         return withContext(Dispatchers.IO) {
             try {
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                
+
                 // Load watchlist from SharedPreferences
                 var watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
                 var watchlist = parseWatchlist(watchlistJson)
-                
+
                 // If watchlist is empty, try to extract symbols from existing data
                 if (watchlist.isEmpty()) {
                     Log.d(TAG, "Watchlist symbols is empty, trying to extract from existing data")
@@ -57,25 +56,25 @@ object WidgetDataService {
                         }
                     }
                 }
-                
+
                 if (watchlist.isEmpty()) {
                     Log.d(TAG, "Watchlist is still empty after extraction attempt")
                     return@withContext false
                 }
-                
+
                 Log.d(TAG, "Using watchlist with ${watchlist.size} symbols: $watchlist")
-                
+
                 // Load widget settings
                 val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
                 // Use period from widget if set, otherwise from general settings
-                val rsiPeriod = prefs.getInt("rsi_widget_period", 
+                val rsiPeriod = prefs.getInt("rsi_widget_period",
                     prefs.getInt("rsi_period", 14))
-                
+
                 Log.d(TAG, "Loading data with timeframe: $timeframe, period: $rsiPeriod")
-                
+
                 // Load data for each symbol
                 val widgetData = mutableListOf<WidgetItem>()
-                
+
                 for (symbol in watchlist) {
                     try {
                         Log.d(TAG, "Loading data for symbol: $symbol with timeframe: $timeframe, period: $rsiPeriod")
@@ -92,9 +91,9 @@ object WidgetDataService {
                         // Continue loading other symbols
                     }
                 }
-                
+
                 Log.d(TAG, "Total loaded ${widgetData.size} items out of ${watchlist.size} symbols")
-                
+
                 // Save updated data (use commit for synchronous save)
                 val jsonData = widgetDataToJson(widgetData)
                 val editor = prefs.edit()
@@ -102,7 +101,7 @@ object WidgetDataService {
                 editor.putString("timeframe", timeframe)
                 editor.putInt("rsi_period", rsiPeriod)
                 val saved = editor.commit() // commit() executes synchronously
-                
+
                 if (saved) {
                     // Verify that data was actually saved
                     val verifyJson = prefs.getString("watchlist_data", null)
@@ -125,7 +124,7 @@ object WidgetDataService {
             }
         }
     }
-    
+
     /**
      * Loads data for one symbol
      */
@@ -139,34 +138,34 @@ object WidgetDataService {
                     .url(url)
                     .header("accept", "application/json")
                     .build()
-                
+
                 val response = httpClient.newCall(request).execute()
                 if (!response.isSuccessful) {
                     Log.e(TAG, "Failed to load candles for $symbol: HTTP ${response.code}, body: ${response.body?.string()}")
                     return@withContext null
                 }
-                
+
                 val responseBody = response.body?.string() ?: return@withContext null
                 Log.d(TAG, "Received response for $symbol: ${responseBody.length} bytes")
                 val candles = parseCandles(responseBody)
-                
+
                 if (candles.isEmpty()) {
                     Log.w(TAG, "No candles parsed for $symbol")
                     return@withContext null
                 }
-                
+
                 Log.d(TAG, "Parsed ${candles.size} candles for $symbol")
-                
+
                 // Calculate RSI
                 val closes = candles.map { it.close }
                 Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
                 val rsiValues = calculateRSI(closes, rsiPeriod)
-                
+
                 if (rsiValues.isEmpty()) {
                     Log.w(TAG, "RSI calculation returned empty for $symbol (need at least ${rsiPeriod + 1} closes)")
                     return@withContext null
                 }
-                
+
                 val currentRsi = rsiValues.last()
                 val currentPrice = closes.last()
                 // Take last 20 values for chart
@@ -175,9 +174,9 @@ object WidgetDataService {
                 } else {
                     rsiValues
                 }
-                
+
                 Log.d(TAG, "Calculated RSI for $symbol: current=$currentRsi, chart values=${chartValues.size}, first=${chartValues.firstOrNull()}, last=${chartValues.lastOrNull()}")
-                
+
                 return@withContext WidgetItem(
                     symbol = symbol,
                     rsi = currentRsi,
@@ -190,7 +189,7 @@ object WidgetDataService {
             }
         }
     }
-    
+
     /**
      * Parses watchlist from JSON
      */
@@ -203,7 +202,7 @@ object WidgetDataService {
             emptyList()
         }
     }
-    
+
     /**
      * Parses candles from JSON response
      */
@@ -226,7 +225,7 @@ object WidgetDataService {
             emptyList()
         }
     }
-    
+
     /**
      * Calculates RSI using Wilder's algorithm
      */
@@ -234,9 +233,9 @@ object WidgetDataService {
         if (closes.size < period + 1) {
             return emptyList()
         }
-        
+
         val rsiValues = mutableListOf<Double>()
-        
+
         // Calculate initial average values
         var gain = 0.0
         var loss = 0.0
@@ -248,20 +247,20 @@ object WidgetDataService {
                 loss -= change
             }
         }
-        
+
         var au = gain / period // Average Up
         var ad = loss / period // Average Down
-        
+
         // Incremental calculation for remaining points
         for (i in (period + 1) until closes.size) {
             val change = closes[i] - closes[i - 1]
             val u = if (change > 0) change else 0.0
             val d = if (change < 0) -change else 0.0
-            
+
             // Update using Wilder's formula
             au = (au * (period - 1) + u) / period
             ad = (ad * (period - 1) + d) / period
-            
+
             // Calculate RSI
             val rsi = if (ad == 0.0) {
                 100.0
@@ -271,10 +270,10 @@ object WidgetDataService {
             }
             rsiValues.add(rsi.coerceIn(0.0, 100.0))
         }
-        
+
         return rsiValues
     }
-    
+
     /**
      * Converts widget data to JSON
      */
@@ -294,7 +293,7 @@ object WidgetDataService {
         }
         return array.toString()
     }
-    
+
     /**
      * Candle data
      */
@@ -306,7 +305,7 @@ object WidgetDataService {
         val volume: Long,
         val timestamp: Long
     )
-    
+
     /**
      * Widget item
      */

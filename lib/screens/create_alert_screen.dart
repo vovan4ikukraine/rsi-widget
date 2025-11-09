@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
+import '../services/symbol_search_service.dart';
 import '../localization/app_localizations.dart';
 
 class CreateAlertScreen extends StatefulWidget {
@@ -35,10 +36,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _soundEnabled = true;
   bool _isLoading = false;
   bool _isSearchingSymbols = false;
+  late final SymbolSearchService _symbolSearchService;
+  List<SymbolInfo> _popularSymbols = [];
 
   @override
   void initState() {
     super.initState();
+    _symbolSearchService = SymbolSearchService(_yahooService);
+    _loadPopularSymbols();
     if (widget.alert != null) {
       _loadAlertData();
     }
@@ -56,6 +61,26 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _cooldownSec = alert.cooldownSec;
     _repeatable = alert.repeatable;
     _soundEnabled = alert.soundEnabled;
+  }
+
+  Future<void> _loadPopularSymbols() async {
+    try {
+      final popular = await _symbolSearchService.getPopularSymbols();
+      if (!mounted) return;
+      setState(() {
+        _popularSymbols = popular;
+      });
+    } catch (e) {
+      debugPrint('Failed to load curated symbols: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _symbolController.dispose();
+    _descriptionController.dispose();
+    _symbolSearchService.cancelPending();
+    super.dispose();
   }
 
   @override
@@ -123,61 +148,51 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               optionsBuilder: (TextEditingValue textEditingValue) async {
                 final query = textEditingValue.text.trim();
 
-                // If editing and symbol already selected and user is not editing - don't search
                 if (widget.alert != null &&
                     query == widget.alert!.symbol &&
                     textEditingValue.selection.baseOffset ==
                         textEditingValue.selection.extentOffset) {
-                  // User is not editing - don't show loading
                   return const Iterable<SymbolInfo>.empty();
                 }
 
                 if (query.isEmpty) {
-                  // Show popular symbols if text is empty (only once)
-                  if (!_isSearchingSymbols) {
-                    if (mounted) {
-                      setState(() {
-                        _isSearchingSymbols = true;
-                      });
-                    }
+                  if (_popularSymbols.isEmpty) {
                     try {
-                      final popularSymbols =
-                          await _yahooService.fetchPopularSymbols();
+                      final popular =
+                          await _symbolSearchService.getPopularSymbols();
                       if (mounted) {
                         setState(() {
-                          _isSearchingSymbols = false;
+                          _popularSymbols = popular;
                         });
                       }
-                      return popularSymbols.take(10).map((s) => SymbolInfo(
-                            symbol: s,
-                            name: s,
-                            type: 'unknown',
-                            currency: 'USD',
-                            exchange: 'Unknown',
-                          ));
-                    } catch (e) {
-                      if (mounted) {
-                        setState(() {
-                          _isSearchingSymbols = false;
-                        });
-                      }
+                      return popular.take(30);
+                    } catch (_) {
                       return const Iterable<SymbolInfo>.empty();
                     }
                   }
-                  return const Iterable<SymbolInfo>.empty();
+                  return _popularSymbols.take(30);
                 }
 
-                if (query.length < 2) {
-                  // Reset loading if query is too short
-                  if (_isSearchingSymbols && mounted) {
-                    setState(() {
-                      _isSearchingSymbols = false;
-                    });
+                if (query.length == 1) {
+                  final upper = query.toUpperCase();
+                  if (_popularSymbols.isEmpty) {
+                    try {
+                      final popular =
+                          await _symbolSearchService.getPopularSymbols();
+                      if (mounted) {
+                        setState(() {
+                          _popularSymbols = popular;
+                        });
+                      }
+                    } catch (_) {
+                      return const Iterable<SymbolInfo>.empty();
+                    }
                   }
-                  return const Iterable<SymbolInfo>.empty();
+                  return _popularSymbols
+                      .where((symbol) => _matchesSymbol(symbol, upper))
+                      .take(20);
                 }
 
-                // Search symbols on input (only if not already searching)
                 if (!_isSearchingSymbols && mounted) {
                   setState(() {
                     _isSearchingSymbols = true;
@@ -185,14 +200,20 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 }
 
                 try {
-                  final results = await _yahooService.searchSymbols(query);
-                  if (mounted) {
-                    setState(() {
-                      _isSearchingSymbols = false;
-                    });
+                  final suggestions =
+                      await _symbolSearchService.resolveSuggestions(query);
+                  if (!mounted) {
+                    return const Iterable<SymbolInfo>.empty();
                   }
-                  return results;
+                  setState(() {
+                    _isSearchingSymbols = false;
+                  });
+                  if (suggestions.isEmpty) {
+                    return const Iterable<SymbolInfo>.empty();
+                  }
+                  return suggestions;
                 } catch (e) {
+                  debugPrint('Symbol search failed: $e');
                   if (mounted) {
                     setState(() {
                       _isSearchingSymbols = false;
@@ -239,16 +260,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   ),
                   onChanged: (value) {
                     _symbolController.text = value;
-                    // Reset loading indicator if text changed and became short
-                    if (_isSearchingSymbols && value.trim().length < 2) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() {
-                            _isSearchingSymbols = false;
-                          });
-                        }
-                      });
-                    }
                   },
                   validator: (value) {
                     if (value == null ||
@@ -267,12 +278,31 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               optionsViewBuilder: (BuildContext context,
                   AutocompleteOnSelected<SymbolInfo> onSelected,
                   Iterable<SymbolInfo> options) {
+                if (options.isEmpty) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4.0,
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: Center(
+                          child: Text(
+                            loc.t('search_no_results'),
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
                 return Align(
                   alignment: Alignment.topLeft,
                   child: Material(
                     elevation: 4.0,
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 220),
                       child: ListView.builder(
                         padding: EdgeInsets.zero,
                         shrinkWrap: true,
@@ -284,36 +314,74 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          option.symbol,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            Text(
+                                              option.symbol,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                            if (option.type.isNotEmpty)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blueGrey[900],
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  option.displayType,
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
-                                        if (option.name != option.symbol)
-                                          Text(
-                                            option.name,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[600],
+                                        if (option.name.isNotEmpty &&
+                                            option.name != option.symbol)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 4.0),
+                                            child: Text(
+                                              option.name,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[500],
+                                              ),
+                                            ),
+                                          ),
+                                        if (option.shortExchange.isNotEmpty)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 2.0),
+                                            child: Text(
+                                              option.shortExchange,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey[600],
+                                              ),
                                             ),
                                           ),
                                       ],
                                     ),
                                   ),
-                                  if (option.type != 'unknown')
-                                    Chip(
-                                      label: Text(
-                                        option.type,
-                                        style: const TextStyle(fontSize: 10),
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                    ),
                                 ],
                               ),
                             ),
@@ -585,6 +653,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         ),
       ),
     );
+  }
+
+  bool _matchesSymbol(SymbolInfo info, String upper) {
+    final symbolUpper = info.symbol.toUpperCase();
+    final nameUpper = info.name.toUpperCase();
+    return symbolUpper.startsWith(upper) || nameUpper.startsWith(upper);
   }
 
   Widget _buildAdvancedSettingsCard(AppLocalizations loc) {

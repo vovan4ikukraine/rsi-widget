@@ -7,6 +7,7 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.rsi_widget/widget"
@@ -25,6 +26,7 @@ class MainActivity: FlutterActivity() {
                         val watchlistData = call.argument<String>("watchlistData")
                         val timeframe = call.argument<String>("timeframe") ?: "15m"
                         val rsiPeriod = call.argument<Int>("rsiPeriod") ?: 14
+                        val watchlistSymbols = call.argument<List<String>>("watchlistSymbols")
                         
                         Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod")
                         
@@ -34,6 +36,9 @@ class MainActivity: FlutterActivity() {
                             putString("watchlist_data", watchlistData)
                             putString("timeframe", timeframe)
                             putInt("rsi_period", rsiPeriod)
+                            watchlistSymbols?.let {
+                                putString("watchlist_symbols", JSONArray(it).toString())
+                            }
                             apply()
                         }
                         

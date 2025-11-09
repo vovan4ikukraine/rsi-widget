@@ -106,6 +106,7 @@ class WidgetService {
         'watchlistData': jsonData,
         'timeframe': finalTimeframe,
         'rsiPeriod': finalPeriod,
+        'watchlistSymbols': watchlistSymbols,
       });
 
       print('Widget updated with ${widgetData.length} items');

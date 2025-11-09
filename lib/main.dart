@@ -92,7 +92,48 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
           themeMode: widget.appState.themeMode,
           theme: ThemeData(
             useMaterial3: true,
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: const Color(0xFFF4F6FB),
+            cardTheme: CardThemeData(
+              color: Colors.white,
+              elevation: 6,
+              shadowColor: Colors.black.withValues(alpha: 0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: const Color(0xFFFCFDFF),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFD8DEEB)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFD8DEEB)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                    color: Colors.blue.withValues(alpha: 0.5), width: 1.6),
+              ),
+            ),
+            dropdownMenuTheme: DropdownMenuThemeData(
+              textStyle: TextStyle(
+                color: Colors.blueGrey[900],
+                fontSize: 14,
+              ),
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Colors.black87,
+              elevation: 0,
+            ),
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
@@ -100,6 +141,44 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
             colorScheme: ColorScheme.fromSeed(
               seedColor: Colors.blue,
               brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF11141C),
+            cardTheme: CardThemeData(
+              color: const Color(0xFF1C212C),
+              elevation: 4,
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: const Color(0xFF181C26),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFF2C3342)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFF2C3342)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                    color: Colors.blue.withValues(alpha: 0.5), width: 1.5),
+              ),
+            ),
+            dropdownMenuTheme: const DropdownMenuThemeData(
+              textStyle: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              ),
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Colors.white,
+              elevation: 0,
             ),
           ),
           home: HomeScreen(isar: widget.isar),

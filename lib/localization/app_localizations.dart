@@ -135,6 +135,7 @@ class AppLocalizations {
       'home_error_label_timeframe': 'Timeframe: {{timeframe}}',
       'home_error_label': 'Error:',
       'home_close': 'Close',
+      'search_no_results': 'No instruments found',
 
       // Alerts
       'alerts_title': 'RSI Alerts',
@@ -342,6 +343,7 @@ class AppLocalizations {
       'home_error_label_timeframe': 'Таймфрейм: {{timeframe}}',
       'home_error_label': 'Ошибка:',
       'home_close': 'Закрыть',
+      'search_no_results': 'Инструменты не найдены',
 
       // Alerts
       'alerts_title': 'RSI Алерты',

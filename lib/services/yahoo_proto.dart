@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../data/popular_symbols.dart';
+
 final yahooService =
     YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
@@ -241,62 +243,9 @@ class YahooProtoSource {
     }
   }
 
-  /// Get popular symbols
-  Future<List<String>> fetchPopularSymbols() async {
-    return [
-      // US Stocks - Technology
-      'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
-      'AMD', 'INTC', 'CRM', 'ADBE', 'PYPL', 'UBER', 'SQ', 'NOW', 'SNOW',
-      'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
-
-      // US Stocks - Finance
-      'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW',
-
-      // US Stocks - Consumer Goods
-      'WMT', 'TGT', 'HD', 'NKE', 'SBUX', 'MCD', 'DIS', 'NFLX',
-
-      // US Stocks - Energy
-      'XOM', 'CVX', 'COP', 'SLB', 'EOG',
-
-      // US Stocks - Healthcare
-      'JNJ', 'PFE', 'UNH', 'ABBV', 'TMO', 'ABT', 'MRK',
-
-      // Indices
-      '^GSPC', // S&P 500
-      '^DJI', // Dow Jones
-      '^IXIC', // NASDAQ
-      '^RUT', // Russell 2000
-
-      // Forex - Major pairs
-      'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X',
-      'USDCHF=X', 'NZDUSD=X', 'EURGBP=X', 'EURJPY=X', 'GBPJPY=X',
-      'EURCHF=X', 'AUDJPY=X', 'NZDJPY=X', 'CADJPY=X', 'CHFJPY=X',
-
-      // Forex - Cross pairs
-      'EURCAD=X', 'EURAUD=X', 'EURNZD=X', 'GBPCAD=X', 'GBPAUD=X',
-      'GBPNZD=X', 'AUDCAD=X', 'AUDNZD=X', 'CADCHF=X',
-
-      // Cryptocurrencies
-      'BTC-USD', 'ETH-USD', 'BNB-USD', 'ADA-USD', 'SOL-USD',
-      'XRP-USD', 'DOGE-USD', 'DOT-USD', 'MATIC-USD', 'AVAX-USD',
-      'LINK-USD', 'UNI-USD', 'ATOM-USD', 'ALGO-USD', 'VET-USD',
-
-      // Commodities
-      'GC=F', // Gold
-      'SI=F', // Silver
-      'CL=F', // Crude Oil
-      'NG=F', // Natural Gas
-      'ZC=F', // Corn
-      'ZS=F', // Soybeans
-
-      // ETF
-      'SPY', // S&P 500 ETF
-      'QQQ', // NASDAQ ETF
-      'DIA', // Dow ETF
-      'IWM', // Russell 2000 ETF
-      'GLD', // Gold ETF
-      'SLV', // Silver ETF
-    ];
+  /// Get curated popular symbols list (cached in-app).
+  Future<List<SymbolInfo>> fetchPopularSymbols() async {
+    return popularSymbols;
   }
 
   void dispose() {
@@ -349,7 +298,7 @@ class SymbolInfo {
   final String currency;
   final String exchange;
 
-  SymbolInfo({
+  const SymbolInfo({
     required this.symbol,
     required this.name,
     required this.type,
@@ -372,6 +321,40 @@ class SymbolInfo {
         currency: json['currency'],
         exchange: json['exchange'],
       );
+}
+
+extension SymbolInfoDisplay on SymbolInfo {
+  String get displayType {
+    final normalized = type.toLowerCase();
+    switch (normalized) {
+      case 'equity':
+      case 'stock':
+        return 'Stock';
+      case 'etf':
+        return 'ETF';
+      case 'index':
+        return 'Index';
+      case 'crypto':
+      case 'cryptocurrency':
+        return 'Crypto';
+      case 'currency':
+      case 'forex':
+        return 'FX';
+      case 'commodity':
+        return 'Commodity';
+      case 'future':
+        return 'Future';
+      case 'bond':
+        return 'Bond';
+      default:
+        return type.isEmpty ? 'Asset' : type;
+    }
+  }
+
+  String get shortExchange {
+    if (exchange.isEmpty || exchange == 'Unknown') return '';
+    return exchange;
+  }
 }
 
 /// Yahoo Finance exception
