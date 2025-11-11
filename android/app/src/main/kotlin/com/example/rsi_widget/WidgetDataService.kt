@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 object WidgetDataService {
     private const val TAG = "WidgetDataService"
     private const val YAHOO_ENDPOINT = "https://rsi-workers.vovan4ikukraine.workers.dev"
+    private const val PREF_PENDING_REQUEST_ID = "pending_request_id"
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -24,10 +25,20 @@ object WidgetDataService {
     /**
      * Loads widget data in background
      */
-    suspend fun refreshWidgetData(context: Context): Boolean {
+    suspend fun refreshWidgetData(context: Context, requestId: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+
+                fun isCurrentRequest(): Boolean {
+                    val pending = prefs.getLong(PREF_PENDING_REQUEST_ID, requestId)
+                    return pending == requestId
+                }
+
+                if (!isCurrentRequest()) {
+                    Log.d(TAG, "Request $requestId cancelled before start")
+                    return@withContext false
+                }
 
                 // Load watchlist from SharedPreferences
                 var watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
@@ -62,6 +73,11 @@ object WidgetDataService {
                     return@withContext false
                 }
 
+                if (!isCurrentRequest()) {
+                    Log.d(TAG, "Request $requestId cancelled after watchlist load")
+                    return@withContext false
+                }
+
                 Log.d(TAG, "Using watchlist with ${watchlist.size} symbols: $watchlist")
 
                 // Load widget settings
@@ -76,6 +92,10 @@ object WidgetDataService {
                 val widgetData = mutableListOf<WidgetItem>()
 
                 for (symbol in watchlist) {
+                    if (!isCurrentRequest()) {
+                        Log.d(TAG, "Request $requestId cancelled before loading $symbol")
+                        return@withContext false
+                    }
                     try {
                         Log.d(TAG, "Loading data for symbol: $symbol with timeframe: $timeframe, period: $rsiPeriod")
                         val item = loadSymbolData(symbol, timeframe, rsiPeriod)
@@ -97,6 +117,10 @@ object WidgetDataService {
                 // Save updated data (use commit for synchronous save)
                 val jsonData = widgetDataToJson(widgetData)
                 val editor = prefs.edit()
+                if (!isCurrentRequest()) {
+                    Log.d(TAG, "Request $requestId cancelled before saving data")
+                    return@withContext false
+                }
                 editor.putString("watchlist_data", jsonData)
                 editor.putString("timeframe", timeframe)
                 editor.putInt("rsi_period", rsiPeriod)
@@ -104,7 +128,7 @@ object WidgetDataService {
 
                 if (saved) {
                     // Verify that data was actually saved
-                    val verifyJson = prefs.getString("watchlist_data", null)
+                    val verifyJson = if (isCurrentRequest()) prefs.getString("watchlist_data", null) else null
                     if (verifyJson == jsonData) {
                         Log.d(TAG, "Widget data refreshed and saved: ${widgetData.size} items, JSON length: ${jsonData.length}")
                         Log.d(TAG, "Saved timeframe: $timeframe, period: $rsiPeriod")

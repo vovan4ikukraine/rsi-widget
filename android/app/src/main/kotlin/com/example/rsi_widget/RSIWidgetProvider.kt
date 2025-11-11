@@ -4,14 +4,18 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.widget.RemoteViews
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.View
+import android.widget.RemoteViews
 import org.json.JSONArray
 import android.graphics.Color
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * App Widget Provider for displaying Watchlist with RSI charts
@@ -22,6 +26,61 @@ class RSIWidgetProvider : AppWidgetProvider() {
         private const val TAG = "RSIWidgetProvider"
         const val ACTION_UPDATE_WIDGET = "com.example.rsi_widget.UPDATE_WIDGET"
         const val ACTION_REFRESH_WIDGET = "com.example.rsi_widget.REFRESH_WIDGET"
+        private val widgetScope = CoroutineScope(Dispatchers.IO)
+        @Volatile private var currentRefreshJob: Job? = null
+        @Volatile private var currentRequestId: Long = 0
+        private const val PREF_PENDING_REQUEST_ID = "pending_request_id"
+        private const val PREF_IS_LOADING = "is_loading"
+    }
+
+    private fun setLoadingState(context: Context, isLoading: Boolean) {
+        val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(PREF_IS_LOADING, isLoading).apply()
+
+        Handler(Looper.getMainLooper()).post {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(
+                android.content.ComponentName(context, RSIWidgetProvider::class.java)
+            )
+            ids.forEach { updateAppWidget(context, manager, it) }
+        }
+    }
+
+    private fun startRefreshJob(context: Context) {
+        val requestId = ++currentRequestId
+        val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+        prefs.edit().putLong(PREF_PENDING_REQUEST_ID, requestId).apply()
+
+        setLoadingState(context, true)
+
+        currentRefreshJob?.cancel()
+        currentRefreshJob = widgetScope.launch {
+            try {
+                val success = WidgetDataService.refreshWidgetData(context, requestId)
+                withContext(Dispatchers.Main) {
+                    if (currentRequestId == requestId) {
+                        setLoadingState(context, false)
+                        if (success) {
+                            val manager = AppWidgetManager.getInstance(context)
+                            val ids = manager.getAppWidgetIds(
+                                android.content.ComponentName(context, RSIWidgetProvider::class.java)
+                            )
+                            ids.forEach { id ->
+                                updateAppWidget(context, manager, id)
+                                manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (currentRequestId == requestId) {
+                        setLoadingState(context, false)
+                    }
+                }
+                Log.e(TAG, "Error refreshing widget data: ${e.message}", e)
+            }
+        }
     }
 
     override fun onUpdate(
@@ -87,51 +146,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
                 
-                // Load data in background WITHOUT launching Activity
-                CoroutineScope(Dispatchers.IO).launch {
-                    Log.d(TAG, "Starting background data refresh for timeframe: $newTimeframe")
-                    val success = WidgetDataService.refreshWidgetData(context)
-                    Log.d(TAG, "Background data refresh completed: success=$success")
-                    
-                    if (success) {
-                        // Small delay to ensure data is saved
-                        kotlinx.coroutines.delay(100)
-                        
-                        // Update widget after loading data on main thread
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            try {
-                                val manager = AppWidgetManager.getInstance(context)
-                                val ids = manager.getAppWidgetIds(
-                                    android.content.ComponentName(context, RSIWidgetProvider::class.java)
-                                )
-                                Log.d(TAG, "Updating ${ids.size} widget(s) after data refresh")
-                                
-                                // Verify that data was actually saved
-                                val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                                val savedData = prefs.getString("watchlist_data", "[]")
-                                Log.d(TAG, "Verifying saved data: length=${savedData?.length ?: 0}")
-                                
-                                for (id in ids) {
-                                    // First update widget UI (title, buttons)
-                                    updateAppWidget(context, manager, id)
-                                    
-                                    // Then forcefully update data in list
-                                    // This will call onDataSetChanged() in RSIWidgetService
-                                    manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
-                                    
-                                    // Update widget once more to apply changes
-                                    updateAppWidget(context, manager, id)
-                                }
-                                Log.d(TAG, "Widget(s) updated successfully after data refresh")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error updating widget after refresh: ${e.message}", e)
-                                e.printStackTrace()
-                            }
-                        }
-                    } else {
-                        Log.w(TAG, "Background data refresh failed, widget not updated")
-                    }
-                }
+                startRefreshJob(context)
             }
             ACTION_REFRESH_WIDGET -> {
                 val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
@@ -157,51 +172,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
                 
-                // Load data in background WITHOUT launching Activity
-                CoroutineScope(Dispatchers.IO).launch {
-                    Log.d(TAG, "Starting background data refresh for timeframe: $currentTimeframe")
-                    val success = WidgetDataService.refreshWidgetData(context)
-                    Log.d(TAG, "Background data refresh completed: success=$success")
-                    
-                    if (success) {
-                        // Small delay to ensure data is saved
-                        kotlinx.coroutines.delay(100)
-                        
-                        // Update widget after loading data on main thread
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            try {
-                                val manager = AppWidgetManager.getInstance(context)
-                                val ids = manager.getAppWidgetIds(
-                                    android.content.ComponentName(context, RSIWidgetProvider::class.java)
-                                )
-                                Log.d(TAG, "Updating ${ids.size} widget(s) after data refresh")
-                                
-                                // Verify that data was actually saved
-                                val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                                val savedData = prefs.getString("watchlist_data", "[]")
-                                Log.d(TAG, "Verifying saved data: length=${savedData?.length ?: 0}")
-                                
-                                for (id in ids) {
-                                    // First update widget UI (title, buttons)
-                                    updateAppWidget(context, manager, id)
-                                    
-                                    // Then forcefully update data in list
-                                    // This will call onDataSetChanged() in RSIWidgetService
-                                    manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
-                                    
-                                    // Update widget once more to apply changes
-                                    updateAppWidget(context, manager, id)
-                                }
-                                Log.d(TAG, "Widget(s) updated successfully after data refresh")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error updating widget after refresh: ${e.message}", e)
-                                e.printStackTrace()
-                            }
-                        }
-                    } else {
-                        Log.w(TAG, "Background data refresh failed, widget not updated")
-                    }
-                }
+                startRefreshJob(context)
             }
         }
     }
@@ -225,11 +196,16 @@ class RSIWidgetProvider : AppWidgetProvider() {
             val watchlistJson = prefs.getString("watchlist_data", "[]")
             val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
             val rsiPeriod = prefs.getInt("rsi_period", 14)
+            val isLoading = prefs.getBoolean(PREF_IS_LOADING, false)
             
             Log.d(TAG, "Updating widget $appWidgetId")
             Log.d(TAG, "Data JSON length: ${watchlistJson?.length ?: 0}, timeframe: $timeframe, period: $rsiPeriod")
             
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
+            views.setViewVisibility(
+                R.id.widget_loading_text,
+                if (isLoading) View.VISIBLE else View.GONE
+            )
             
             // Parse JSON data
             val watchlistArray = if (watchlistJson.isNullOrEmpty() || watchlistJson == "[]") {
@@ -249,15 +225,16 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 // No data - show empty state
                 views.setTextViewText(R.id.widget_title, "RSI Watchlist")
                 views.setTextViewText(R.id.widget_empty_text, "Add instruments to Watchlist")
-                views.setViewVisibility(R.id.widget_empty_text, android.view.View.VISIBLE)
-                views.setViewVisibility(R.id.widget_list, android.view.View.GONE)
-                views.setViewVisibility(R.id.widget_timeframe_selector, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_empty_text, View.VISIBLE)
+                views.setViewVisibility(R.id.widget_list, View.GONE)
+                views.setViewVisibility(R.id.widget_timeframe_selector, View.GONE)
+                views.setViewVisibility(R.id.widget_loading_text, View.GONE)
             } else {
                 // Has data - show list
                 views.setTextViewText(R.id.widget_title, "RSI Watchlist ($timeframe, RSI($rsiPeriod))")
-                views.setViewVisibility(R.id.widget_empty_text, android.view.View.GONE)
-                views.setViewVisibility(R.id.widget_list, android.view.View.VISIBLE)
-                views.setViewVisibility(R.id.widget_timeframe_selector, android.view.View.VISIBLE)
+                views.setViewVisibility(R.id.widget_empty_text, View.GONE)
+                views.setViewVisibility(R.id.widget_list, View.VISIBLE)
+                views.setViewVisibility(R.id.widget_timeframe_selector, View.VISIBLE)
                 
                 // Set adapter for list
                 val intent = Intent(context, RSIWidgetService::class.java).apply {

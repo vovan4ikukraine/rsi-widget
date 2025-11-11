@@ -39,6 +39,7 @@ class MainActivity: FlutterActivity() {
                             watchlistSymbols?.let {
                                 putString("watchlist_symbols", JSONArray(it).toString())
                             }
+                            putBoolean("is_loading", false)
                             apply()
                         }
                         

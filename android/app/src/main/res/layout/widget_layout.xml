@@ -24,6 +24,16 @@
             android:textStyle="bold"
             android:textColor="#FFFFFF"
             android:letterSpacing="0.02" />
+
+        <TextView
+            android:id="@+id/widget_loading_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Loading..."
+            android:textSize="12sp"
+            android:textColor="#FFB74D"
+            android:paddingEnd="8dp"
+            android:visibility="gone" />
         
         <ImageButton
             android:id="@+id/widget_refresh_button"
