@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 import 'services/notification_service.dart';
 import 'services/firebase_service.dart';
+import 'services/user_service.dart';
 import 'screens/home_screen.dart';
 import 'localization/app_localizations.dart';
 import 'state/app_state.dart';
@@ -46,6 +47,7 @@ void main() async {
   // 4️⃣ Initialize services
   await NotificationService.initialize();
   await FirebaseService.initialize();
+  await UserService.initialize();
 
   // 5️⃣ Launch application
   runApp(

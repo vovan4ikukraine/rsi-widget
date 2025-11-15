@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
@@ -8,6 +10,7 @@ import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/symbol_search_service.dart';
+import '../services/alert_sync_service.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -61,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _setupMethodChannel();
     _loadSavedState();
     _loadPopularSymbols();
+    unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
   }
 
   void _setupMethodChannel() {

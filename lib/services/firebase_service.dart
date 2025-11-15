@@ -140,6 +140,20 @@ class FirebaseService {
     }
   }
 
+  /// Register current device/token with backend without forcing permissions.
+  static Future<void> registerDeviceWithServer() async {
+    try {
+      if (_fcmToken == null) {
+        await _getFcmToken();
+      }
+      await _sendTokenToServer();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error registering device with server: $e');
+      }
+    }
+  }
+
   /// Send token to server
   static Future<void> _sendTokenToServer() async {
     if (_fcmToken == null || _userId == null) return;
@@ -190,6 +204,9 @@ class FirebaseService {
 
     return deviceId;
   }
+
+  /// Expose device id for other services (ensures caching).
+  static Future<String> getDeviceId() => _getDeviceId();
 
   /// Handle messages in background
   static Future<void> _firebaseMessagingBackgroundHandler(

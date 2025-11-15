@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,16 +17,22 @@ class WatchlistScreen extends StatefulWidget {
   State<WatchlistScreen> createState() => _WatchlistScreenState();
 }
 
+enum _RsiSortOrder { none, descending, ascending }
+
 class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
   late final WidgetService _widgetService;
 
+  static const String _sortOrderPrefKey = 'watchlist_sort_order';
+
   List<WatchlistItem> _watchlistItems = [];
   final Map<String, _SymbolRsiData> _rsiDataMap = {};
   bool _isLoading = false;
   bool _settingsExpanded = false;
+  bool _isActionInProgress = false;
+  _RsiSortOrder _currentSortOrder = _RsiSortOrder.none;
 
   // Settings for all charts
   String _timeframe = '15m';
@@ -50,6 +57,135 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _loadSavedState();
   }
 
+  Future<void> _updateWidgetOrder(bool sortDescending) async {
+    try {
+      await _widgetService.updateWidget(sortDescending: sortDescending);
+    } catch (e, stackTrace) {
+      debugPrint(
+          'WatchlistScreen: Failed to update widget order: $e\n$stackTrace');
+    }
+  }
+
+  String _sortOrderToString(_RsiSortOrder order) {
+    switch (order) {
+      case _RsiSortOrder.ascending:
+        return 'ascending';
+      case _RsiSortOrder.descending:
+        return 'descending';
+      case _RsiSortOrder.none:
+        return 'none';
+    }
+  }
+
+  _RsiSortOrder _sortOrderFromString(String? value) {
+    switch (value) {
+      case 'ascending':
+        return _RsiSortOrder.ascending;
+      case 'descending':
+        return _RsiSortOrder.descending;
+      default:
+        return _RsiSortOrder.none;
+    }
+  }
+
+  Future<void> _saveSortOrderPreference(_RsiSortOrder order) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sortOrderPrefKey, _sortOrderToString(order));
+    } catch (e, stackTrace) {
+      debugPrint('WatchlistScreen: Failed to save sort order: $e\n$stackTrace');
+    }
+  }
+
+  void _applySortOrder(
+    _RsiSortOrder order, {
+    bool persistPreference = false,
+    bool notifyWidget = false,
+  }) {
+    if (!mounted) {
+      _currentSortOrder = order;
+      if (persistPreference) {
+        unawaited(_saveSortOrderPreference(order));
+      }
+      if (notifyWidget) {
+        unawaited(
+          _updateWidgetOrder(order == _RsiSortOrder.descending),
+        );
+      }
+      return;
+    }
+
+    if (_watchlistItems.isEmpty) {
+      setState(() {
+        _currentSortOrder = order;
+      });
+      if (persistPreference) {
+        unawaited(_saveSortOrderPreference(order));
+      }
+      if (notifyWidget) {
+        unawaited(
+          _updateWidgetOrder(order == _RsiSortOrder.descending),
+        );
+      }
+      return;
+    }
+
+    if (order == _RsiSortOrder.none) {
+      setState(() {
+        _currentSortOrder = order;
+      });
+      if (persistPreference) {
+        unawaited(_saveSortOrderPreference(order));
+      }
+      if (notifyWidget) {
+        unawaited(_updateWidgetOrder(true));
+      }
+      return;
+    }
+
+    final originalPositions = <String, int>{};
+    for (var i = 0; i < _watchlistItems.length; i++) {
+      originalPositions[_watchlistItems[i].symbol] = i;
+    }
+
+    double valueForSymbol(String symbol) {
+      final value = _rsiDataMap[symbol]?.rsi;
+      if (value == null) {
+        return order == _RsiSortOrder.descending
+            ? double.negativeInfinity
+            : double.infinity;
+      }
+      return value;
+    }
+
+    final sortedItems = List<WatchlistItem>.from(_watchlistItems);
+    sortedItems.sort((a, b) {
+      final rsiA = valueForSymbol(a.symbol);
+      final rsiB = valueForSymbol(b.symbol);
+      final comparison = order == _RsiSortOrder.descending
+          ? rsiB.compareTo(rsiA)
+          : rsiA.compareTo(rsiB);
+      if (comparison != 0) return comparison;
+      final posA = originalPositions[a.symbol] ?? 0;
+      final posB = originalPositions[b.symbol] ?? 0;
+      return posA.compareTo(posB);
+    });
+
+    setState(() {
+      _watchlistItems = sortedItems;
+      _currentSortOrder = order;
+    });
+
+    if (persistPreference) {
+      unawaited(_saveSortOrderPreference(order));
+    }
+    if (notifyWidget) {
+      unawaited(
+        _updateWidgetOrder(order == _RsiSortOrder.descending),
+      );
+    }
+  }
+
   Future<void> _loadSavedState() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -57,6 +193,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _rsiPeriod = prefs.getInt('watchlist_rsi_period') ?? 14;
       _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
       _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
+      _currentSortOrder =
+          _sortOrderFromString(prefs.getString(_sortOrderPrefKey));
     });
     // Save period for widget on initialization
     await prefs.setInt('rsi_widget_period', _rsiPeriod);
@@ -167,10 +305,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             'WatchlistScreen: _watchlistItems contains: ${_watchlistItems.map((e) => e.symbol).toList()}');
       });
 
+      if (_currentSortOrder != _RsiSortOrder.none) {
+        _applySortOrder(
+          _currentSortOrder,
+          persistPreference: false,
+          notifyWidget: false,
+        );
+      }
+
       // Load RSI data for all symbols
       await _loadAllRsiData();
       // Update widget after loading watchlist (use saved widget settings or current)
-      _widgetService.updateWidget();
+      unawaited(_widgetService.updateWidget(
+        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
+      ));
     } catch (e, stackTrace) {
       debugPrint('WatchlistScreen: Error loading list: $e');
       debugPrint('WatchlistScreen: Stack trace: $stackTrace');
@@ -199,11 +347,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         await _loadRsiDataForSymbol(item.symbol);
       }
     } finally {
+      if (_currentSortOrder != _RsiSortOrder.none) {
+        _applySortOrder(
+          _currentSortOrder,
+          persistPreference: false,
+          notifyWidget: false,
+        );
+      }
       setState(() {
         _isLoading = false;
       });
       // Update widget after loading data (use saved widget settings)
-      _widgetService.updateWidget();
+      unawaited(_widgetService.updateWidget(
+        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
+      ));
     }
   }
 
@@ -318,81 +475,125 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _rsiDataMap.remove(item.symbol);
     });
     // Update widget after deletion
-    _widgetService.updateWidget();
+    unawaited(_widgetService.updateWidget(
+      sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
+    ));
   }
 
   Future<void> _applySettings() async {
-    final period = int.tryParse(_rsiPeriodController.text);
-    final lower = double.tryParse(_lowerLevelController.text);
-    final upper = double.tryParse(_upperLevelController.text);
-
-    bool changed = false;
-
-    if (period != null &&
-        period >= 2 &&
-        period <= 100 &&
-        period != _rsiPeriod) {
-      _rsiPeriod = period;
-      changed = true;
-      _saveState();
-    }
-
-    if (lower != null &&
-        lower >= 0 &&
-        lower <= 100 &&
-        lower < _upperLevel &&
-        lower != _lowerLevel) {
-      _lowerLevel = lower;
-      changed = true;
-      _saveState();
-    }
-
-    if (upper != null &&
-        upper >= 0 &&
-        upper <= 100 &&
-        upper > _lowerLevel &&
-        upper != _upperLevel) {
-      _upperLevel = upper;
-      changed = true;
-      _saveState();
-    }
-
-    _updateControllerHints();
-
-    if (changed) {
-      // Save period for widget
-      if (period != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('rsi_widget_period', _rsiPeriod);
-      }
-      _loadAllRsiData();
-      // Update widget with new period
-      _widgetService.updateWidget(
-        rsiPeriod: _rsiPeriod,
-      );
+    if (_isLoading || _isActionInProgress) return;
+    if (mounted) {
+      setState(() {
+        _isActionInProgress = true;
+      });
     } else {
-      setState(() {});
+      _isActionInProgress = true;
+    }
+
+    try {
+      final period = int.tryParse(_rsiPeriodController.text);
+      final lower = double.tryParse(_lowerLevelController.text);
+      final upper = double.tryParse(_upperLevelController.text);
+
+      bool changed = false;
+
+      if (period != null &&
+          period >= 2 &&
+          period <= 100 &&
+          period != _rsiPeriod) {
+        _rsiPeriod = period;
+        changed = true;
+        _saveState();
+      }
+
+      if (lower != null &&
+          lower >= 0 &&
+          lower <= 100 &&
+          lower < _upperLevel &&
+          lower != _lowerLevel) {
+        _lowerLevel = lower;
+        changed = true;
+        _saveState();
+      }
+
+      if (upper != null &&
+          upper >= 0 &&
+          upper <= 100 &&
+          upper > _lowerLevel &&
+          upper != _upperLevel) {
+        _upperLevel = upper;
+        changed = true;
+        _saveState();
+      }
+
+      _updateControllerHints();
+
+      if (changed) {
+        // Save period for widget
+        if (period != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('rsi_widget_period', _rsiPeriod);
+        }
+        _loadAllRsiData();
+        // Update widget with new period
+        unawaited(_widgetService.updateWidget(
+          rsiPeriod: _rsiPeriod,
+          sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
+        ));
+      } else {
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      } else {
+        _isActionInProgress = false;
+      }
     }
   }
 
   Future<void> _resetSettings() async {
-    setState(() {
-      _timeframe = '15m';
-      _rsiPeriod = 14;
-      _lowerLevel = 30.0;
-      _upperLevel = 70.0;
-    });
-    _saveState();
-    // Save period for widget
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('rsi_widget_period', _rsiPeriod);
-    _updateControllerHints();
-    _loadAllRsiData();
-    // Update widget
-    _widgetService.updateWidget(
-      timeframe: _timeframe,
-      rsiPeriod: _rsiPeriod,
-    );
+    if (_isLoading || _isActionInProgress) return;
+    if (mounted) {
+      setState(() {
+        _isActionInProgress = true;
+      });
+    } else {
+      _isActionInProgress = true;
+    }
+
+    try {
+      setState(() {
+        _timeframe = '15m';
+        _rsiPeriod = 14;
+        _lowerLevel = 30.0;
+        _upperLevel = 70.0;
+      });
+      _saveState();
+      // Save period for widget
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('rsi_widget_period', _rsiPeriod);
+      _updateControllerHints();
+      _loadAllRsiData();
+      // Update widget
+      unawaited(_widgetService.updateWidget(
+        timeframe: _timeframe,
+        rsiPeriod: _rsiPeriod,
+        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
+      ));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      } else {
+        _isActionInProgress = false;
+      }
+    }
   }
 
   @override
@@ -491,10 +692,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         'rsi_widget_period', _rsiPeriod);
                                     _loadAllRsiData(); // Automatically reload data when timeframe changes
                                     // Update widget
-                                    _widgetService.updateWidget(
+                                    unawaited(_widgetService.updateWidget(
                                       timeframe: _timeframe,
                                       rsiPeriod: _rsiPeriod,
-                                    );
+                                      sortDescending: _currentSortOrder !=
+                                          _RsiSortOrder.ascending,
+                                    ));
                                   }
                                 },
                               ),
@@ -549,13 +752,64 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                         ),
                         const SizedBox(height: 8),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            IconButton(
+                              icon: Icon(
+                                () {
+                                  switch (_currentSortOrder) {
+                                    case _RsiSortOrder.descending:
+                                      return Icons.north;
+                                    case _RsiSortOrder.ascending:
+                                      return Icons.south;
+                                    case _RsiSortOrder.none:
+                                      return Icons.unfold_more;
+                                  }
+                                }(),
+                                color: () {
+                                  switch (_currentSortOrder) {
+                                    case _RsiSortOrder.descending:
+                                      return Colors.green;
+                                    case _RsiSortOrder.ascending:
+                                      return Colors.red;
+                                    case _RsiSortOrder.none:
+                                      return Colors.grey[600];
+                                  }
+                                }(),
+                              ),
+                              tooltip: () {
+                                switch (_currentSortOrder) {
+                                  case _RsiSortOrder.descending:
+                                    return loc.t('watchlist_sort_desc');
+                                  case _RsiSortOrder.ascending:
+                                    return loc.t('watchlist_sort_asc');
+                                  case _RsiSortOrder.none:
+                                    return loc.t('watchlist_sort_desc');
+                                }
+                              }(),
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : () {
+                                      if (_watchlistItems.isEmpty) return;
+                                      final targetOrder = _currentSortOrder ==
+                                              _RsiSortOrder.descending
+                                          ? _RsiSortOrder.ascending
+                                          : _RsiSortOrder.descending;
+                                      _applySortOrder(
+                                        targetOrder,
+                                        persistPreference: true,
+                                        notifyWidget: true,
+                                      );
+                                    },
+                            ),
+                            const Spacer(),
+                            const SizedBox(width: 8),
                             IconButton(
                               icon: const Icon(Icons.refresh, size: 18),
                               tooltip: loc.t('watchlist_reset'),
-                              onPressed: _resetSettings,
-                              color: Colors.grey[600],
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : _resetSettings,
+                              color: Colors.blue,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
@@ -563,8 +817,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             IconButton(
                               icon: const Icon(Icons.check, size: 18),
                               tooltip: loc.t('watchlist_apply'),
-                              onPressed: _applySettings,
-                              color: Colors.blue,
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : _applySettings,
+                              color: Colors.green,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),

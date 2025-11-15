@@ -8,7 +8,6 @@ export interface AlertRule {
     rsi_period: number;
     levels: number[];
     mode: string;
-    hysteresis: number;
     cooldown_sec: number;
     active: number;
     created_at: number;
@@ -126,11 +125,13 @@ export class RsiEngine {
             const rsiData = this.calculateRsi(candles, rule.rsi_period);
 
             if (rsiData.length < 2) {
+                console.log(`Rule ${rule.id}: not enough RSI data (size=${rsiData.length})`);
                 return triggers;
             }
 
             const currentRsi = rsiData[rsiData.length - 1];
-            const previousRsi = state.last_rsi || rsiData[rsiData.length - 2];
+            const previousRsi = state.last_rsi ?? rsiData[rsiData.length - 2];
+            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) current RSI=${currentRsi.toFixed(2)}, previous=${previousRsi.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}`);
 
             // Check crossings
             const ruleTriggers = this.checkCrossings(
@@ -139,19 +140,25 @@ export class RsiEngine {
                 previousRsi,
                 Date.now()
             );
+            if (ruleTriggers.length === 0) {
+                console.log(`Rule ${rule.id}: no trigger this run`);
+            }
+
+            // Always update RSI state to prevent duplicate triggers
+            const stateUpdates: Partial<AlertState> = {
+                last_rsi: currentRsi,
+                last_bar_ts: candles[candles.length - 1].timestamp,
+            };
 
             if (ruleTriggers.length > 0) {
                 // Check cooldown
                 const canFire = this.checkCooldown(rule, state);
+                console.log(`Rule ${rule.id}: cooldown check -> ${canFire}`);
 
                 if (canFire) {
-                    // Save state
-                    await this.updateAlertState(rule.id, {
-                        last_rsi: currentRsi,
-                        last_bar_ts: candles[candles.length - 1].timestamp,
-                        last_fire_ts: Date.now(),
-                        last_side: this.getRsiZone(currentRsi, rule.levels),
-                    });
+                    // Save state with fire timestamp
+                    stateUpdates.last_fire_ts = Date.now();
+                    stateUpdates.last_side = this.getRsiZone(currentRsi, rule.levels);
 
                     // Save events
                     for (const trigger of ruleTriggers) {
@@ -160,17 +167,16 @@ export class RsiEngine {
 
                     triggers.push(...ruleTriggers);
                 }
-            } else {
-                // Update only RSI without triggering
-                await this.updateAlertState(rule.id, {
-                    last_rsi: currentRsi,
-                    last_bar_ts: candles[candles.length - 1].timestamp,
-                });
+                // Even if cooldown blocks firing, update RSI state to prevent duplicate detection
             }
+
+            // Update state regardless of whether triggers fired
+            await this.updateAlertState(rule.id, stateUpdates);
 
         } catch (error) {
             console.error(`Error checking rule ${rule.id}:`, error);
         }
+        console.log(`Rule ${rule.id}: total triggers collected ${triggers.length}`);
 
         return triggers;
     }
@@ -228,7 +234,7 @@ export class RsiEngine {
         if (rule.mode === 'cross') {
             for (const level of rule.levels) {
                 // Upward crossing
-                if (this.checkCrossUp(currentRsi, previousRsi, level, rule.hysteresis)) {
+                if (this.checkCrossUp(currentRsi, previousRsi, level)) {
                     triggers.push({
                         ruleId: rule.id,
                         userId: rule.user_id,
@@ -242,7 +248,7 @@ export class RsiEngine {
                 }
 
                 // Downward crossing
-                if (this.checkCrossDown(currentRsi, previousRsi, level, rule.hysteresis)) {
+                if (this.checkCrossDown(currentRsi, previousRsi, level)) {
                     triggers.push({
                         ruleId: rule.id,
                         userId: rule.user_id,
@@ -260,8 +266,7 @@ export class RsiEngine {
                 currentRsi,
                 previousRsi,
                 rule.levels[0],
-                rule.levels[1],
-                rule.hysteresis
+                rule.levels[1]
             )) {
                 triggers.push({
                     ruleId: rule.id,
@@ -279,8 +284,7 @@ export class RsiEngine {
                 currentRsi,
                 previousRsi,
                 rule.levels[0],
-                rule.levels[1],
-                rule.hysteresis
+                rule.levels[1]
             )) {
                 triggers.push({
                     ruleId: rule.id,
@@ -301,15 +305,15 @@ export class RsiEngine {
     /**
      * Check upward crossing
      */
-    checkCrossUp(currentRsi: number, previousRsi: number, level: number, hysteresis: number): boolean {
-        return previousRsi <= (level - hysteresis) && currentRsi > (level + hysteresis);
+    checkCrossUp(currentRsi: number, previousRsi: number, level: number): boolean {
+        return previousRsi <= level && currentRsi > level;
     }
 
     /**
      * Check downward crossing
      */
-    checkCrossDown(currentRsi: number, previousRsi: number, level: number, hysteresis: number): boolean {
-        return previousRsi >= (level + hysteresis) && currentRsi < (level - hysteresis);
+    checkCrossDown(currentRsi: number, previousRsi: number, level: number): boolean {
+        return previousRsi >= level && currentRsi < level;
     }
 
     /**
@@ -319,13 +323,10 @@ export class RsiEngine {
         currentRsi: number,
         previousRsi: number,
         lowerLevel: number,
-        upperLevel: number,
-        hysteresis: number
+        upperLevel: number
     ): boolean {
-        const wasOutside = previousRsi < (lowerLevel - hysteresis) ||
-            previousRsi > (upperLevel + hysteresis);
-        const isInside = currentRsi >= (lowerLevel + hysteresis) &&
-            currentRsi <= (upperLevel - hysteresis);
+        const wasOutside = previousRsi < lowerLevel || previousRsi > upperLevel;
+        const isInside = currentRsi >= lowerLevel && currentRsi <= upperLevel;
 
         return wasOutside && isInside;
     }
@@ -337,13 +338,10 @@ export class RsiEngine {
         currentRsi: number,
         previousRsi: number,
         lowerLevel: number,
-        upperLevel: number,
-        hysteresis: number
+        upperLevel: number
     ): boolean {
-        const wasInside = previousRsi >= (lowerLevel - hysteresis) &&
-            previousRsi <= (upperLevel + hysteresis);
-        const isOutside = currentRsi < (lowerLevel + hysteresis) ||
-            currentRsi > (upperLevel - hysteresis);
+        const wasInside = previousRsi >= lowerLevel && previousRsi <= upperLevel;
+        const isOutside = currentRsi < lowerLevel || currentRsi > upperLevel;
 
         return wasInside && isOutside;
     }
@@ -393,12 +391,18 @@ export class RsiEngine {
      * Update alert state
      */
     async updateAlertState(ruleId: number, updates: Partial<AlertState>): Promise<void> {
-        const values = Object.values(updates);
-        values.push(ruleId);
+        const columns = Object.keys(updates);
+        if (columns.length === 0) {
+            return;
+        }
+        const values = columns.map((key) => (updates as any)[key]);
+        const assignments = columns.map((col) => `${col}=excluded.${col}`).join(', ');
+        const placeholders = columns.map(() => '?').join(', ');
 
         await this.db.prepare(`
-          INSERT OR REPLACE INTO alert_state (rule_id, ${Object.keys(updates).join(', ')})
-          VALUES (?, ${Object.keys(updates).map(() => '?').join(', ')})
+          INSERT INTO alert_state (rule_id, ${columns.join(', ')})
+          VALUES (?, ${placeholders})
+          ON CONFLICT(rule_id) DO UPDATE SET ${assignments}
         `).bind(ruleId, ...values).run();
     }
 

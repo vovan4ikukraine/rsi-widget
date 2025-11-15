@@ -44,6 +44,12 @@ class SymbolSearchService {
       if (matches.isNotEmpty) {
         return matches;
       }
+      // Also try lowercase for name matching
+      final lowerMatches =
+          _filterPopular(popular, trimmed.toLowerCase()).take(25).toList();
+      if (lowerMatches.isNotEmpty) {
+        return lowerMatches;
+      }
       return _filterPopular(popular, upper).take(25).toList();
     }
 
@@ -61,11 +67,64 @@ class SymbolSearchService {
 
     List<SymbolInfo> merged = [];
     try {
+      // First, try to find in popular symbols by name
+      final popularMatches = _filterPopular(popular, normalized).toList();
+      if (popularMatches.isNotEmpty) {
+        merged.addAll(popularMatches);
+      }
+
+      // Also try lowercase name matching
+      final lowerMatches =
+          _filterPopular(popular, trimmed.toLowerCase()).toList();
+      for (final match in lowerMatches) {
+        if (!merged.any((m) => m.symbol == match.symbol)) {
+          merged.add(match);
+        }
+      }
+
+      // Then try remote search (Yahoo Finance API - searches by name automatically)
       var remote = await _source.searchSymbols(trimmed);
       if (remote.isEmpty && trimmed.toUpperCase() != trimmed) {
         remote = await _source.searchSymbols(normalized);
       }
-      merged = _mergeResults(remote, popular, normalized);
+
+      // Filter remote results by name match (Yahoo API already does this, but we prioritize exact matches)
+      final remoteFiltered = remote.where((item) {
+        final nameLower = item.name.toLowerCase();
+        final symbolUpper = item.symbol.toUpperCase();
+        final queryLower = trimmed.toLowerCase();
+        final queryUpper = normalized;
+
+        // Match by name (contains or starts with)
+        if (nameLower.contains(queryLower) ||
+            nameLower.startsWith(queryLower)) {
+          return true;
+        }
+
+        // Match by symbol
+        if (symbolUpper.contains(queryUpper) ||
+            symbolUpper.startsWith(queryUpper)) {
+          return true;
+        }
+
+        // Match by words in name
+        final nameWords = nameLower.split(RegExp(r'[\s\-/]+'));
+        for (final word in nameWords) {
+          if (word.startsWith(queryLower) || queryLower.startsWith(word)) {
+            return true;
+          }
+        }
+
+        return false;
+      }).toList();
+
+      // Merge remote results with popular
+      final remoteMerged = _mergeResults(remoteFiltered, popular, normalized);
+      for (final item in remoteMerged) {
+        if (!merged.any((m) => m.symbol == item.symbol)) {
+          merged.add(item);
+        }
+      }
 
       if (merged.isEmpty) {
         merged = await _searchWithAlternates(trimmed, popular, normalized);
@@ -154,13 +213,37 @@ class SymbolSearchService {
     if (normalized.isEmpty) {
       return popular;
     }
+
+    // Also check against original query for case-insensitive name matching
+    final queryLower = normalized.toLowerCase();
+
     return popular.where((item) {
       final symbol = item.symbol.toUpperCase();
       final name = item.name.toUpperCase();
-      return symbol.startsWith(normalized) ||
-          name.startsWith(normalized) ||
-          symbol.contains(normalized) ||
-          name.contains(normalized);
+      final nameLower = item.name.toLowerCase();
+
+      // Check symbol
+      if (symbol.startsWith(normalized) || symbol.contains(normalized)) {
+        return true;
+      }
+
+      // Check name (exact match, starts with, contains)
+      if (name.startsWith(normalized) ||
+          name.contains(normalized) ||
+          nameLower.startsWith(queryLower) ||
+          nameLower.contains(queryLower)) {
+        return true;
+      }
+
+      // Check if query matches any word in the name
+      final nameWords = nameLower.split(RegExp(r'[\s\-/]+'));
+      for (final word in nameWords) {
+        if (word.startsWith(queryLower) || queryLower.startsWith(word)) {
+          return true;
+        }
+      }
+
+      return false;
     });
   }
 
@@ -326,6 +409,7 @@ class SymbolSearchService {
   SymbolInfo? _fallbackForQuery(String normalized) {
     if (normalized.isEmpty) return null;
 
+    // Only use fallback map for known symbols (not name mappings)
     final cleaned = normalized.replaceAll(RegExp(r'[^A-Z0-9]'), '');
     final entry = _fallbackMap[cleaned];
     if (entry != null) {
@@ -377,8 +461,82 @@ class SymbolSearchService {
 
 final symbolSearchService = SymbolSearchService(yahooService);
 
+// Fallback map for known symbols (only for direct symbol lookups, not name searches)
 const Map<String, SymbolInfo> _fallbackMap = {
+  // Commodities
+  'GC=F': SymbolInfo(
+    symbol: 'GC=F',
+    name: 'Gold Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'COMEX',
+  ),
+  'SI=F': SymbolInfo(
+    symbol: 'SI=F',
+    name: 'Silver Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'COMEX',
+  ),
+  'CL=F': SymbolInfo(
+    symbol: 'CL=F',
+    name: 'Crude Oil Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'NYMEX',
+  ),
+  'NG=F': SymbolInfo(
+    symbol: 'NG=F',
+    name: 'Natural Gas Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'NYMEX',
+  ),
+  'ZC=F': SymbolInfo(
+    symbol: 'ZC=F',
+    name: 'Corn Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'CBOT',
+  ),
+  'ZS=F': SymbolInfo(
+    symbol: 'ZS=F',
+    name: 'Soybean Futures',
+    type: 'commodity',
+    currency: 'USD',
+    exchange: 'CBOT',
+  ),
+
+  // Cryptocurrencies
+  'BTC-USD': SymbolInfo(
+    symbol: 'BTC-USD',
+    name: 'Bitcoin',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'ETH-USD': SymbolInfo(
+    symbol: 'ETH-USD',
+    name: 'Ethereum',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'ZEC-USD': SymbolInfo(
+    symbol: 'ZEC-USD',
+    name: 'Zcash',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
   'XMR': SymbolInfo(
+    symbol: 'XMR-USD',
+    name: 'Monero',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'XMR-USD': SymbolInfo(
     symbol: 'XMR-USD',
     name: 'Monero',
     type: 'crypto',

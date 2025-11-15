@@ -7,13 +7,67 @@ import { YahooService } from './yahoo-service';
 export interface Env {
     KV: KVNamespace;
     DB: D1Database;
-    FCM_SERVER_KEY: string;
+    FCM_SERVICE_ACCOUNT_JSON: string; // Service Account JSON for FCM V1 API
+    FCM_PROJECT_ID: string; // Firebase project ID
     YAHOO_ENDPOINT: string;
-    FCM_ENDPOINT: string;
     [key: string]: any;
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+async function ensureTables(db: D1Database) {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS device (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        fcm_token TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS alert_rule (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        rsi_period INTEGER NOT NULL,
+        levels TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        cooldown_sec INTEGER NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS alert_state (
+        rule_id INTEGER PRIMARY KEY,
+        last_rsi REAL,
+        last_bar_ts INTEGER,
+        last_fire_ts INTEGER,
+        last_side TEXT,
+        last_au REAL,
+        last_ad REAL,
+        FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS alert_event (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id INTEGER NOT NULL,
+        ts INTEGER NOT NULL,
+        rsi REAL NOT NULL,
+        level REAL,
+        side TEXT,
+        bar_ts INTEGER,
+        symbol TEXT,
+        FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
+      )
+    `).run();
+}
 
 // CORS middleware
 app.use('*', cors({
@@ -22,6 +76,32 @@ app.use('*', cors({
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
+// Root endpoint
+app.get('/', (c) => {
+    return c.json({
+        service: 'RSI Widget API',
+        version: '1.0.0',
+        status: 'ok',
+        endpoints: {
+            yahoo: {
+                candles: 'GET /yf/candles?symbol=SYMBOL&tf=TIMEFRAME',
+                quote: 'GET /yf/quote?symbol=SYMBOL',
+                info: 'GET /yf/info?symbol=SYMBOL',
+                search: 'GET /yf/search?q=QUERY'
+            },
+            device: {
+                register: 'POST /device/register'
+            },
+            alerts: {
+                create: 'POST /alerts/create',
+                get: 'GET /alerts/:userId',
+                update: 'PUT /alerts/:ruleId',
+                delete: 'DELETE /alerts/:ruleId?hard=true',
+                check: 'POST /alerts/check'
+            }
+        }
+    });
+});
 
 // Proxy for Yahoo Finance
 app.get('/yf/candles', async (c) => {
@@ -111,7 +191,10 @@ app.post('/device/register', async (c) => {
             return c.json({ error: 'Missing required fields' }, 400);
         }
 
-        const result = await (c.env?.DB as D1Database).prepare(`
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
+        const result = await db.prepare(`
       INSERT OR REPLACE INTO device (id, user_id, fcm_token, platform, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).bind(deviceId, userId, fcmToken, platform, Date.now()).run();
@@ -128,12 +211,12 @@ app.post('/alerts/create', async (c) => {
     try {
         const {
             userId,
+            deviceId,
             symbol,
             timeframe,
             rsiPeriod,
             levels,
             mode,
-            hysteresis,
             cooldownSec
         } = await c.req.json();
 
@@ -141,15 +224,18 @@ app.post('/alerts/create', async (c) => {
             return c.json({ error: 'Missing required fields' }, 400);
         }
 
-        const result = await (c.env?.DB as D1Database).prepare(`
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
+        const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, rsi_period, levels, mode, 
-        hysteresis, cooldown_sec, active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        cooldown_sec, active, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
     `).bind(
             userId, symbol, timeframe, rsiPeriod || 14,
             JSON.stringify(levels), mode || 'cross',
-            hysteresis || 0.5, cooldownSec || 600, Date.now()
+            cooldownSec || 600, Date.now()
         ).run();
 
         return c.json({ success: true, id: result.meta.last_row_id });
@@ -164,7 +250,10 @@ app.get('/alerts/:userId', async (c) => {
     try {
         const userId = c.req.param('userId');
 
-        const result = await (c.env?.DB as D1Database).prepare(`
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
+        const result = await db.prepare(`
       SELECT * FROM alert_rule WHERE user_id = ? AND active = 1
     `).bind(userId).all();
 
@@ -181,6 +270,9 @@ app.put('/alerts/:ruleId', async (c) => {
         const ruleId = c.req.param('ruleId');
         const updates = await c.req.json();
 
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
         const fields = Object.keys(updates)
             .filter(key => key !== 'id')
             .map(key => `${key} = ?`)
@@ -189,7 +281,7 @@ app.put('/alerts/:ruleId', async (c) => {
         const values = Object.values(updates);
         values.push(ruleId);
 
-        await (c.env?.DB as D1Database).prepare(`
+        await db.prepare(`
       UPDATE alert_rule SET ${fields} WHERE id = ?
     `).bind(...values).run();
 
@@ -205,9 +297,20 @@ app.delete('/alerts/:ruleId', async (c) => {
     try {
         const ruleId = c.req.param('ruleId');
 
-        await (c.env?.DB as D1Database).prepare(`
-      UPDATE alert_rule SET active = 0 WHERE id = ?
-    `).bind(ruleId).run();
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
+        const hard = c.req.query('hard');
+
+        if (hard === 'true') {
+            await db.prepare(`DELETE FROM alert_event WHERE rule_id = ?`).bind(ruleId).run();
+            await db.prepare(`DELETE FROM alert_state WHERE rule_id = ?`).bind(ruleId).run();
+            await db.prepare(`DELETE FROM alert_rule WHERE id = ?`).bind(ruleId).run();
+        } else {
+            await db.prepare(`
+        UPDATE alert_rule SET active = 0 WHERE id = ?
+      `).bind(ruleId).run();
+        }
 
         return c.json({ success: true });
     } catch (error) {
@@ -225,8 +328,11 @@ app.post('/alerts/check', async (c) => {
             return c.json({ error: 'Missing symbols or timeframes' }, 400);
         }
 
+        const db = c.env?.DB as D1Database;
+        await ensureTables(db);
+
         // Fixed: RsiEngine expects only 2 arguments (DB, YahooService)
-        const rsiEngine = new RsiEngine(c.env?.DB as D1Database, new YahooService(c.env?.YAHOO_ENDPOINT as string || ''));
+        const rsiEngine = new RsiEngine(db, new YahooService(c.env?.YAHOO_ENDPOINT as string || ''));
         const results = await rsiEngine.checkAlerts(symbols, timeframes);
 
         return c.json({ results });
@@ -240,19 +346,39 @@ app.post('/alerts/check', async (c) => {
 const worker: ExportedHandler<Env> = {
     fetch: app.fetch,
     scheduled: async (_controller: ScheduledController, env: Env, _ctx: ExecutionContext) => {
-        console.log('Running scheduled RSI check...');
-
         try {
-            const rsiEngine = new RsiEngine(env.DB, new YahooService(env.YAHOO_ENDPOINT));
-            const fcmService = new FcmService(env.FCM_SERVER_KEY, env.FCM_ENDPOINT, env.DB);
+            const db = env.DB;
+            await ensureTables(db);
 
-            // Get active rules
-            const rules = await rsiEngine.getActiveRules();
+            // First, quickly check if there are any active rules (fast query)
+            const activeRulesCheck = await db.prepare(`
+                SELECT COUNT(*) as count FROM alert_rule WHERE active = 1
+            `).first<{ count: number }>();
 
-            if (rules.length === 0) {
-                console.log('No active rules found');
+            if (!activeRulesCheck || activeRulesCheck.count === 0) {
+                // No active rules, skip all processing (no need to check RSI)
                 return;
             }
+
+            console.log(`Running scheduled RSI check for ${activeRulesCheck.count} active rule(s)...`);
+
+            // Check FCM configuration only if we have active rules
+            if (!env.FCM_SERVICE_ACCOUNT_JSON || env.FCM_SERVICE_ACCOUNT_JSON.trim() === '') {
+                console.error('FCM_SERVICE_ACCOUNT_JSON is not set! Please set it via: wrangler secret put FCM_SERVICE_ACCOUNT_JSON');
+                console.error('Paste the entire Service Account JSON file content');
+                return;
+            }
+
+            if (!env.FCM_PROJECT_ID || env.FCM_PROJECT_ID.trim() === '') {
+                console.error('FCM_PROJECT_ID is not set! Please set it in wrangler.toml [vars]');
+                return;
+            }
+
+            const rsiEngine = new RsiEngine(db, new YahooService(env.YAHOO_ENDPOINT));
+            const fcmService = new FcmService(env.FCM_SERVICE_ACCOUNT_JSON, env.FCM_PROJECT_ID, env.KV, env.DB);
+
+            // Get active rules (we already know there are some)
+            const rules = await rsiEngine.getActiveRules();
 
             // Group by symbols and timeframes
             const groupedRules = rsiEngine.groupRulesBySymbolTimeframe(rules);

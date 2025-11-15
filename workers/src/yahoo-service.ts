@@ -206,68 +206,70 @@ export class YahooService {
     }
 
     /**
-     * Search symbols
+     * Search symbols using Yahoo Finance search API
      */
     async searchSymbols(query: string): Promise<SymbolInfo[]> {
         try {
-            // Simple search through popular symbols
-            const popularSymbols = [
-                // US Stocks - Technology
-                'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
-                'AMD', 'INTC', 'CRM', 'ADBE', 'PYPL', 'UBER', 'SQ', 'NOW', 'SNOW',
-                'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
+            // Use Yahoo Finance search API
+            const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=20&newsCount=0`;
 
-                // US Stocks - Finance
-                'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW',
+            const response = await fetch(searchUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                }
+            });
 
-                // US Stocks - Consumer Goods
-                'WMT', 'TGT', 'HD', 'NKE', 'SBUX', 'MCD', 'DIS', 'NFLX',
+            if (!response.ok) {
+                console.error(`Yahoo search API error: ${response.status}`);
+                return [];
+            }
 
-                // US Stocks - Energy
-                'XOM', 'CVX', 'COP', 'SLB', 'EOG',
+            const data = await response.json() as any;
 
-                // US Stocks - Healthcare
-                'JNJ', 'PFE', 'UNH', 'ABBV', 'TMO', 'ABT', 'MRK',
-
-                // Indices
-                '^GSPC', '^DJI', '^IXIC', '^RUT',
-
-                // Forex - Major pairs
-                'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X',
-                'USDCHF=X', 'NZDUSD=X', 'EURGBP=X', 'EURJPY=X', 'GBPJPY=X',
-                'EURCHF=X', 'AUDJPY=X', 'NZDJPY=X', 'CADJPY=X', 'CHFJPY=X',
-
-                // Forex - Cross pairs
-                'EURCAD=X', 'EURAUD=X', 'EURNZD=X', 'GBPCAD=X', 'GBPAUD=X',
-                'GBPNZD=X', 'AUDCAD=X', 'AUDNZD=X', 'CADCHF=X',
-
-                // Cryptocurrencies
-                'BTC-USD', 'ETH-USD', 'BNB-USD', 'ADA-USD', 'SOL-USD',
-                'XRP-USD', 'DOGE-USD', 'DOT-USD', 'MATIC-USD', 'AVAX-USD',
-                'LINK-USD', 'UNI-USD', 'ATOM-USD', 'ALGO-USD', 'VET-USD',
-
-                // Commodities
-                'GC=F', 'SI=F', 'CL=F', 'NG=F', 'ZC=F', 'ZS=F',
-
-                // ETF
-                'SPY', 'QQQ', 'DIA', 'IWM', 'GLD', 'SLV',
-            ];
-
-            const results = popularSymbols
-                .filter(symbol =>
-                    symbol.toLowerCase().includes(query.toLowerCase()) ||
-                    symbol.includes(query.toUpperCase())
-                )
-                .slice(0, 10);
+            if (!data.quotes || !Array.isArray(data.quotes)) {
+                return [];
+            }
 
             const symbolInfos: SymbolInfo[] = [];
 
-            for (const symbol of results) {
+            for (const quote of data.quotes) {
                 try {
-                    const info = await this.getSymbolInfo(symbol);
-                    symbolInfos.push(info);
+                    const symbol = quote.symbol;
+                    const name = quote.longname || quote.shortname || quote.name || symbol;
+                    const exchange = quote.exchange || 'Unknown';
+                    const quoteType = quote.quoteType?.toLowerCase() || 'unknown';
+
+                    // Determine type
+                    let type = 'unknown';
+                    if (quoteType === 'equity' || quoteType === 'stock') {
+                        type = 'equity';
+                    } else if (quoteType === 'etf') {
+                        type = 'etf';
+                    } else if (quoteType === 'index') {
+                        type = 'index';
+                    } else if (quoteType === 'cryptocurrency' || symbol.includes('-USD')) {
+                        type = 'crypto';
+                    } else if (symbol.includes('=X')) {
+                        type = 'currency';
+                    } else if (symbol.includes('=F')) {
+                        type = 'commodity';
+                    } else {
+                        // Fallback to symbol-based detection
+                        type = this.getSymbolType(symbol);
+                    }
+
+                    const currency = quote.currency || 'USD';
+
+                    symbolInfos.push({
+                        symbol: symbol,
+                        name: name,
+                        type: type,
+                        currency: currency,
+                        exchange: exchange,
+                    });
                 } catch (error) {
-                    console.error(`Error fetching info for ${symbol}:`, error);
+                    console.error(`Error processing search result:`, error);
                 }
             }
 

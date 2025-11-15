@@ -25,7 +25,7 @@ object WidgetDataService {
     /**
      * Loads widget data in background
      */
-    suspend fun refreshWidgetData(context: Context, requestId: Long): Boolean {
+           suspend fun refreshWidgetData(context: Context, requestId: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
@@ -149,14 +149,23 @@ object WidgetDataService {
         }
     }
 
-    /**
+           private fun candlesLimitForTimeframe(timeframe: String): Int {
+               return when (timeframe.lowercase()) {
+                   "4h" -> 500
+                   "1d" -> 730
+                   else -> 100
+               }
+           }
+
+           /**
      * Loads data for one symbol
      */
     private suspend fun loadSymbolData(symbol: String, timeframe: String, rsiPeriod: Int): WidgetItem? {
         return withContext(Dispatchers.IO) {
             try {
                 // Load candles
-                val url = "$YAHOO_ENDPOINT/yf/candles?symbol=$symbol&tf=$timeframe&limit=100"
+                       val limit = candlesLimitForTimeframe(timeframe)
+                       val url = "$YAHOO_ENDPOINT/yf/candles?symbol=$symbol&tf=$timeframe&limit=$limit"
                 Log.d(TAG, "Fetching candles from: $url")
                 val request = Request.Builder()
                     .url(url)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
+import '../services/alert_sync_service.dart';
 import '../services/symbol_search_service.dart';
 import '../localization/app_localizations.dart';
 
@@ -30,7 +31,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   int _rsiPeriod = 14;
   List<double> _levels = [30, 70];
   String _mode = 'cross';
-  double _hysteresis = 0.5;
   int _cooldownSec = 600;
   bool _repeatable = true;
   bool _soundEnabled = true;
@@ -57,7 +57,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _rsiPeriod = alert.rsiPeriod;
     _levels = List.from(alert.levels);
     _mode = alert.mode;
-    _hysteresis = alert.hysteresis;
     _cooldownSec = alert.cooldownSec;
     _repeatable = alert.repeatable;
     _soundEnabled = alert.soundEnabled;
@@ -119,10 +118,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   // Alert settings
                   _buildAlertSettingsCard(loc),
                   const SizedBox(height: 16),
-
-                  // Advanced settings
-                  _buildAdvancedSettingsCard(loc),
-                  const SizedBox(height: 32),
 
                   // Buttons
                   _buildActionButtons(loc),
@@ -446,38 +441,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    initialValue: _rsiPeriod.toString(),
-                    decoration: InputDecoration(
-                      labelText: loc.t('home_rsi_period_label'),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.timeline),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      _rsiPeriod = int.tryParse(value) ?? 14;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    initialValue: _hysteresis.toString(),
-                    decoration: InputDecoration(
-                      labelText: loc.t('create_alert_hysteresis_label'),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.tune),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      _hysteresis = double.tryParse(value) ?? 0.5;
-                    },
-                  ),
-                ),
-              ],
+            TextFormField(
+              initialValue: _rsiPeriod.toString(),
+              decoration: InputDecoration(
+                labelText: loc.t('home_rsi_period_label'),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.timeline),
+              ),
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                _rsiPeriod = int.tryParse(value) ?? 14;
+              },
             ),
             const SizedBox(height: 16),
             Text(
@@ -622,7 +596,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
-                      _cooldownSec = int.tryParse(value) ?? 600;
+                      _cooldownSec = int.tryParse(value) ?? 60;
                     },
                   ),
                 ),
@@ -659,63 +633,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     final symbolUpper = info.symbol.toUpperCase();
     final nameUpper = info.name.toUpperCase();
     return symbolUpper.startsWith(upper) || nameUpper.startsWith(upper);
-  }
-
-  Widget _buildAdvancedSettingsCard(AppLocalizations loc) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              loc.t('create_alert_advanced_title'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              loc.t(
-                'create_alert_hysteresis_value',
-                params: {'value': _hysteresis.toStringAsFixed(1)},
-              ),
-              style: const TextStyle(fontSize: 16),
-            ),
-            Slider(
-              value: _hysteresis,
-              min: 0.1,
-              max: 2.0,
-              divisions: 19,
-              label: _hysteresis.toStringAsFixed(1),
-              onChanged: (value) {
-                setState(() {
-                  _hysteresis = value;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            Text(
-              loc.t('create_alert_cooldown_value',
-                  params: {'seconds': '$_cooldownSec'}),
-              style: const TextStyle(fontSize: 16),
-            ),
-            Slider(
-              value: _cooldownSec.toDouble(),
-              min: 60,
-              max: 3600,
-              divisions: 59,
-              label: loc.locale.languageCode == 'ru'
-                  ? '$_cooldownSec сек'
-                  : '$_cooldownSec sec',
-              onChanged: (value) {
-                setState(() {
-                  _cooldownSec = value.round();
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildActionButtons(AppLocalizations loc) {
@@ -768,7 +685,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       alert.rsiPeriod = _rsiPeriod;
       alert.levels = List.from(_levels);
       alert.mode = _mode;
-      alert.hysteresis = _hysteresis;
       alert.cooldownSec = _cooldownSec;
       alert.active = true;
       alert.repeatable = _repeatable;
@@ -784,6 +700,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       await widget.isar.writeTxn(() {
         return widget.isar.alertRules.put(alert);
       });
+      await AlertSyncService.syncAlert(widget.isar, alert);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -843,6 +760,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         await widget.isar.writeTxn(() {
           return widget.isar.alertRules.delete(widget.alert!.id);
         });
+        await AlertSyncService.deleteAlert(widget.alert!);
 
         if (mounted) {
           Navigator.pop(context, true);

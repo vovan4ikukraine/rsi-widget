@@ -9,6 +9,8 @@ class AlertRule {
   Id id = Isar
       .autoIncrement; // Isar will automatically assign the next available ID when saving
 
+  int? remoteId;
+
   @Index()
   late String symbol; // e.g. AAPL, EURUSD=X
 
@@ -19,8 +21,6 @@ class AlertRule {
   List<double> levels = [30, 70];
 
   String mode = 'cross'; // cross|enter|exit
-
-  double hysteresis = 0.5;
 
   int cooldownSec = 600;
 
@@ -185,7 +185,6 @@ class AlertConfig with _$AlertConfig {
     required int rsiPeriod,
     required List<double> levels,
     required AlertType type,
-    required double hysteresis,
     required int cooldownSec,
     required bool repeatable,
     String? description,

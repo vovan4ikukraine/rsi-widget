@@ -95,26 +95,22 @@ class RsiService {
     }
   }
 
-  /// Check level crossing with hysteresis
+  /// Check level crossing
   static bool checkCrossUp(
     double currentRsi,
     double previousRsi,
     double level,
-    double hysteresis,
   ) {
-    return previousRsi <= (level - hysteresis) &&
-        currentRsi > (level + hysteresis);
+    return previousRsi <= level && currentRsi > level;
   }
 
-  /// Check downward level crossing with hysteresis
+  /// Check downward level crossing
   static bool checkCrossDown(
     double currentRsi,
     double previousRsi,
     double level,
-    double hysteresis,
   ) {
-    return previousRsi >= (level + hysteresis) &&
-        currentRsi < (level - hysteresis);
+    return previousRsi >= level && currentRsi < level;
   }
 
   /// Check zone entry
@@ -123,12 +119,9 @@ class RsiService {
     double previousRsi,
     double lowerLevel,
     double upperLevel,
-    double hysteresis,
   ) {
-    final wasOutside = previousRsi < (lowerLevel - hysteresis) ||
-        previousRsi > (upperLevel + hysteresis);
-    final isInside = currentRsi >= (lowerLevel + hysteresis) &&
-        currentRsi <= (upperLevel - hysteresis);
+    final wasOutside = previousRsi < lowerLevel || previousRsi > upperLevel;
+    final isInside = currentRsi >= lowerLevel && currentRsi <= upperLevel;
 
     return wasOutside && isInside;
   }
@@ -139,12 +132,9 @@ class RsiService {
     double previousRsi,
     double lowerLevel,
     double upperLevel,
-    double hysteresis,
   ) {
-    final wasInside = previousRsi >= (lowerLevel - hysteresis) &&
-        previousRsi <= (upperLevel + hysteresis);
-    final isOutside = currentRsi < (lowerLevel + hysteresis) ||
-        currentRsi > (upperLevel - hysteresis);
+    final wasInside = previousRsi >= lowerLevel && previousRsi <= upperLevel;
+    final isOutside = currentRsi < lowerLevel || currentRsi > upperLevel;
 
     return wasInside && isOutside;
   }
@@ -161,7 +151,7 @@ class RsiService {
 
     if (rule.mode == 'cross' && rule.levels.isNotEmpty) {
       for (final level in rule.levels) {
-        if (checkCrossUp(currentRsi, previousRsi, level, rule.hysteresis)) {
+        if (checkCrossUp(currentRsi, previousRsi, level)) {
           triggers.add(AlertTrigger(
             ruleId: rule.id,
             symbol: rule.symbol,
@@ -174,7 +164,7 @@ class RsiService {
           ));
         }
 
-        if (checkCrossDown(currentRsi, previousRsi, level, rule.hysteresis)) {
+        if (checkCrossDown(currentRsi, previousRsi, level)) {
           triggers.add(AlertTrigger(
             ruleId: rule.id,
             symbol: rule.symbol,
@@ -193,7 +183,6 @@ class RsiService {
         previousRsi,
         rule.levels[0],
         rule.levels[1],
-        rule.hysteresis,
       )) {
         triggers.add(AlertTrigger(
           ruleId: rule.id,
@@ -212,7 +201,6 @@ class RsiService {
         previousRsi,
         rule.levels[0],
         rule.levels[1],
-        rule.hysteresis,
       )) {
         triggers.add(AlertTrigger(
           ruleId: rule.id,

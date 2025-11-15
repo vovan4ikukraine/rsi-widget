@@ -3,6 +3,7 @@ import 'package:isar/isar.dart';
 import '../models.dart';
 import 'create_alert_screen.dart';
 import '../localization/app_localizations.dart';
+import '../services/alert_sync_service.dart';
 
 class AlertsScreen extends StatefulWidget {
   final Isar isar;
@@ -344,6 +345,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         alert.active = !alert.active;
         return widget.isar.alertRules.put(alert);
       });
+      await AlertSyncService.syncAlert(widget.isar, alert);
 
       if (!mounted) return;
       setState(() {
@@ -383,7 +385,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ..rsiPeriod = alert.rsiPeriod
         ..levels = List.from(alert.levels)
         ..mode = alert.mode
-        ..hysteresis = alert.hysteresis
         ..cooldownSec = alert.cooldownSec
         ..active = true
         ..createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000
@@ -392,8 +393,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
       await widget.isar.writeTxn(() {
         return widget.isar.alertRules.put(newAlert);
       });
+      await AlertSyncService.syncAlert(widget.isar, newAlert);
 
-      _loadData();
+      await _loadData();
 
       if (!mounted) return;
       final loc = context.loc;
@@ -440,6 +442,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         await widget.isar.writeTxn(() {
           return widget.isar.alertRules.delete(alert.id);
         });
+        await AlertSyncService.deleteAlert(alert);
 
         _loadData();
 

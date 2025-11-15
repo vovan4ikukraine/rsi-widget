@@ -21,6 +21,7 @@ class WidgetService {
   Future<void> updateWidget({
     String? timeframe,
     int? rsiPeriod,
+    bool sortDescending = true,
   }) async {
     try {
       // Load saved settings from widget (if timeframe was changed in widget)
@@ -39,12 +40,8 @@ class WidgetService {
       // Load watchlist
       final watchlistItems = await isar.watchlistItems.where().findAll();
 
-      // Save symbol list in SharedPreferences for widget
-      final watchlistSymbols =
-          watchlistItems.map((item) => item.symbol).toList();
-      await prefs.setString('watchlist_symbols', jsonEncode(watchlistSymbols));
-
       if (watchlistItems.isEmpty) {
+        await prefs.setString('watchlist_symbols', '[]');
         // No items - send empty list
         await _channel.invokeMethod('updateWidget', {
           'watchlistData': '[]',
@@ -62,7 +59,7 @@ class WidgetService {
           final candles = await yahooService.fetchCandles(
             item.symbol,
             finalTimeframe,
-            limit: 100,
+            limit: _candlesLimitForTimeframe(finalTimeframe),
           );
 
           if (candles.isEmpty) continue;
@@ -99,6 +96,23 @@ class WidgetService {
       }
 
       // Convert to JSON
+      double resolveRsi(Map<String, dynamic> item) {
+        final rsi = (item['rsi'] as num?)?.toDouble();
+        if (rsi == null) {
+          return sortDescending ? double.negativeInfinity : double.infinity;
+        }
+        return rsi;
+      }
+
+      widgetData.sort((a, b) {
+        final rsiA = resolveRsi(a);
+        final rsiB = resolveRsi(b);
+        return sortDescending ? rsiB.compareTo(rsiA) : rsiA.compareTo(rsiB);
+      });
+      final sortedSymbols =
+          widgetData.map((item) => item['symbol'] as String).toList();
+      await prefs.setString('watchlist_symbols', jsonEncode(sortedSymbols));
+
       final jsonData = jsonEncode(widgetData);
 
       // Update widget via MethodChannel
@@ -106,7 +120,7 @@ class WidgetService {
         'watchlistData': jsonData,
         'timeframe': finalTimeframe,
         'rsiPeriod': finalPeriod,
-        'watchlistSymbols': watchlistSymbols,
+        'watchlistSymbols': sortedSymbols,
       });
 
       print('Widget updated with ${widgetData.length} items');
@@ -158,5 +172,16 @@ class WidgetService {
     }
 
     return rsiValues;
+  }
+
+  int _candlesLimitForTimeframe(String timeframe) {
+    switch (timeframe) {
+      case '4h':
+        return 500;
+      case '1d':
+        return 730;
+      default:
+        return 100;
+    }
   }
 }

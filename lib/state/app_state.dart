@@ -53,3 +53,5 @@ class AppStateScope extends InheritedNotifier<AppState> {
     return scope!.notifier!;
   }
 }
+
+

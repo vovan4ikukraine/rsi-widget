@@ -1,30 +1,215 @@
-export interface FcmMessage {
-    to: string;
-    data: {
-        alert_id: string;
-        symbol: string;
-        rsi: string;
-        level: string;
-        type: string;
-        message: string;
-        timestamp: string;
-    };
-    notification?: {
-        title: string;
-        body: string;
-        sound?: string;
+export interface FcmV1Message {
+    message: {
+        token: string;
+        notification?: {
+            title: string;
+            body: string;
+        };
+        data?: {
+            [key: string]: string;
+        };
+        android?: {
+            priority: 'normal' | 'high';
+        };
+        apns?: {
+            headers: {
+                'apns-priority': string;
+            };
+        };
     };
 }
 
+interface ServiceAccount {
+    type: string;
+    project_id: string;
+    private_key_id: string;
+    private_key: string;
+    client_email: string;
+    client_id: string;
+    auth_uri: string;
+    token_uri: string;
+}
+
 export class FcmService {
+    private accessToken: string | null = null;
+    private tokenExpiry: number = 0;
+    private serviceAccount: ServiceAccount | null = null;
+
     constructor(
-        private serverKey: string,
-        private endpoint: string,
+        private serviceAccountJson: string,
+        private projectId: string,
+        private kv?: KVNamespace,
         private db?: D1Database
-    ) { }
+    ) {
+        try {
+            this.serviceAccount = JSON.parse(serviceAccountJson);
+        } catch (error) {
+            console.error('Failed to parse service account JSON:', error);
+        }
+    }
 
     /**
-     * Send alert via FCM
+     * Base64 URL encode
+     */
+    private base64UrlEncode(data: string): string {
+        return btoa(data)
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+    }
+
+    /**
+     * Create JWT for OAuth2
+     * Note: Cloudflare Workers has limitations with RS256 signing
+     * This uses a workaround by converting PEM to JWK format
+     */
+    private async createJWT(): Promise<string> {
+        if (!this.serviceAccount) {
+            throw new Error('Service account not initialized');
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const expiry = now + 3600; // 1 hour
+
+        const header = {
+            alg: 'RS256',
+            typ: 'JWT'
+        };
+
+        const claim = {
+            iss: this.serviceAccount.client_email,
+            scope: 'https://www.googleapis.com/auth/firebase.messaging',
+            aud: this.serviceAccount.token_uri,
+            exp: expiry,
+            iat: now
+        };
+
+        const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+        const encodedClaim = this.base64UrlEncode(JSON.stringify(claim));
+        const signatureInput = `${encodedHeader}.${encodedClaim}`;
+
+        // Parse PEM private key
+        const privateKeyPem = this.serviceAccount.private_key
+            .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+            .replace(/-----END PRIVATE KEY-----/g, '')
+            .replace(/\s/g, '');
+
+        const privateKeyDer = Uint8Array.from(atob(privateKeyPem), c => c.charCodeAt(0));
+
+        try {
+            // Try to import as PKCS8
+            const key = await crypto.subtle.importKey(
+                'pkcs8',
+                privateKeyDer.buffer,
+                {
+                    name: 'RSASSA-PKCS1-v1_5',
+                    hash: 'SHA-256',
+                },
+                false,
+                ['sign']
+            );
+
+            // Sign
+            const signature = await crypto.subtle.sign(
+                {
+                    name: 'RSASSA-PKCS1-v1_5',
+                },
+                key,
+                new TextEncoder().encode(signatureInput)
+            );
+
+            const encodedSignature = this.base64UrlEncode(
+                String.fromCharCode(...new Uint8Array(signature))
+            );
+
+            return `${signatureInput}.${encodedSignature}`;
+        } catch (error) {
+            console.error('Error creating JWT:', error);
+            throw new Error(`Failed to create JWT: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Get OAuth2 access token from Google
+     */
+    private async getAccessTokenFromGoogle(): Promise<{ access_token: string; expires_in: number }> {
+        if (!this.serviceAccount) {
+            throw new Error('Service account not initialized');
+        }
+
+        const jwt = await this.createJWT();
+
+        const response = await fetch(this.serviceAccount.token_uri, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                assertion: jwt
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to get access token: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        return {
+            access_token: data.access_token,
+            expires_in: data.expires_in || 3600
+        };
+    }
+
+    /**
+     * Get OAuth2 access token (cached or fresh)
+     */
+    private async getAccessToken(): Promise<string> {
+        // Check cache in KV first
+        if (this.kv) {
+            try {
+                const cached = await this.kv.get('fcm_access_token', { type: 'json' });
+                if (cached && cached.expiry > Date.now() + 60000) { // Refresh 1 min before expiry
+                    this.accessToken = cached.token;
+                    this.tokenExpiry = cached.expiry;
+                    console.log('Using cached FCM access token');
+                    return this.accessToken;
+                }
+            } catch (error) {
+                console.warn('Failed to read from KV cache:', error);
+            }
+        }
+
+        // Check in-memory cache
+        if (this.accessToken && Date.now() < this.tokenExpiry - 60000) {
+            return this.accessToken;
+        }
+
+        // Get new token
+        console.log('Refreshing FCM access token...');
+        const tokenData = await this.getAccessTokenFromGoogle();
+        this.accessToken = tokenData.access_token;
+        this.tokenExpiry = Date.now() + (tokenData.expires_in * 1000);
+
+        // Cache in KV
+        if (this.kv) {
+            try {
+                await this.kv.put('fcm_access_token', JSON.stringify({
+                    token: this.accessToken,
+                    expiry: this.tokenExpiry
+                }));
+            } catch (error) {
+                console.warn('Failed to cache token in KV:', error);
+            }
+        }
+
+        console.log(`FCM access token refreshed, expires in ${tokenData.expires_in}s`);
+        return this.accessToken;
+    }
+
+    /**
+     * Send alert via FCM V1 API
      */
     async sendAlert(trigger: any): Promise<void> {
         try {
@@ -48,32 +233,54 @@ export class FcmService {
     }
 
     /**
-     * Send message to device
+     * Send message to device using FCM V1 API
      */
     async sendToDevice(token: string, trigger: any): Promise<void> {
-        const message: FcmMessage = {
-            to: token,
-            data: {
-                alert_id: trigger.ruleId.toString(),
-                symbol: trigger.symbol,
-                rsi: trigger.rsi.toString(),
-                level: trigger.level.toString(),
-                type: trigger.type,
-                message: trigger.message,
-                timestamp: trigger.timestamp.toString(),
-            },
-            notification: {
-                title: `RSI Alert: ${trigger.symbol}`,
-                body: trigger.message,
-                sound: 'default',
+        if (!this.projectId || this.projectId.trim() === '') {
+            console.error('FCM_PROJECT_ID is empty or not set!');
+            return;
+        }
+
+        if (!token || token.trim() === '') {
+            console.error('FCM token is empty!');
+            return;
+        }
+
+        const accessToken = await this.getAccessToken();
+        const endpoint = `https://fcm.googleapis.com/v1/projects/${this.projectId}/messages:send`;
+
+        const message: FcmV1Message = {
+            message: {
+                token: token,
+                notification: {
+                    title: `RSI Alert: ${trigger.symbol}`,
+                    body: trigger.message,
+                },
+                data: {
+                    alert_id: trigger.ruleId.toString(),
+                    symbol: trigger.symbol,
+                    rsi: trigger.rsi.toString(),
+                    level: trigger.level.toString(),
+                    type: trigger.type,
+                    message: trigger.message,
+                    timestamp: trigger.timestamp.toString(),
+                },
+                android: {
+                    priority: 'high',
+                },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                    },
+                },
             }
         };
 
         try {
-            const response = await fetch(this.endpoint, {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `key=${this.serverKey}`,
+                    'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(message),
@@ -81,17 +288,50 @@ export class FcmService {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`FCM error: ${response.status} - ${errorText}`);
+                console.error(`FCM V1 error: ${response.status} - ${errorText}`);
 
-                // If token is invalid, remove it
-                if (response.status === 400 || response.status === 401) {
-                    await this.removeInvalidToken(token, this.db);
+                // If token is invalid (401), try to refresh
+                if (response.status === 401) {
+                    console.log('Access token expired, refreshing...');
+                    this.accessToken = null; // Force refresh
+                    this.tokenExpiry = 0;
+                    const newToken = await this.getAccessToken();
+
+                    // Retry once with new token
+                    const retryResponse = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${newToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(message),
+                    });
+
+                    if (!retryResponse.ok) {
+                        const retryErrorText = await retryResponse.text();
+                        console.error(`FCM V1 retry error: ${retryResponse.status} - ${retryErrorText}`);
+                    } else {
+                        console.log(`FCM V1 message sent successfully after token refresh`);
+                    }
+                    return;
+                }
+
+                // If token is invalid (404), remove it
+                if (response.status === 404) {
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        if (errorData.error?.status === 'NOT_FOUND' || errorData.error?.message?.includes('UNREGISTERED')) {
+                            await this.removeInvalidToken(token, this.db);
+                        }
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
                 }
             } else {
-                console.log(`FCM message sent successfully to ${token.substring(0, 10)}...`);
+                console.log(`FCM V1 message sent successfully to ${token.substring(0, 10)}...`);
             }
         } catch (error) {
-            console.error('Error sending FCM message:', error);
+            console.error('Error sending FCM V1 message:', error);
         }
     }
 
@@ -134,75 +374,6 @@ export class FcmService {
             console.log(`Removed invalid token: ${token.substring(0, 10)}...`);
         } catch (error) {
             console.error('Error removing invalid token:', error);
-        }
-    }
-
-    /**
-     * Send test message
-     */
-    async sendTestMessage(token: string, message: string): Promise<boolean> {
-        try {
-            const response = await fetch(this.endpoint, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `key=${this.serverKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    to: token,
-                    notification: {
-                        title: 'RSI Widget Test',
-                        body: message,
-                    },
-                    data: {
-                        type: 'test',
-                        message: message,
-                    }
-                }),
-            });
-
-            return response.ok;
-        } catch (error) {
-            console.error('Error sending test message:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Send connection notification
-     */
-    async sendConnectionNotification(userId: string, connected: boolean): Promise<void> {
-        const tokens = await this.getUserFcmTokens(userId);
-
-        for (const token of tokens) {
-            await this.sendToDevice(token, {
-                userId,
-                symbol: 'SYSTEM',
-                rsi: 0,
-                level: 0,
-                type: 'connection',
-                message: connected ? 'Connected to server' : 'Disconnected from server',
-                timestamp: Date.now(),
-            });
-        }
-    }
-
-    /**
-     * Send error notification
-     */
-    async sendErrorNotification(userId: string, error: string): Promise<void> {
-        const tokens = await this.getUserFcmTokens(userId);
-
-        for (const token of tokens) {
-            await this.sendToDevice(token, {
-                userId,
-                symbol: 'SYSTEM',
-                rsi: 0,
-                level: 0,
-                type: 'error',
-                message: `Error: ${error}`,
-                timestamp: Date.now(),
-            });
         }
     }
 }

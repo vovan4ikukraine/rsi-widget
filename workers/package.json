@@ -31,6 +31,7 @@
         "wrangler": "^3.114.15"
     },
     "dependencies": {
-        "hono": "^3.11.0"
+        "hono": "^3.11.0",
+        "googleapis": "^144.0.0"
     }
 }
