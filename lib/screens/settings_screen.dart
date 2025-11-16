@@ -18,8 +18,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
   String _theme = 'dark';
   String _language = 'ru';
-  bool _autoRefresh = true;
-  int _refreshInterval = 60; // seconds
 
   @override
   void initState() {
@@ -35,8 +33,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _theme = prefs.getString('theme') ?? 'dark';
       _language = prefs.getString('language') ?? 'ru';
-      _autoRefresh = prefs.getBool('auto_refresh') ?? true;
-      _refreshInterval = prefs.getInt('refresh_interval') ?? 60;
     });
   }
 
@@ -47,8 +43,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
     await prefs.setString('language', _language);
-    await prefs.setBool('auto_refresh', _autoRefresh);
-    await prefs.setInt('refresh_interval', _refreshInterval);
   }
 
   @override
@@ -138,28 +132,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: loc.t('settings_data_title'),
             icon: Icons.data_usage,
             children: [
-              SwitchListTile(
-                title: Text(loc.t('settings_auto_refresh')),
-                subtitle: Text(loc.t('settings_auto_refresh_sub')),
-                value: _autoRefresh,
-                onChanged: (value) {
-                  setState(() {
-                    _autoRefresh = value;
-                  });
-                  _saveSettings();
-                },
-              ),
-              ListTile(
-                title: Text(loc.t('settings_refresh_interval')),
-                subtitle: Text(
-                  loc.t(
-                    'settings_refresh_interval_value',
-                    params: {'seconds': '$_refreshInterval'},
-                  ),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showRefreshIntervalDialog(loc),
-              ),
               ListTile(
                 title: Text(loc.t('settings_clear_cache')),
                 subtitle: Text(loc.t('settings_clear_cache_sub')),
@@ -343,53 +315,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showRefreshIntervalDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_refresh_interval_title')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              loc.t(
-                'settings_refresh_interval_current',
-                params: {'seconds': '$_refreshInterval'},
-              ),
-            ),
-            const SizedBox(height: 16),
-            Slider(
-              value: _refreshInterval.toDouble(),
-              min: 30,
-              max: 300,
-              divisions: 9,
-              label: '${_refreshInterval} '
-                  '${loc.locale.languageCode == 'ru' ? 'сек.' : 'sec'}',
-              onChanged: (value) {
-                setState(() {
-                  _refreshInterval = value.round();
-                });
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_cancel')),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              _saveSettings();
-              Navigator.pop(context);
-            },
-            child: Text(loc.t('settings_save')),
-          ),
-        ],
       ),
     );
   }
