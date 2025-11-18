@@ -1,0 +1,555 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:isar/isar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models.dart';
+import 'user_service.dart';
+import 'auth_service.dart';
+
+/// Service for syncing user data (watchlist, chart preferences) with server
+class DataSyncService {
+  static const _baseUrl = 'https://rsi-workers.vovan4ikukraine.workers.dev';
+
+  /// Save chart preferences to local cache (for anonymous mode)
+  static Future<void> savePreferencesToCache({
+    String? symbol,
+    String? timeframe,
+    int? rsiPeriod,
+    double? lowerLevel,
+    double? upperLevel,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (symbol != null) {
+      await prefs.setString('anonymous_home_selected_symbol', symbol);
+    }
+    if (timeframe != null) {
+      await prefs.setString('anonymous_home_selected_timeframe', timeframe);
+    }
+    if (rsiPeriod != null) {
+      await prefs.setInt('anonymous_home_rsi_period', rsiPeriod);
+    }
+    if (lowerLevel != null) {
+      await prefs.setDouble('anonymous_home_lower_level', lowerLevel);
+    }
+    if (upperLevel != null) {
+      await prefs.setDouble('anonymous_home_upper_level', upperLevel);
+    }
+  }
+
+  /// Load chart preferences from cache (for anonymous mode)
+  static Future<Map<String, dynamic>> loadPreferencesFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'symbol': prefs.getString('anonymous_home_selected_symbol'),
+      'timeframe': prefs.getString('anonymous_home_selected_timeframe'),
+      'rsiPeriod': prefs.getInt('anonymous_home_rsi_period'),
+      'lowerLevel': prefs.getDouble('anonymous_home_lower_level'),
+      'upperLevel': prefs.getDouble('anonymous_home_upper_level'),
+    };
+  }
+
+  /// Save anonymous watchlist to cache
+  static Future<void> saveWatchlistToCache(Isar isar) async {
+    try {
+      final items = await isar.watchlistItems.where().findAll();
+      final prefs = await SharedPreferences.getInstance();
+      final symbols = items.map((item) => item.symbol).toList();
+      await prefs.setStringList('anonymous_watchlist', symbols);
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: Saved ${symbols.length} items to anonymous watchlist cache');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error saving watchlist to cache: $e');
+      }
+    }
+  }
+
+  /// Load anonymous watchlist from cache
+  static Future<List<String>> loadWatchlistFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList('anonymous_watchlist') ?? [];
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error loading watchlist from cache: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Restore anonymous watchlist from cache to database
+  static Future<void> restoreWatchlistFromCache(Isar isar) async {
+    try {
+      final symbols = await loadWatchlistFromCache();
+
+      await isar.writeTxn(() async {
+        // Clear current watchlist
+        final existingItems = await isar.watchlistItems.where().findAll();
+        for (final item in existingItems) {
+          await isar.watchlistItems.delete(item.id);
+        }
+
+        // Restore from cache
+        final now = DateTime.now().millisecondsSinceEpoch;
+        for (final symbol in symbols) {
+          final item = WatchlistItem()
+            ..symbol = symbol
+            ..createdAt = now;
+          await isar.watchlistItems.put(item);
+        }
+      });
+
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: Restored ${symbols.length} items from anonymous watchlist cache');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error restoring watchlist from cache: $e');
+      }
+    }
+  }
+
+  /// Save anonymous alerts to cache
+  static Future<void> saveAlertsToCache(Isar isar) async {
+    try {
+      final alerts = await isar.alertRules.where().findAll();
+      final prefs = await SharedPreferences.getInstance();
+
+      // Save only anonymous alerts (those without remoteId)
+      final anonymousAlerts = alerts.where((a) => a.remoteId == null).toList();
+
+      // Save alerts as JSON array
+      final alertsJson = anonymousAlerts
+          .map((alert) => {
+                'id': alert.id,
+                'symbol': alert.symbol,
+                'timeframe': alert.timeframe,
+                'rsiPeriod': alert.rsiPeriod,
+                'levels': alert.levels,
+                'mode': alert.mode,
+                'cooldownSec': alert.cooldownSec,
+                'active': alert.active,
+                'createdAt': alert.createdAt,
+                'description': alert.description,
+                'repeatable': alert.repeatable,
+                'soundEnabled': alert.soundEnabled,
+                'customSound': alert.customSound,
+              })
+          .toList();
+
+      await prefs.setString('anonymous_alerts', jsonEncode(alertsJson));
+
+      // Also save alert states for anonymous alerts
+      final alertIds = anonymousAlerts.map((a) => a.id).toSet();
+      final states = await isar.alertStates.where().findAll();
+      final anonymousStates =
+          states.where((s) => alertIds.contains(s.ruleId)).toList();
+      final statesJson = anonymousStates
+          .map((state) => {
+                'id': state.id,
+                'ruleId': state.ruleId,
+                'lastRsi': state.lastRsi,
+                'lastBarTs': state.lastBarTs,
+                'lastFireTs': state.lastFireTs,
+                'lastSide': state.lastSide,
+                'wasAboveUpper': state.wasAboveUpper,
+                'wasBelowLower': state.wasBelowLower,
+                'lastAu': state.lastAu,
+                'lastAd': state.lastAd,
+              })
+          .toList();
+      await prefs.setString('anonymous_alert_states', jsonEncode(statesJson));
+
+      // Also save alert events for anonymous alerts
+      final events = await isar.alertEvents.where().findAll();
+      final anonymousEvents =
+          events.where((e) => alertIds.contains(e.ruleId)).toList();
+      final eventsJson = anonymousEvents
+          .map((event) => {
+                'id': event.id,
+                'ruleId': event.ruleId,
+                'ts': event.ts,
+                'rsi': event.rsi,
+                'level': event.level,
+                'side': event.side,
+                'barTs': event.barTs,
+                'symbol': event.symbol,
+                'message': event.message,
+                'isRead': event.isRead,
+              })
+          .toList();
+      await prefs.setString('anonymous_alert_events', jsonEncode(eventsJson));
+
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: Saved ${anonymousAlerts.length} alerts, ${anonymousStates.length} states, ${anonymousEvents.length} events to anonymous cache');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error saving alerts to cache: $e');
+      }
+    }
+  }
+
+  /// Restore anonymous alerts from cache to database
+  static Future<void> restoreAlertsFromCache(Isar isar) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Restore alerts
+      final alertsJsonStr = prefs.getString('anonymous_alerts');
+      if (alertsJsonStr == null) {
+        if (kDebugMode) {
+          debugPrint('DataSyncService: No anonymous alerts in cache');
+        }
+        return;
+      }
+
+      final alertsJson = jsonDecode(alertsJsonStr) as List<dynamic>;
+
+      await isar.writeTxn(() async {
+        // Clear current anonymous alerts (only those without remoteId)
+        final existingAlerts = await isar.alertRules.where().findAll();
+        for (final alert in existingAlerts) {
+          if (alert.remoteId == null) {
+            // Delete alert state and events first
+            final states = await isar.alertStates
+                .filter()
+                .ruleIdEqualTo(alert.id)
+                .findAll();
+            for (final state in states) {
+              await isar.alertStates.delete(state.id);
+            }
+            final events = await isar.alertEvents
+                .filter()
+                .ruleIdEqualTo(alert.id)
+                .findAll();
+            for (final event in events) {
+              await isar.alertEvents.delete(event.id);
+            }
+            // Then delete the alert itself
+            await isar.alertRules.delete(alert.id);
+          }
+        }
+
+        // Restore alerts from cache
+        final idMap = <int, int>{}; // oldId -> newId mapping
+        for (final alertData in alertsJson) {
+          final alert = AlertRule()
+            ..symbol = alertData['symbol'] as String
+            ..timeframe = alertData['timeframe'] as String
+            ..rsiPeriod = alertData['rsiPeriod'] as int
+            ..levels = (alertData['levels'] as List<dynamic>)
+                .map((e) => (e as num).toDouble())
+                .toList()
+            ..mode = alertData['mode'] as String
+            ..cooldownSec = alertData['cooldownSec'] as int
+            ..active = alertData['active'] as bool
+            ..createdAt = alertData['createdAt'] as int
+            ..description = alertData['description'] as String?
+            ..repeatable = alertData['repeatable'] as bool? ?? true
+            ..soundEnabled = alertData['soundEnabled'] as bool? ?? true
+            ..customSound = alertData['customSound'] as String?
+            ..remoteId = null; // Anonymous alerts have no remoteId
+
+          await isar.alertRules.put(alert);
+          final oldId = alertData['id'] as int;
+          idMap[oldId] = alert.id;
+        }
+
+        // Restore alert states
+        final statesJsonStr = prefs.getString('anonymous_alert_states');
+        if (statesJsonStr != null) {
+          final statesJson = jsonDecode(statesJsonStr) as List<dynamic>;
+          for (final stateData in statesJson) {
+            final oldRuleId = stateData['ruleId'] as int;
+            final newRuleId = idMap[oldRuleId];
+            if (newRuleId != null) {
+              final state = AlertState()
+                ..ruleId = newRuleId
+                ..lastRsi = stateData['lastRsi'] as double?
+                ..lastBarTs = stateData['lastBarTs'] as int?
+                ..lastFireTs = stateData['lastFireTs'] as int?
+                ..lastSide = stateData['lastSide'] as String?
+                ..wasAboveUpper = stateData['wasAboveUpper'] as bool?
+                ..wasBelowLower = stateData['wasBelowLower'] as bool?
+                ..lastAu = stateData['lastAu'] as double?
+                ..lastAd = stateData['lastAd'] as double?;
+              await isar.alertStates.put(state);
+            }
+          }
+        }
+
+        // Restore alert events
+        final eventsJsonStr = prefs.getString('anonymous_alert_events');
+        if (eventsJsonStr != null) {
+          final eventsJson = jsonDecode(eventsJsonStr) as List<dynamic>;
+          for (final eventData in eventsJson) {
+            final oldRuleId = eventData['ruleId'] as int;
+            final newRuleId = idMap[oldRuleId];
+            if (newRuleId != null) {
+              final event = AlertEvent()
+                ..ruleId = newRuleId
+                ..ts = eventData['ts'] as int
+                ..rsi = eventData['rsi'] as double
+                ..level = eventData['level'] as double?
+                ..side = eventData['side'] as String?
+                ..barTs = eventData['barTs'] as int?
+                ..symbol = eventData['symbol'] as String
+                ..message = eventData['message'] as String?
+                ..isRead = eventData['isRead'] as bool;
+              await isar.alertEvents.put(event);
+            }
+          }
+        }
+      });
+
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: Restored ${alertsJson.length} alerts from anonymous cache');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error restoring alerts from cache: $e');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
+
+  /// Sync watchlist to server
+  static Future<void> syncWatchlist(Isar isar) async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, just save locally
+      return;
+    }
+
+    final userId = await UserService.ensureUserId();
+    final localItems = await isar.watchlistItems.where().findAll();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/watchlist');
+      final payload = {
+        'userId': userId,
+        'symbols': localItems.map((item) => item.symbol).toList(),
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to sync watchlist: ${response.statusCode} ${response.body}');
+        }
+      } else if (kDebugMode) {
+        debugPrint('DataSyncService: Watchlist synced successfully');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error syncing watchlist: $e');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
+
+  /// Fetch watchlist from server and replace local watchlist completely
+  static Future<void> fetchWatchlist(Isar isar) async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, don't fetch from server
+      return;
+    }
+
+    final userId = await UserService.ensureUserId();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/watchlist/$userId');
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to fetch watchlist: ${response.statusCode} ${response.body}');
+        }
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      final List<dynamic>? symbols = decoded['symbols'] as List<dynamic>?;
+
+      if (symbols == null) {
+        // Server has empty watchlist - clear local
+        await isar.writeTxn(() async {
+          final existingItems = await isar.watchlistItems.where().findAll();
+          for (final item in existingItems) {
+            await isar.watchlistItems.delete(item.id);
+          }
+        });
+        return;
+      }
+
+      final serverSymbols = <String>{};
+      final serverSymbolsWithData = <String, Map<String, dynamic>>{};
+
+      // Parse server symbols (use Set to avoid duplicates)
+      for (final symbolData in symbols) {
+        final symbol =
+            symbolData is String ? symbolData : symbolData['symbol'] as String?;
+        if (symbol == null || symbol.isEmpty) continue;
+
+        // Only add if not already in set (prevent duplicates)
+        if (!serverSymbols.contains(symbol)) {
+          serverSymbols.add(symbol);
+          if (symbolData is Map) {
+            serverSymbolsWithData[symbol] =
+                Map<String, dynamic>.from(symbolData);
+          }
+        }
+      }
+
+      await isar.writeTxn(() async {
+        // Completely replace local watchlist with server watchlist
+        // First, clear all existing items
+        final existingItems = await isar.watchlistItems.where().findAll();
+        for (final item in existingItems) {
+          await isar.watchlistItems.delete(item.id);
+        }
+
+        // Then add all items from server
+        for (final symbol in serverSymbols) {
+          final item = WatchlistItem()..symbol = symbol;
+
+          // Use server's createdAt if available, otherwise use current time
+          if (serverSymbolsWithData.containsKey(symbol) &&
+              serverSymbolsWithData[symbol]!['created_at'] != null) {
+            final createdAt = serverSymbolsWithData[symbol]!['created_at'];
+            item.createdAt = createdAt is int
+                ? createdAt
+                : DateTime.now().millisecondsSinceEpoch;
+          } else {
+            item.createdAt = DateTime.now().millisecondsSinceEpoch;
+          }
+
+          await isar.watchlistItems.put(item);
+        }
+      });
+
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: Watchlist fetched and replaced successfully (${serverSymbols.length} items)');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error fetching watchlist: $e');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
+
+  /// Sync chart preferences to server
+  static Future<void> syncPreferences({
+    String? symbol,
+    String? timeframe,
+    int? rsiPeriod,
+    double? lowerLevel,
+    double? upperLevel,
+  }) async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, save to cache
+      await savePreferencesToCache(
+        symbol: symbol,
+        timeframe: timeframe,
+        rsiPeriod: rsiPeriod,
+        lowerLevel: lowerLevel,
+        upperLevel: upperLevel,
+      );
+      return;
+    }
+
+    final userId = await UserService.ensureUserId();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/preferences');
+      final payload = <String, dynamic>{
+        'userId': userId,
+      };
+      if (symbol != null) payload['selected_symbol'] = symbol;
+      if (timeframe != null) payload['selected_timeframe'] = timeframe;
+      if (rsiPeriod != null) payload['rsi_period'] = rsiPeriod;
+      if (lowerLevel != null) payload['lower_level'] = lowerLevel;
+      if (upperLevel != null) payload['upper_level'] = upperLevel;
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to sync preferences: ${response.statusCode} ${response.body}');
+        }
+      } else if (kDebugMode) {
+        debugPrint('DataSyncService: Preferences synced successfully');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error syncing preferences: $e');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
+
+  /// Fetch chart preferences from server
+  static Future<Map<String, dynamic>?> fetchPreferences() async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, load from cache
+      return await loadPreferencesFromCache();
+    }
+
+    final userId = await UserService.ensureUserId();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/preferences/$userId');
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to fetch preferences: ${response.statusCode} ${response.body}');
+        }
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      return {
+        'symbol': decoded['selected_symbol'] as String?,
+        'timeframe': decoded['selected_timeframe'] as String?,
+        'rsiPeriod': decoded['rsi_period'] as int?,
+        'lowerLevel': decoded['lower_level'] as double?,
+        'upperLevel': decoded['upper_level'] as double?,
+      };
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error fetching preferences: $e');
+        debugPrint('$stackTrace');
+      }
+      return null;
+    }
+  }
+}

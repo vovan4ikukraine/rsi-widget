@@ -274,16 +274,13 @@ class SymbolSearchService {
   }
 
   Future<SymbolInfo?> _tryFetchDirectInfo(String query) async {
-    final variants = _symbolVariants(query);
-    for (final variant in variants) {
-      try {
-        final info = await _source.fetchSymbolInfo(variant);
-        return info;
-      } catch (e) {
-        debugPrint('Direct info fetch for $variant failed: $e');
-      }
-    }
-    return _fallbackForQuery(query.toUpperCase()) ?? _guessSymbolInfo(query);
+    // Disabled direct API calls to /yf/info to avoid unnecessary 404 errors
+    // If searchSymbols and popular symbols don't find it, we just return null or guess
+    final trimmedQuery = query.trim();
+
+    // Return fallback or guess without making API calls
+    return _fallbackForQuery(trimmedQuery.toUpperCase()) ??
+        _guessSymbolInfo(trimmedQuery);
   }
 
   SymbolInfo? _guessSymbolInfo(String raw) {
@@ -357,22 +354,30 @@ class SymbolSearchService {
   }
 
   List<String> _symbolVariants(String raw) {
+    // Skip processing if input is too long or contains spaces
+    if (raw.length > 15 || raw.contains(' ')) {
+      return [];
+    }
+
     final upper = raw.toUpperCase();
     final variants = <String>{upper};
 
-    if (!upper.endsWith('-USD')) {
-      variants.add('$upper-USD');
-    }
-    if (!upper.endsWith('-USDT')) {
-      variants.add('$upper-USDT');
-    }
-    if (!upper.endsWith('=X') && upper.length == 6) {
-      variants.add('$upper=X');
-    }
-    if (upper.contains('/')) {
-      final cleaned = upper.replaceAll('/', '');
-      variants.add(cleaned);
-      variants.add('$cleaned=X');
+    // Only add variants for short symbols (likely actual tickers)
+    if (upper.length <= 10) {
+      if (!upper.endsWith('-USD')) {
+        variants.add('$upper-USD');
+      }
+      if (!upper.endsWith('-USDT')) {
+        variants.add('$upper-USDT');
+      }
+      if (!upper.endsWith('=X') && upper.length == 6) {
+        variants.add('$upper=X');
+      }
+      if (upper.contains('/')) {
+        final cleaned = upper.replaceAll('/', '');
+        variants.add(cleaned);
+        variants.add('$cleaned=X');
+      }
     }
 
     return variants.toList();

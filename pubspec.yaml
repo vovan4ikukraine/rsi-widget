@@ -20,6 +20,8 @@ dependencies:
   # Firebase
   firebase_core: ^4.2.1
   firebase_messaging: ^16.0.4
+  firebase_auth: ^6.1.2
+  google_sign_in: ^6.2.1
   
   # HTTP client
   http: ^1.2.2
@@ -56,6 +58,7 @@ dev_dependencies:
   freezed: ^2.4.7
   json_serializable: ^6.8.0
   isar_generator: 3.1.0+1
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -63,3 +66,10 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "INDICHARTS.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true

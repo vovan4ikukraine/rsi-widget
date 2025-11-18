@@ -32,6 +32,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
     });
 
     try {
+      // Sync alerts from server if authenticated
+      await AlertSyncService.fetchAndSyncAlerts(widget.isar);
+      await AlertSyncService.syncPendingAlerts(widget.isar);
+
       final alerts = await widget.isar.alertRules.where().findAll();
 
       final events = await widget.isar.alertEvents.where().findAll();

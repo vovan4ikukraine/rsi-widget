@@ -109,6 +109,26 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+-- User watchlist table
+CREATE TABLE IF NOT EXISTS user_watchlist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  UNIQUE(user_id, symbol)
+);
+
+-- User preferences table (chart settings)
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id TEXT PRIMARY KEY,
+  selected_symbol TEXT,
+  selected_timeframe TEXT,
+  rsi_period INTEGER,
+  lower_level REAL,
+  upper_level REAL,
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
 -- Indexes for query optimization
 CREATE INDEX IF NOT EXISTS idx_device_user_id ON device(user_id);
 CREATE INDEX IF NOT EXISTS idx_device_fcm_token ON device(fcm_token);
@@ -126,6 +146,9 @@ CREATE INDEX IF NOT EXISTS idx_alert_event_is_read ON alert_event(is_read);
 
 CREATE INDEX IF NOT EXISTS idx_rsi_data_symbol_timeframe ON rsi_data(symbol, timeframe);
 CREATE INDEX IF NOT EXISTS idx_rsi_data_timestamp ON rsi_data(timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_user_watchlist_user_id ON user_watchlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_watchlist_symbol ON user_watchlist(symbol);
 
 -- Views for convenience
 CREATE VIEW IF NOT EXISTS active_alerts AS

@@ -1,12 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:isar/isar.dart';
 
 import '../localization/app_localizations.dart';
 import '../services/yahoo_proto.dart';
+import '../services/auth_service.dart';
+import '../services/alert_sync_service.dart';
+import '../services/data_sync_service.dart';
 import '../state/app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final Isar? isar;
+
+  const SettingsScreen({super.key, this.isar});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -18,11 +25,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
   String _theme = 'dark';
   String _language = 'ru';
+  StreamSubscription? _authSubscription;
+  bool _isSignedIn = false;
 
   @override
   void initState() {
     super.initState();
+    _isSignedIn = AuthService.isSignedIn;
     _loadSettings();
+
+    // Listen to auth state changes
+    _authSubscription = AuthService.authStateChanges.listen((user) {
+      if (mounted) {
+        setState(() {
+          _isSignedIn = user != null;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -146,18 +171,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: loc.t('settings_account_title'),
             icon: Icons.person,
             children: [
-              ListTile(
-                title: Text(loc.t('settings_profile')),
-                subtitle: Text(loc.t('settings_profile_sub')),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showProfileDialog(loc),
-              ),
-              ListTile(
-                title: Text(loc.t('settings_sync')),
-                subtitle: Text(loc.t('settings_sync_sub')),
-                trailing: const Icon(Icons.sync),
-                onTap: () => _showSyncDialog(loc),
-              ),
+              if (_isSignedIn) ...[
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundImage: AuthService.photoUrl != null
+                        ? NetworkImage(AuthService.photoUrl!)
+                        : null,
+                    child: AuthService.photoUrl == null
+                        ? Icon(Icons.person)
+                        : null,
+                  ),
+                  title: Text(
+                      AuthService.displayName ?? AuthService.email ?? 'User'),
+                  subtitle: Text(
+                    AuthService.email ?? '',
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  title: Text(loc.t('settings_profile')),
+                  subtitle: Text(loc.t('settings_profile_sub')),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () => _showProfileDialog(loc),
+                ),
+                ListTile(
+                  title: Text(loc.t('settings_sync')),
+                  subtitle: Text(loc.t('settings_sync_sub')),
+                  trailing: const Icon(Icons.sync),
+                  onTap: () => _showSyncDialog(loc),
+                ),
+                const Divider(),
+                ListTile(
+                  title: Text(
+                    loc.t('auth_sign_out'),
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                  trailing: const Icon(Icons.logout, color: Colors.red),
+                  onTap: () => _showSignOutDialog(loc),
+                ),
+              ] else ...[
+                ListTile(
+                  title: Text(loc.t('auth_sign_in_google')),
+                  subtitle: Text(loc.t('auth_subtitle')),
+                  leading: const Icon(Icons.login, color: Colors.blue),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () => _signInFromSettings(loc),
+                ),
+              ],
             ],
           ),
 
@@ -433,6 +493,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(loc.t('settings_ok')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _signInFromSettings(AppLocalizations loc) async {
+    try {
+      // Save anonymous watchlist and alerts to cache before signing in
+      if (widget.isar != null) {
+        await DataSyncService.saveWatchlistToCache(widget.isar!);
+        await DataSyncService.saveAlertsToCache(widget.isar!);
+      }
+
+      await AuthService.signInWithGoogle();
+
+      // Sync data after sign in
+      if (widget.isar != null) {
+        unawaited(AlertSyncService.fetchAndSyncAlerts(widget.isar!));
+        unawaited(AlertSyncService.syncPendingAlerts(widget.isar!));
+        unawaited(DataSyncService.fetchWatchlist(widget.isar!));
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc.t('auth_signed_in_as',
+                params: {'email': AuthService.email ?? 'User'})),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Refresh the screen to show account info
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc.t('auth_error_message')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showSignOutDialog(AppLocalizations loc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(loc.t('auth_sign_out')),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(loc.t('settings_cancel')),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog first
+              try {
+                await AuthService.signOut(isar: widget.isar);
+                // UI will update automatically via authStateChanges listener
+                // No need to pop - let user see the updated state
+              } catch (e) {
+                // Show error only if context is still valid
+                if (mounted && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error signing out: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text(loc.t('auth_sign_out')),
           ),
         ],
       ),

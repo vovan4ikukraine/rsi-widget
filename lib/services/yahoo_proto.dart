@@ -12,34 +12,62 @@ class YahooProtoSource {
   final String endpoint;
   final http.Client _client = http.Client();
 
+  // Timeout for HTTP requests (10 seconds)
+  static const Duration _requestTimeout = Duration(seconds: 10);
+
   YahooProtoSource(this.endpoint);
 
   /// Get candles for symbol
-  Future<List<CandleData>> fetchCandles(
+  /// Returns a tuple with candles and data source ('cache' or 'yahoo')
+  Future<(List<CandleData>, String)> fetchCandlesWithSource(
     String symbol,
     String timeframe, {
     int? since,
     int limit = 1000,
+    bool debug = false,
   }) async {
     try {
+      // Check client-side cache first for instant response
+      final cacheKey = '$symbol:$timeframe';
+      final cachedCandles = DataCache.getCandles(cacheKey);
+      if (cachedCandles != null && cachedCandles.isNotEmpty) {
+        // Apply limit if specified and different from cached data
+        final result = limit < cachedCandles.length
+            ? cachedCandles.sublist(cachedCandles.length - limit)
+            : cachedCandles;
+        debugPrint(
+            'YahooProto: Using client cache for $symbol $timeframe (${result.length} candles)');
+        return (result, 'client-cache');
+      }
+
       final uri = Uri.parse('$endpoint/yf/candles').replace(
         queryParameters: {
           'symbol': symbol,
           'tf': timeframe,
           if (since != null) 'since': since.toString(),
           'limit': limit.toString(),
+          if (debug) 'debug': 'true',
         },
       );
 
       final response = await _client.get(
         uri,
         headers: {'accept': 'application/json'},
-      );
+      ).timeout(_requestTimeout, onTimeout: () {
+        throw YahooException('Request timeout');
+      });
 
       if (response.statusCode != 200) {
         final errorBody = response.body;
         throw YahooException(
             'HTTP error ${response.statusCode} for $symbol $timeframe: $errorBody');
+      }
+
+      // Get data source from header
+      String dataSource = 'unknown';
+      final headerSource = response.headers['x-data-source'];
+      if (headerSource != null) {
+        dataSource = headerSource.toLowerCase();
       }
 
       final decoded = json.decode(response.body);
@@ -51,17 +79,29 @@ class YahooProtoSource {
             'Server returned error for $symbol $timeframe: $errorMsg');
       }
 
-      // Check that it's an array
-      if (decoded is! List) {
+      // Handle debug mode response
+      List<dynamic> data;
+      if (debug &&
+          decoded is Map<String, dynamic> &&
+          decoded.containsKey('data')) {
+        data = decoded['data'] as List<dynamic>;
+        // Override data source from meta if available
+        if (decoded.containsKey('meta')) {
+          final meta = decoded['meta'] as Map<String, dynamic>;
+          if (meta.containsKey('source')) {
+            dataSource = meta['source'] as String;
+          }
+        }
+      } else if (decoded is List) {
+        data = decoded;
+      } else {
         throw YahooException(
             'Invalid data format for $symbol $timeframe: expected array, got ${decoded.runtimeType}. Response: ${decoded.toString().substring(0, decoded.toString().length > 200 ? 200 : decoded.toString().length)}');
       }
 
-      final data = decoded;
-
-      // Log number of received candles
+      // Log number of received candles and source
       debugPrint(
-          'YahooProto: Received ${data.length} candles for $symbol $timeframe');
+          'YahooProto: Received ${data.length} candles for $symbol $timeframe from $dataSource');
 
       if (data.isEmpty) {
         // For large timeframes on weekends there may be no fresh data
@@ -84,7 +124,7 @@ class YahooProtoSource {
       // Support two formats:
       // 1. Array of objects: [{timestamp, open, high, low, close, volume}, ...]
       // 2. Array of arrays: [[ts, open, high, low, close, volume], ...]
-      return data.map((e) {
+      final candles = data.map((e) {
         if (e is Map<String, dynamic>) {
           // Object format
           final timestamp = e['timestamp'];
@@ -118,9 +158,32 @@ class YahooProtoSource {
               'Invalid candle element format: expected object or array, got ${e.runtimeType}');
         }
       }).toList();
+
+      // Save to client-side cache for future requests
+      if (candles.isNotEmpty) {
+        DataCache.setCandles(cacheKey, candles);
+      }
+
+      return (candles, dataSource);
     } catch (e) {
       throw YahooException('Error getting data: $e');
     }
+  }
+
+  /// Get candles for symbol (backward compatibility)
+  Future<List<CandleData>> fetchCandles(
+    String symbol,
+    String timeframe, {
+    int? since,
+    int limit = 1000,
+  }) async {
+    final (candles, _) = await fetchCandlesWithSource(
+      symbol,
+      timeframe,
+      since: since,
+      limit: limit,
+    );
+    return candles;
   }
 
   /// Get current price
@@ -133,7 +196,9 @@ class YahooProtoSource {
       final response = await _client.get(
         uri,
         headers: {'accept': 'application/json'},
-      );
+      ).timeout(_requestTimeout, onTimeout: () {
+        throw YahooException('Request timeout');
+      });
 
       if (response.statusCode != 200) {
         throw YahooException('YF quote $symbol ${response.statusCode}');
@@ -171,7 +236,9 @@ class YahooProtoSource {
       final response = await _client.get(
         uri,
         headers: {'accept': 'application/json'},
-      );
+      ).timeout(_requestTimeout, onTimeout: () {
+        throw YahooException('Request timeout');
+      });
 
       if (response.statusCode != 200) {
         throw YahooException('YF info $symbol ${response.statusCode}');
@@ -211,7 +278,9 @@ class YahooProtoSource {
       final response = await _client.get(
         uri,
         headers: {'accept': 'application/json'},
-      );
+      ).timeout(_requestTimeout, onTimeout: () {
+        throw YahooException('Request timeout');
+      });
 
       if (response.statusCode != 200) {
         throw YahooException('YF search $query ${response.statusCode}');

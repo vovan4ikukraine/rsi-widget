@@ -450,7 +450,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               ),
               keyboardType: TextInputType.number,
               onChanged: (value) {
-                _rsiPeriod = int.tryParse(value) ?? 14;
+                final period = int.tryParse(value);
+                if (period != null && period >= 1 && period <= 100) {
+                  _rsiPeriod = period;
+                }
               },
             ),
             const SizedBox(height: 16),
@@ -481,9 +484,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   final lower = double.tryParse(value);
-                  if (lower != null && _levels.isNotEmpty) {
+                  if (lower != null &&
+                      lower >= 0 &&
+                      lower <= 100 &&
+                      _levels.isNotEmpty) {
                     setState(() {
-                      _levels[0] = lower;
+                      _levels[0] = lower.clamp(0.0, 100.0);
                     });
                   }
                 },
@@ -500,12 +506,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   final upper = double.tryParse(value);
-                  if (upper != null) {
+                  if (upper != null && upper >= 0 && upper <= 100) {
                     setState(() {
                       if (_levels.length > 1) {
-                        _levels[1] = upper;
+                        _levels[1] = upper.clamp(0.0, 100.0);
                       } else {
-                        _levels.add(upper);
+                        _levels.add(upper.clamp(0.0, 100.0));
                       }
                     });
                   }
@@ -596,7 +602,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (value) {
-                      _cooldownSec = int.tryParse(value) ?? 60;
+                      final cooldown = int.tryParse(value);
+                      if (cooldown != null &&
+                          cooldown >= 0 &&
+                          cooldown <= 86400) {
+                        _cooldownSec = cooldown;
+                      }
                     },
                   ),
                 ),
@@ -677,6 +688,45 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           );
         }
         return;
+      }
+
+      // Check for duplicate alert (only when creating new, not editing)
+      if (widget.alert == null) {
+        final existingAlerts = await widget.isar.alertRules
+            .filter()
+            .symbolEqualTo(symbol)
+            .timeframeEqualTo(_selectedTimeframe)
+            .modeEqualTo(_mode)
+            .rsiPeriodEqualTo(_rsiPeriod)
+            .findAll();
+
+        // Check if there's an identical alert (same symbol, timeframe, mode, period, and levels)
+        final sortedLevels = List.from(_levels)..sort();
+        for (final existing in existingAlerts) {
+          final existingSortedLevels = List.from(existing.levels)..sort();
+          if (existingSortedLevels.length == sortedLevels.length &&
+              existingSortedLevels
+                  .every((level) => sortedLevels.contains(level)) &&
+              sortedLevels
+                  .every((level) => existingSortedLevels.contains(level))) {
+            // Duplicate found
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    loc.t('create_alert_duplicate_error', params: {
+                      'symbol': symbol,
+                      'timeframe': _selectedTimeframe,
+                    }),
+                  ),
+                  backgroundColor: Colors.orange,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+            return; // Don't save duplicate
+          }
+        }
       }
 
       final alert = widget.alert ?? AlertRule();

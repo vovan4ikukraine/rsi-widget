@@ -41,35 +41,25 @@ object WidgetDataService {
                 }
 
                 // Load watchlist from SharedPreferences
-                var watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
-                var watchlist = parseWatchlist(watchlistJson)
+                val watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
+                val watchlist = parseWatchlist(watchlistJson)
 
-                // If watchlist is empty, try to extract symbols from existing data
-                if (watchlist.isEmpty()) {
-                    Log.d(TAG, "Watchlist symbols is empty, trying to extract from existing data")
-                    val existingDataJson = prefs.getString("watchlist_data", "[]") ?: "[]"
-                    if (existingDataJson.isNotEmpty() && existingDataJson != "[]") {
-                        try {
-                            val existingArray = JSONArray(existingDataJson)
-                            watchlist = mutableListOf()
-                            for (i in 0 until existingArray.length()) {
-                                val item = existingArray.getJSONObject(i)
-                                val symbol = item.getString("symbol")
-                                (watchlist as MutableList).add(symbol)
-                            }
-                            // Save extracted watchlist for future use
-                            val extractedJson = JSONArray(watchlist).toString()
-                            prefs.edit().putString("watchlist_symbols", extractedJson).commit()
-                            Log.d(TAG, "Extracted ${watchlist.size} symbols from existing data")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error extracting symbols from existing data: ${e.message}")
-                            return@withContext false
-                        }
-                    }
+                // Limit watchlist size for widget (max 50 symbols to prevent performance issues)
+                val limitedWatchlist = if (watchlist.size > 50) {
+                    Log.w(TAG, "Watchlist has ${watchlist.size} symbols, limiting to 50 for widget")
+                    watchlist.take(50)
+                } else {
+                    watchlist
                 }
 
-                if (watchlist.isEmpty()) {
-                    Log.d(TAG, "Watchlist is still empty after extraction attempt")
+                // If watchlist is empty, clear old data and return
+                if (limitedWatchlist.isEmpty()) {
+                    Log.d(TAG, "Watchlist is empty, clearing old widget data")
+                    // Clear old watchlist_data to prevent widget from showing stale data
+                    prefs.edit()
+                        .putString("watchlist_data", "[]")
+                        .putString("watchlist_symbols", "[]")
+                        .commit()
                     return@withContext false
                 }
 
@@ -78,7 +68,7 @@ object WidgetDataService {
                     return@withContext false
                 }
 
-                Log.d(TAG, "Using watchlist with ${watchlist.size} symbols: $watchlist")
+                Log.d(TAG, "Using watchlist with ${limitedWatchlist.size} symbols (limited from ${watchlist.size}): $limitedWatchlist")
 
                 // Load widget settings
                 val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
@@ -91,7 +81,7 @@ object WidgetDataService {
                 // Load data for each symbol
                 val widgetData = mutableListOf<WidgetItem>()
 
-                for (symbol in watchlist) {
+                for (symbol in limitedWatchlist) {
                     if (!isCurrentRequest()) {
                         Log.d(TAG, "Request $requestId cancelled before loading $symbol")
                         return@withContext false
@@ -112,7 +102,7 @@ object WidgetDataService {
                     }
                 }
 
-                Log.d(TAG, "Total loaded ${widgetData.size} items out of ${watchlist.size} symbols")
+                Log.d(TAG, "Total loaded ${widgetData.size} items out of ${limitedWatchlist.size} symbols")
 
                 // Save updated data (use commit for synchronous save)
                 val jsonData = widgetDataToJson(widgetData)
@@ -124,6 +114,7 @@ object WidgetDataService {
                 editor.putString("watchlist_data", jsonData)
                 editor.putString("timeframe", timeframe)
                 editor.putInt("rsi_period", rsiPeriod)
+                editor.putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
                 val saved = editor.commit() // commit() executes synchronously
 
                 if (saved) {

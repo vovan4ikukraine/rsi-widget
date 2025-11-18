@@ -41,10 +41,12 @@ class WidgetService {
       final watchlistItems = await isar.watchlistItems.where().findAll();
 
       if (watchlistItems.isEmpty) {
+        // Clear both watchlist_symbols and watchlist_data to prevent widget from using old data
         await prefs.setString('watchlist_symbols', '[]');
-        // No items - send empty list
+        // Also clear watchlist_data via MethodChannel to ensure native side clears it
         await _channel.invokeMethod('updateWidget', {
           'watchlistData': '[]',
+          'watchlistSymbols': <String>[],
           'timeframe': timeframe,
         });
         return;

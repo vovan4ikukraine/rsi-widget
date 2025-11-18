@@ -74,6 +74,20 @@ class AppLocalizations {
       'settings_support_github': 'GitHub: github.com/rsiwidget',
       'settings_ok': 'OK',
 
+      // Auth
+      'auth_title': 'Welcome',
+      'auth_subtitle': 'Sign in to sync your alerts across devices',
+      'auth_sign_in_google': 'Sign in with Google',
+      'auth_sign_out': 'Sign out',
+      'auth_signing_in': 'Signing in...',
+      'auth_error': 'Authentication error',
+      'auth_error_message': 'Failed to sign in. Please try again.',
+      'auth_skip': 'Continue without account',
+      'auth_skip_message':
+          'You can use the app without signing in, but your alerts won\'t sync across devices.',
+      'auth_signed_in_as': 'Signed in as {{email}}',
+      'auth_account': 'Account',
+
       // Common
       'common_cancel': 'Cancel',
       'common_save': 'Save',
@@ -119,6 +133,8 @@ class AppLocalizations {
       'home_refresh': 'Refresh',
       'home_watchlist_added': '{{symbol}} added to Watchlist',
       'home_watchlist_exists': '{{symbol}} already in Watchlist',
+      'home_watchlist_limit_reached':
+          'Watchlist limit reached: maximum {{limit}} symbols',
       'home_no_data_for_timeframe':
           'No data for instrument on timeframe {{timeframe}}',
       'home_weekend_hint':
@@ -150,6 +166,8 @@ class AppLocalizations {
       'alerts_enabled': 'Alert enabled',
       'alerts_disabled': 'Alert disabled',
       'alerts_duplicate_success': 'Alert duplicated',
+      'create_alert_duplicate_error':
+          'Alert for {{symbol}} {{timeframe}} with the same settings already exists',
       'alerts_delete_title': 'Delete Alert',
       'alerts_delete_message':
           'Are you sure you want to delete alert for {{symbol}}?',
@@ -284,6 +302,21 @@ class AppLocalizations {
       'settings_support_github': 'GitHub: github.com/rsiwidget',
       'settings_ok': 'OK',
 
+      // Auth
+      'auth_title': 'Добро пожаловать',
+      'auth_subtitle':
+          'Войдите, чтобы синхронизировать алерты между устройствами',
+      'auth_sign_in_google': 'Войти через Google',
+      'auth_sign_out': 'Выйти',
+      'auth_signing_in': 'Вход...',
+      'auth_error': 'Ошибка входа',
+      'auth_error_message': 'Не удалось войти. Попробуйте снова.',
+      'auth_skip': 'Продолжить без аккаунта',
+      'auth_skip_message':
+          'Вы можете использовать приложение без входа, но алерты не будут синхронизироваться между устройствами.',
+      'auth_signed_in_as': 'Вошли как {{email}}',
+      'auth_account': 'Аккаунт',
+
       // Common
       'common_cancel': 'Отмена',
       'common_save': 'Сохранить',
@@ -329,6 +362,8 @@ class AppLocalizations {
       'home_refresh': 'Обновить',
       'home_watchlist_added': '{{symbol}} добавлен в список наблюдения',
       'home_watchlist_exists': '{{symbol}} уже есть в списке наблюдения',
+      'home_watchlist_limit_reached':
+          'Достигнут лимит списка: максимум {{limit}} символов',
       'home_no_data_for_timeframe':
           'Нет данных для инструмента на таймфрейме {{timeframe}}',
       'home_weekend_hint':
@@ -360,6 +395,8 @@ class AppLocalizations {
       'alerts_enabled': 'Алерт включён',
       'alerts_disabled': 'Алерт выключен',
       'alerts_duplicate_success': 'Алерт продублирован',
+      'create_alert_duplicate_error':
+          'Алерт для {{symbol}} {{timeframe}} с такими же настройками уже существует',
       'alerts_delete_title': 'Удалить алерт',
       'alerts_delete_message': 'Удалить алерт для {{symbol}}?',
       'alerts_delete_success': 'Алерт удалён',

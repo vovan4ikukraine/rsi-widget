@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
@@ -11,6 +12,8 @@ import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/symbol_search_service.dart';
 import '../services/alert_sync_service.dart';
+import '../services/data_sync_service.dart';
+import '../services/auth_service.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -43,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _currentRsi = 0.0;
   bool _isLoading = false;
   bool _rsiSettingsExpanded = false; // RSI settings expansion state
+  String? _dataSource; // 'cache' or 'yahoo' - shows where data came from
 
   // Controllers for input fields
   final TextEditingController _rsiPeriodController = TextEditingController();
@@ -101,10 +105,54 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
     }
 
-    _selectedTimeframe = prefs.getString('home_selected_timeframe') ?? '15m';
-    _rsiPeriod = prefs.getInt('home_rsi_period') ?? 14;
-    _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
-    _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
+    // Load preferences: from server if authenticated, from cache if anonymous
+    if (AuthService.isSignedIn) {
+      // Fetch preferences from server
+      final prefsData = await DataSyncService.fetchPreferences();
+      if (prefsData != null) {
+        _selectedSymbol = prefsData['symbol'] as String? ??
+            prefs.getString('home_selected_symbol') ??
+            'AAPL';
+        _selectedTimeframe = prefsData['timeframe'] as String? ??
+            prefs.getString('home_selected_timeframe') ??
+            '15m';
+        _rsiPeriod = prefsData['rsiPeriod'] as int? ??
+            prefs.getInt('home_rsi_period') ??
+            14;
+        _lowerLevel = prefsData['lowerLevel'] as double? ??
+            prefs.getDouble('home_lower_level') ??
+            30.0;
+        _upperLevel = prefsData['upperLevel'] as double? ??
+            prefs.getDouble('home_upper_level') ??
+            70.0;
+      } else {
+        // Fallback to local preferences
+        _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
+        _selectedTimeframe =
+            prefs.getString('home_selected_timeframe') ?? '15m';
+        _rsiPeriod = prefs.getInt('home_rsi_period') ?? 14;
+        _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
+        _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
+      }
+    } else {
+      // Anonymous mode: load from cache
+      final cacheData = await DataSyncService.loadPreferencesFromCache();
+      _selectedSymbol = cacheData['symbol'] as String? ??
+          prefs.getString('home_selected_symbol') ??
+          'AAPL';
+      _selectedTimeframe = cacheData['timeframe'] as String? ??
+          prefs.getString('home_selected_timeframe') ??
+          '15m';
+      _rsiPeriod = cacheData['rsiPeriod'] as int? ??
+          prefs.getInt('home_rsi_period') ??
+          14;
+      _lowerLevel = cacheData['lowerLevel'] as double? ??
+          prefs.getDouble('home_lower_level') ??
+          30.0;
+      _upperLevel = cacheData['upperLevel'] as double? ??
+          prefs.getDouble('home_upper_level') ??
+          70.0;
+    }
 
     // Initialize symbol controller
     _syncSymbolFieldText(_selectedSymbol);
@@ -112,6 +160,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _clearControllers();
 
     setState(() {});
+
+    // Sync data: fetch from server and push local changes
+    if (AuthService.isSignedIn) {
+      unawaited(AlertSyncService.fetchAndSyncAlerts(widget.isar));
+      unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
+      unawaited(DataSyncService.fetchWatchlist(widget.isar));
+    }
 
     _loadAlerts();
     _loadRsiData();
@@ -136,6 +191,15 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setInt('home_rsi_period', _rsiPeriod);
     await prefs.setDouble('home_lower_level', _lowerLevel);
     await prefs.setDouble('home_upper_level', _upperLevel);
+
+    // Sync to server if authenticated, or save to cache if anonymous
+    unawaited(DataSyncService.syncPreferences(
+      symbol: _selectedSymbol,
+      timeframe: _selectedTimeframe,
+      rsiPeriod: _rsiPeriod,
+      lowerLevel: _lowerLevel,
+      upperLevel: _upperLevel,
+    ));
   }
 
   @override
@@ -186,14 +250,15 @@ class _HomeScreenState extends State<HomeScreen> {
         limit = 730; // For 1d need 2 years of data (minimum 15 for RSI)
       }
 
-      final candles = await _yahooService.fetchCandles(
+      final (candles, dataSource) = await _yahooService.fetchCandlesWithSource(
         requestedSymbol,
         _selectedTimeframe,
         limit: limit,
+        debug: kDebugMode,
       );
 
       debugPrint(
-          'HomeScreen: Received ${candles.length} candles for $requestedSymbol $_selectedTimeframe (limit was $limit)');
+          'HomeScreen: Received ${candles.length} candles for $requestedSymbol $_selectedTimeframe from $dataSource (limit was $limit)');
 
       if (candles.isEmpty) {
         throw YahooException(
@@ -289,6 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _rsiValues = chartRsiValues;
         _rsiTimestamps = chartRsiTimestamps;
         _currentRsi = rsiValues.isNotEmpty ? rsiValues.last : 0.0;
+        _dataSource = dataSource;
         _syncSymbolFieldText(requestedSymbol);
       });
       await _saveState();
@@ -380,7 +446,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(loc.t('home_title')),
+        title: Row(
+          children: [
+            Text(loc.t('home_title')),
+            if (_dataSource != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _dataSource == 'cache'
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color:
+                        _dataSource == 'cache' ? Colors.green : Colors.orange,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  _dataSource!.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: _dataSource == 'cache'
+                        ? Colors.green[300]
+                        : Colors.orange[300],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
@@ -417,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const SettingsScreen(),
+                builder: (context) => SettingsScreen(isar: widget.isar),
               ),
             ),
           ),
@@ -1200,6 +1297,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _addToWatchlist(String symbol) async {
     final loc = context.loc;
+
+    // Check watchlist limit (max 50 symbols)
+    final allExistingItems = await widget.isar.watchlistItems.where().findAll();
+    if (allExistingItems.length >= 50) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                loc.t('home_watchlist_limit_reached', params: {'limit': '50'})),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     // Check if this symbol is already added
     final existing = await widget.isar.watchlistItems
         .where()
@@ -1220,8 +1333,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Add to watchlist
-    // First get all existing items to ensure ID is assigned correctly
-    final allExistingItems = await widget.isar.watchlistItems.where().findAll();
+    // Get all existing items to ensure ID is assigned correctly (already fetched above for limit check)
     debugPrint(
         'HomeScreen: Before adding $symbol there are ${allExistingItems.length} items');
     if (allExistingItems.isNotEmpty) {
@@ -1248,6 +1360,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // Use put() with explicit ID
       return widget.isar.watchlistItems.put(item);
     });
+
+    // Sync watchlist: to server if authenticated, to cache if anonymous
+    if (AuthService.isSignedIn) {
+      unawaited(DataSyncService.syncWatchlist(widget.isar));
+    } else {
+      // In anonymous mode, save to cache
+      unawaited(DataSyncService.saveWatchlistToCache(widget.isar));
+    }
 
     debugPrint('HomeScreen: After put() item.id = ${item.id}');
 

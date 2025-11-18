@@ -37,7 +37,8 @@ export interface AlertTrigger {
 export class RsiEngine {
     constructor(
         private db: D1Database,
-        private yahooService: YahooService
+        private yahooService: YahooService,
+        private kv?: KVNamespace
     ) { }
 
     /**
@@ -84,10 +85,37 @@ export class RsiEngine {
         const triggers: AlertTrigger[] = [];
 
         try {
-            // Get candles
-            const candles = await this.yahooService.getCandles(symbol, timeframe, {
-                limit: 1000
-            });
+            // Get candles - try cache first, then Yahoo
+            let candles: any[] = [];
+
+            if (this.kv) {
+                const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.kv);
+                if (cached && cached.length > 0) {
+                    candles = cached;
+                    console.log(`RSI Engine: Using cached candles for ${symbol} ${timeframe} (${candles.length} candles)`);
+                }
+            }
+
+            // If no cache or cache miss, fetch from Yahoo
+            if (candles.length === 0) {
+                try {
+                    candles = await this.yahooService.getCandles(symbol, timeframe, {
+                        limit: 1000
+                    });
+
+                    // Save to cache for future use
+                    if (this.kv && candles.length > 0) {
+                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.kv);
+                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles for ${symbol} ${timeframe}`);
+                    }
+                } catch (error: any) {
+                    // If rate limited (429), rethrow to trigger backoff in caller
+                    if (error?.message?.includes('429') || error?.status === 429) {
+                        throw new Error(`Rate limited: ${symbol} ${timeframe}`);
+                    }
+                    throw error;
+                }
+            }
 
             if (candles.length < 2) {
                 console.log(`Not enough candles for ${symbol} ${timeframe}`);

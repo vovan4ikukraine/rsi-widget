@@ -7,6 +7,8 @@ import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
+import '../services/data_sync_service.dart';
+import '../services/auth_service.dart';
 
 class WatchlistScreen extends StatefulWidget {
   final Isar isar;
@@ -59,7 +61,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _updateWidgetOrder(bool sortDescending) async {
     try {
-      await _widgetService.updateWidget(sortDescending: sortDescending);
+      await _widgetService.updateWidget(
+        timeframe: _timeframe,
+        rsiPeriod: _rsiPeriod,
+        sortDescending: sortDescending,
+      );
     } catch (e, stackTrace) {
       debugPrint(
           'WatchlistScreen: Failed to update widget order: $e\n$stackTrace');
@@ -188,17 +194,30 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _loadSavedState() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Load widget period first (if it was set), then fallback to watchlist period
+    final widgetPeriod = prefs.getInt('rsi_widget_period');
+    final watchlistPeriod = prefs.getInt('watchlist_rsi_period');
+    final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
+    final watchlistTimeframe = prefs.getString('watchlist_timeframe');
+
     setState(() {
-      _timeframe = prefs.getString('watchlist_timeframe') ?? '15m';
-      _rsiPeriod = prefs.getInt('watchlist_rsi_period') ?? 14;
+      // Use widget settings if available, otherwise use watchlist settings
+      _timeframe = widgetTimeframe ?? watchlistTimeframe ?? '15m';
+      _rsiPeriod = widgetPeriod ?? watchlistPeriod ?? 14;
       _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
       _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
       _currentSortOrder =
           _sortOrderFromString(prefs.getString(_sortOrderPrefKey));
     });
-    // Save period for widget on initialization
+
+    // Save period and timeframe for widget to ensure consistency
     await prefs.setInt('rsi_widget_period', _rsiPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
+    // Also save to watchlist settings for consistency
+    await prefs.setInt('watchlist_rsi_period', _rsiPeriod);
+    await prefs.setString('watchlist_timeframe', _timeframe);
+
     _loadWatchlist();
   }
 
@@ -208,6 +227,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setInt('watchlist_rsi_period', _rsiPeriod);
     await prefs.setDouble('watchlist_lower_level', _lowerLevel);
     await prefs.setDouble('watchlist_upper_level', _upperLevel);
+    // Also save to widget settings to keep them in sync
+    await prefs.setInt('rsi_widget_period', _rsiPeriod);
+    await prefs.setString('rsi_widget_timeframe', _timeframe);
   }
 
   // Reload list when app returns from background
@@ -274,6 +296,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _loadWatchlist() async {
     try {
+      // Fetch watchlist from server if authenticated
+      if (AuthService.isSignedIn) {
+        await DataSyncService.fetchWatchlist(widget.isar);
+      } else {
+        // In anonymous mode, restore from cache if database is empty
+        final existingItems =
+            await widget.isar.watchlistItems.where().findAll();
+        if (existingItems.isEmpty) {
+          await DataSyncService.restoreWatchlistFromCache(widget.isar);
+        }
+      }
+
       // Load all items from database
       final items = await widget.isar.watchlistItems.where().findAll();
       debugPrint('WatchlistScreen: Loaded ${items.length} items from database');
@@ -315,8 +349,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Load RSI data for all symbols
       await _loadAllRsiData();
-      // Update widget after loading watchlist (use saved widget settings or current)
+      // Update widget after loading watchlist (use current watchlist settings)
       unawaited(_widgetService.updateWidget(
+        timeframe: _timeframe,
+        rsiPeriod: _rsiPeriod,
         sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
       ));
     } catch (e, stackTrace) {
@@ -343,8 +379,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     });
 
     try {
-      for (final item in _watchlistItems) {
-        await _loadRsiDataForSymbol(item.symbol);
+      // Load data with limited parallelism (max 8 concurrent requests)
+      // This prevents overwhelming the server while still being faster than sequential
+      // Increased from 5 to 8 as client-side cache reduces actual HTTP requests
+      const maxConcurrent = 8;
+      final symbols = _watchlistItems.map((item) => item.symbol).toList();
+
+      for (int i = 0; i < symbols.length; i += maxConcurrent) {
+        final batch = symbols.skip(i).take(maxConcurrent).toList();
+        await Future.wait(
+          batch.map((symbol) => _loadRsiDataForSymbol(symbol)),
+          eagerError: false, // Continue even if some fail
+        );
       }
     } finally {
       if (_currentSortOrder != _RsiSortOrder.none) {
@@ -357,112 +403,132 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       setState(() {
         _isLoading = false;
       });
-      // Update widget after loading data (use saved widget settings)
+      // Update widget after loading data (use current watchlist settings)
       unawaited(_widgetService.updateWidget(
+        timeframe: _timeframe,
+        rsiPeriod: _rsiPeriod,
         sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
       ));
     }
   }
 
   Future<void> _loadRsiDataForSymbol(String symbol) async {
-    try {
-      // Determine limit depending on timeframe
-      int limit = 100;
-      if (_timeframe == '4h') {
-        limit = 500;
-      } else if (_timeframe == '1d') {
-        limit = 730;
-      }
+    const maxRetries = 3;
+    int attempt = 0;
 
-      final candles = await _yahooService.fetchCandles(
-        symbol,
-        _timeframe,
-        limit: limit,
-      );
-
-      if (candles.isEmpty) {
-        setState(() {
-          _rsiDataMap[symbol] = _SymbolRsiData(
-            rsi: 0.0,
-            rsiValues: [],
-            timestamps: [],
-          );
-        });
-        return;
-      }
-
-      final closes = candles.map((c) => c.close).toList();
-      final rsiValues = <double>[];
-      final rsiTimestamps = <int>[];
-
-      if (closes.length < _rsiPeriod + 1) {
-        setState(() {
-          _rsiDataMap[symbol] = _SymbolRsiData(
-            rsi: 0.0,
-            rsiValues: [],
-            timestamps: [],
-          );
-        });
-        return;
-      }
-
-      // RSI calculation using Wilder's algorithm
-      double gain = 0, loss = 0;
-      for (int i = 1; i <= _rsiPeriod; i++) {
-        final change = closes[i] - closes[i - 1];
-        if (change > 0) {
-          gain += change;
-        } else {
-          loss -= change;
-        }
-      }
-
-      double au = gain / _rsiPeriod;
-      double ad = loss / _rsiPeriod;
-
-      for (int i = _rsiPeriod + 1; i < closes.length; i++) {
-        final change = closes[i] - closes[i - 1];
-        final u = change > 0 ? change : 0.0;
-        final d = change < 0 ? -change : 0.0;
-
-        au = (au * (_rsiPeriod - 1) + u) / _rsiPeriod;
-        ad = (ad * (_rsiPeriod - 1) + d) / _rsiPeriod;
-
-        if (ad == 0) {
-          rsiValues.add(100.0);
-        } else {
-          final rs = au / ad;
-          final rsi = 100 - (100 / (1 + rs));
-          rsiValues.add(rsi.clamp(0, 100));
+    while (attempt < maxRetries) {
+      try {
+        // Determine limit depending on timeframe
+        int limit = 100;
+        if (_timeframe == '4h') {
+          limit = 500;
+        } else if (_timeframe == '1d') {
+          limit = 730;
         }
 
-        rsiTimestamps.add(candles[i].timestamp);
+        final candles = await _yahooService.fetchCandles(
+          symbol,
+          _timeframe,
+          limit: limit,
+        );
+
+        if (candles.isEmpty) {
+          setState(() {
+            _rsiDataMap[symbol] = _SymbolRsiData(
+              rsi: 0.0,
+              rsiValues: [],
+              timestamps: [],
+            );
+          });
+          return;
+        }
+
+        final closes = candles.map((c) => c.close).toList();
+        final rsiValues = <double>[];
+        final rsiTimestamps = <int>[];
+
+        if (closes.length < _rsiPeriod + 1) {
+          setState(() {
+            _rsiDataMap[symbol] = _SymbolRsiData(
+              rsi: 0.0,
+              rsiValues: [],
+              timestamps: [],
+            );
+          });
+          return;
+        }
+
+        // RSI calculation using Wilder's algorithm
+        double gain = 0, loss = 0;
+        for (int i = 1; i <= _rsiPeriod; i++) {
+          final change = closes[i] - closes[i - 1];
+          if (change > 0) {
+            gain += change;
+          } else {
+            loss -= change;
+          }
+        }
+
+        double au = gain / _rsiPeriod;
+        double ad = loss / _rsiPeriod;
+
+        for (int i = _rsiPeriod + 1; i < closes.length; i++) {
+          final change = closes[i] - closes[i - 1];
+          final u = change > 0 ? change : 0.0;
+          final d = change < 0 ? -change : 0.0;
+
+          au = (au * (_rsiPeriod - 1) + u) / _rsiPeriod;
+          ad = (ad * (_rsiPeriod - 1) + d) / _rsiPeriod;
+
+          if (ad == 0) {
+            rsiValues.add(100.0);
+          } else {
+            final rs = au / ad;
+            final rsi = 100 - (100 / (1 + rs));
+            rsiValues.add(rsi.clamp(0, 100));
+          }
+
+          rsiTimestamps.add(candles[i].timestamp);
+        }
+
+        // Take only last 50 points for compact chart
+        final chartRsiValues = rsiValues.length > 50
+            ? rsiValues.sublist(rsiValues.length - 50)
+            : rsiValues;
+        final chartRsiTimestamps = rsiTimestamps.length > 50
+            ? rsiTimestamps.sublist(rsiTimestamps.length - 50)
+            : rsiTimestamps;
+
+        setState(() {
+          _rsiDataMap[symbol] = _SymbolRsiData(
+            rsi: rsiValues.isNotEmpty ? rsiValues.last : 0.0,
+            rsiValues: chartRsiValues,
+            timestamps: chartRsiTimestamps,
+          );
+        });
+        return; // Success, exit retry loop
+      } catch (e) {
+        attempt++;
+        debugPrint(
+            'Error loading RSI for $symbol (attempt $attempt/$maxRetries): $e');
+
+        if (attempt >= maxRetries) {
+          // All retries failed, set empty data
+          debugPrint(
+              'Failed to load RSI for $symbol after $maxRetries attempts');
+          setState(() {
+            _rsiDataMap[symbol] = _SymbolRsiData(
+              rsi: 0.0,
+              rsiValues: [],
+              timestamps: [],
+            );
+          });
+        } else {
+          // Wait before retry with exponential backoff (1s, 2s, 4s)
+          final delayMs = 1000 * (1 << (attempt - 1));
+          await Future.delayed(Duration(milliseconds: delayMs));
+        }
       }
-
-      // Take only last 50 points for compact chart
-      final chartRsiValues = rsiValues.length > 50
-          ? rsiValues.sublist(rsiValues.length - 50)
-          : rsiValues;
-      final chartRsiTimestamps = rsiTimestamps.length > 50
-          ? rsiTimestamps.sublist(rsiTimestamps.length - 50)
-          : rsiTimestamps;
-
-      setState(() {
-        _rsiDataMap[symbol] = _SymbolRsiData(
-          rsi: rsiValues.isNotEmpty ? rsiValues.last : 0.0,
-          rsiValues: chartRsiValues,
-          timestamps: chartRsiTimestamps,
-        );
-      });
-    } catch (e) {
-      debugPrint('Error loading RSI for $symbol: $e');
-      setState(() {
-        _rsiDataMap[symbol] = _SymbolRsiData(
-          rsi: 0.0,
-          rsiValues: [],
-          timestamps: [],
-        );
-      });
     }
   }
 
@@ -474,8 +540,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _watchlistItems.remove(item);
       _rsiDataMap.remove(item.symbol);
     });
+    // Sync watchlist: to server if authenticated, to cache if anonymous
+    if (AuthService.isSignedIn) {
+      unawaited(DataSyncService.syncWatchlist(widget.isar));
+    } else {
+      unawaited(DataSyncService.saveWatchlistToCache(widget.isar));
+    }
     // Update widget after deletion
     unawaited(_widgetService.updateWidget(
+      timeframe: _timeframe,
+      rsiPeriod: _rsiPeriod,
       sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
     ));
   }

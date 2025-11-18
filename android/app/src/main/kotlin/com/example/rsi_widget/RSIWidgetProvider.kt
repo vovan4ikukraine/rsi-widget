@@ -195,7 +195,9 @@ class RSIWidgetProvider : AppWidgetProvider() {
             val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
             val watchlistJson = prefs.getString("watchlist_data", "[]")
             val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
-            val rsiPeriod = prefs.getInt("rsi_period", 14)
+            // Use widget period first, fallback to rsi_period, then default to 14
+            val rsiPeriod = prefs.getInt("rsi_widget_period",
+                prefs.getInt("rsi_period", 14))
             val isLoading = prefs.getBoolean(PREF_IS_LOADING, false)
             
             Log.d(TAG, "Updating widget $appWidgetId")

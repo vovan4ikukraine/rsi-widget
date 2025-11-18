@@ -1,6 +1,6 @@
 {
-    "name": "rsi_widget",
-    "short_name": "rsi_widget",
+    "name": "INDI CHARTS",
+    "short_name": "INDI CHARTS",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

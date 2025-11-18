@@ -325,8 +325,8 @@ export class YahooService {
                 const cacheTime = data.timestamp;
                 const now = Date.now();
 
-                // Cache valid for 5 minutes
-                if (now - cacheTime < 5 * 60 * 1000) {
+                // Cache valid for 60 seconds
+                if (now - cacheTime < 60 * 1000) {
                     return data.candles;
                 }
             }

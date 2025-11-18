@@ -36,6 +36,7 @@ class MainActivity: FlutterActivity() {
                             putString("watchlist_data", watchlistData)
                             putString("timeframe", timeframe)
                             putInt("rsi_period", rsiPeriod)
+                            putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
                             watchlistSymbols?.let {
                                 putString("watchlist_symbols", JSONArray(it).toString())
                             }
