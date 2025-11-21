@@ -74,3 +74,4 @@ wrangler tail
 4. Проверьте, что Service Account имеет права на Firebase Cloud Messaging
 
 
+
