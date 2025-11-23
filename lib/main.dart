@@ -34,7 +34,7 @@ void main() async {
       AlertRuleSchema,
       AlertStateSchema,
       AlertEventSchema,
-      RsiDataSchema,
+      IndicatorDataSchema,
       DeviceInfoSchema,
       WatchlistItemSchema,
     ],

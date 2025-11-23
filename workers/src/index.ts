@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { RsiEngine } from './rsi-engine';
+import { IndicatorEngine } from './rsi-engine';
 import { FcmService } from './fcm-service';
 import { YahooService } from './yahoo-service';
 import { Logger } from './logger';
@@ -16,7 +16,7 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-async function ensureTables(db: D1Database) {
+async function ensureTables(db: D1Database, env?: any) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS device (
         id TEXT PRIMARY KEY,
@@ -33,13 +33,49 @@ async function ensureTables(db: D1Database) {
         user_id TEXT NOT NULL,
         symbol TEXT NOT NULL,
         timeframe TEXT NOT NULL,
-        rsi_period INTEGER NOT NULL,
+        indicator TEXT NOT NULL DEFAULT 'rsi',
+        period INTEGER NOT NULL DEFAULT 14,
+        indicator_params TEXT,
+        rsi_period INTEGER,
         levels TEXT NOT NULL,
         mode TEXT NOT NULL,
         cooldown_sec INTEGER NOT NULL,
         active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL
       )
+    `).run();
+
+    // Migration: Add indicator and period columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN indicator TEXT`).run();
+    } catch (e: any) {
+        // Column already exists, ignore
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN period INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: period column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN indicator_params TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_params column may already exist', env);
+        }
+    }
+
+    // Migration: Copy rsi_period to period for existing records
+    await db.prepare(`
+      UPDATE alert_rule 
+      SET period = rsi_period, indicator = 'rsi'
+      WHERE period IS NULL OR indicator IS NULL
     `).run();
 
     await db.prepare(`
@@ -67,28 +103,94 @@ async function ensureTables(db: D1Database) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alert_state (
         rule_id INTEGER PRIMARY KEY,
-        last_rsi REAL,
+        last_indicator_value REAL,
+        indicator_state TEXT,
         last_bar_ts INTEGER,
         last_fire_ts INTEGER,
         last_side TEXT,
+        last_rsi REAL,
         last_au REAL,
         last_ad REAL,
         FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
       )
     `).run();
 
+    // Migration: Add new columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN last_indicator_value REAL`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_indicator_value column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN indicator_state TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_state column may already exist', env);
+        }
+    }
+
+    // Migration: Copy last_rsi to last_indicator_value for existing records
+    await db.prepare(`
+      UPDATE alert_state 
+      SET last_indicator_value = last_rsi
+      WHERE last_indicator_value IS NULL AND last_rsi IS NOT NULL
+    `).run();
+
+    // Migration: Convert last_au/last_ad to indicator_state JSON
+    const states = await db.prepare(`SELECT rule_id, last_au, last_ad FROM alert_state WHERE last_au IS NOT NULL OR last_ad IS NOT NULL`).all();
+    for (const state of states.results as any[]) {
+        const stateJson = JSON.stringify({
+            au: state.last_au,
+            ad: state.last_ad
+        });
+        await db.prepare(`
+          UPDATE alert_state 
+          SET indicator_state = ?
+          WHERE rule_id = ? AND indicator_state IS NULL
+        `).bind(stateJson, state.rule_id).run();
+    }
+
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alert_event (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         rule_id INTEGER NOT NULL,
         ts INTEGER NOT NULL,
-        rsi REAL NOT NULL,
+        indicator_value REAL NOT NULL,
+        indicator TEXT,
+        rsi REAL,
         level REAL,
         side TEXT,
         bar_ts INTEGER,
         symbol TEXT,
         FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
       )
+    `).run();
+
+    // Migration: Add new columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_event ADD COLUMN indicator_value REAL`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_value column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_event ADD COLUMN indicator TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator column may already exist', env);
+        }
+    }
+
+    // Migration: Copy rsi to indicator_value for existing records
+    await db.prepare(`
+      UPDATE alert_event 
+      SET indicator_value = rsi, indicator = 'rsi'
+      WHERE indicator_value IS NULL AND rsi IS NOT NULL
     `).run();
 }
 
@@ -300,7 +402,10 @@ app.post('/alerts/create', async (c) => {
             userId,
             symbol,
             timeframe,
-            rsiPeriod,
+            indicator,
+            period,
+            rsiPeriod,  // Deprecated, kept for backward compatibility
+            indicatorParams,
             levels,
             mode,
             cooldownSec
@@ -324,10 +429,26 @@ app.post('/alerts/create', async (c) => {
             return c.json({ error: `Invalid timeframe: must be one of ${validTimeframes.join(', ')}` }, 400);
         }
 
-        // Validate RSI period (1-100)
-        const period = rsiPeriod || 14;
-        if (!Number.isInteger(period) || period < 1 || period > 100) {
-            return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+        // Validate indicator (default to 'rsi')
+        const alertIndicator = indicator || 'rsi';
+        const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+        if (!validIndicators.includes(alertIndicator)) {
+            return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+        }
+
+        // Validate period (1-100) - universal period for all indicators
+        const alertPeriod = period || rsiPeriod || (alertIndicator === 'stoch' ? 14 : 14);
+        if (!Number.isInteger(alertPeriod) || alertPeriod < 1 || alertPeriod > 100) {
+            return c.json({ error: 'Invalid period: must be between 1 and 100' }, 400);
+        }
+
+        // Validate indicator parameters if provided
+        let indicatorParamsJson: string | null = null;
+        if (indicatorParams) {
+            if (typeof indicatorParams !== 'object') {
+                return c.json({ error: 'Invalid indicatorParams: must be an object' }, 400);
+            }
+            indicatorParamsJson = JSON.stringify(indicatorParams);
         }
 
         // Validate levels (array of numbers between 0-100)
@@ -367,11 +488,12 @@ app.post('/alerts/create', async (c) => {
 
         const result = await db.prepare(`
       INSERT INTO alert_rule (
-        user_id, symbol, timeframe, rsi_period, levels, mode, 
+        user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
         cooldown_sec, active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `).bind(
-            userId, symbol.toUpperCase(), timeframe, period,
+            userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
+            indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
             JSON.stringify(levels), alertMode,
             cooldown, Date.now()
         ).run();
@@ -446,9 +568,33 @@ app.put('/alerts/:ruleId', async (c) => {
             }
         }
 
+        if (updates.indicator !== undefined) {
+            const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+            if (!validIndicators.includes(updates.indicator)) {
+                return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+            }
+        }
+
+        if (updates.period !== undefined) {
+            if (!Number.isInteger(updates.period) || updates.period < 1 || updates.period > 100) {
+                return c.json({ error: 'Invalid period: must be between 1 and 100' }, 400);
+            }
+        }
+
+        if (updates.indicatorParams !== undefined) {
+            if (typeof updates.indicatorParams !== 'object') {
+                return c.json({ error: 'Invalid indicatorParams: must be an object' }, 400);
+            }
+            updates.indicatorParams = JSON.stringify(updates.indicatorParams);
+        }
+
         if (updates.rsi_period !== undefined) {
             if (!Number.isInteger(updates.rsi_period) || updates.rsi_period < 1 || updates.rsi_period > 100) {
                 return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+            }
+            // Also update period for consistency
+            if (updates.period === undefined) {
+                updates.period = updates.rsi_period;
             }
         }
 
@@ -560,11 +706,8 @@ app.post('/alerts/check', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
-        // RsiEngine expects (DB, YahooService, KV?)
-        const rsiEngine = new RsiEngine(db, new YahooService(c.env?.YAHOO_ENDPOINT as string || ''), c.env?.KV);
-        const results = await rsiEngine.checkAlerts(symbols, timeframes);
-
-        return c.json({ results });
+        // Note: This endpoint is deprecated, use CRON job instead
+        return c.json({ error: 'This endpoint is deprecated. Use CRON job for alert checking.' }, 400);
     } catch (error) {
         Logger.error('Error checking alerts:', error, c.env);
         return c.json({ error: 'Failed to check alerts' }, 500);
@@ -611,14 +754,14 @@ const worker: ExportedHandler<Env> = {
                 return;
             }
 
-            const rsiEngine = new RsiEngine(db, new YahooService(env.YAHOO_ENDPOINT), env.KV);
+            const indicatorEngine = new IndicatorEngine(db, new YahooService(env.YAHOO_ENDPOINT), env.KV);
             const fcmService = new FcmService(env.FCM_SERVICE_ACCOUNT_JSON, env.FCM_PROJECT_ID, env.KV, env.DB);
 
             // Get active rules (we already know there are some)
-            const rules = await rsiEngine.getActiveRules();
+            const rules = await indicatorEngine.getActiveRules();
 
             // Group by symbols and timeframes
-            const groupedRules = rsiEngine.groupRulesBySymbolTimeframe(rules);
+            const groupedRules = indicatorEngine.groupRulesBySymbolTimeframe(rules);
             const symbolTimeframePairs = Object.entries(groupedRules);
 
             // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits
@@ -636,7 +779,7 @@ const worker: ExportedHandler<Env> = {
                 }
 
                 try {
-                    const triggers = await rsiEngine.checkSymbolTimeframe(
+                    const triggers = await indicatorEngine.checkSymbolTimeframe(
                         symbol,
                         timeframe,
                         rules

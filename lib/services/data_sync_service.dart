@@ -130,7 +130,10 @@ class DataSyncService {
                 'id': alert.id,
                 'symbol': alert.symbol,
                 'timeframe': alert.timeframe,
-                'rsiPeriod': alert.rsiPeriod,
+                'indicator': alert.indicator,
+                'period': alert.period,
+                'indicatorParams': alert.indicatorParams,
+                'rsiPeriod': alert.period, // Keep for backward compatibility
                 'levels': alert.levels,
                 'mode': alert.mode,
                 'cooldownSec': alert.cooldownSec,
@@ -154,14 +157,17 @@ class DataSyncService {
           .map((state) => {
                 'id': state.id,
                 'ruleId': state.ruleId,
-                'lastRsi': state.lastRsi,
+                'lastIndicatorValue': state.lastIndicatorValue,
+                'indicatorState': state.indicatorStateJson,
+                'lastRsi':
+                    state.lastIndicatorValue, // Keep for backward compatibility
                 'lastBarTs': state.lastBarTs,
                 'lastFireTs': state.lastFireTs,
                 'lastSide': state.lastSide,
                 'wasAboveUpper': state.wasAboveUpper,
                 'wasBelowLower': state.wasBelowLower,
-                'lastAu': state.lastAu,
-                'lastAd': state.lastAd,
+                'lastAu': state.indicatorState?['au'] as double?,
+                'lastAd': state.indicatorState?['ad'] as double?,
               })
           .toList();
       await prefs.setString('anonymous_alert_states', jsonEncode(statesJson));
@@ -175,7 +181,9 @@ class DataSyncService {
                 'id': event.id,
                 'ruleId': event.ruleId,
                 'ts': event.ts,
-                'rsi': event.rsi,
+                'indicatorValue': event.indicatorValue,
+                'indicator': event.indicator,
+                'rsi': event.indicatorValue, // Keep for backward compatibility
                 'level': event.level,
                 'side': event.side,
                 'barTs': event.barTs,
@@ -244,7 +252,13 @@ class DataSyncService {
           final alert = AlertRule()
             ..symbol = alertData['symbol'] as String
             ..timeframe = alertData['timeframe'] as String
-            ..rsiPeriod = alertData['rsiPeriod'] as int
+            ..indicator = alertData['indicator'] as String? ?? 'rsi'
+            ..period = alertData['period'] as int? ??
+                alertData['rsiPeriod'] as int? ??
+                14
+            ..indicatorParams = alertData['indicatorParams'] != null
+                ? Map<String, dynamic>.from(alertData['indicatorParams'] as Map)
+                : null
             ..levels = (alertData['levels'] as List<dynamic>)
                 .map((e) => (e as num).toDouble())
                 .toList()
@@ -273,14 +287,21 @@ class DataSyncService {
             if (newRuleId != null) {
               final state = AlertState()
                 ..ruleId = newRuleId
-                ..lastRsi = stateData['lastRsi'] as double?
+                ..lastIndicatorValue =
+                    stateData['lastIndicatorValue'] as double? ??
+                        stateData['lastRsi'] as double?
+                ..indicatorStateJson = stateData['indicatorState'] as String? ??
+                    (stateData['lastAu'] != null || stateData['lastAd'] != null
+                        ? jsonEncode({
+                            'au': stateData['lastAu'] as double?,
+                            'ad': stateData['lastAd'] as double?,
+                          })
+                        : null)
                 ..lastBarTs = stateData['lastBarTs'] as int?
                 ..lastFireTs = stateData['lastFireTs'] as int?
                 ..lastSide = stateData['lastSide'] as String?
                 ..wasAboveUpper = stateData['wasAboveUpper'] as bool?
-                ..wasBelowLower = stateData['wasBelowLower'] as bool?
-                ..lastAu = stateData['lastAu'] as double?
-                ..lastAd = stateData['lastAd'] as double?;
+                ..wasBelowLower = stateData['wasBelowLower'] as bool?;
               await isar.alertStates.put(state);
             }
           }
@@ -297,7 +318,9 @@ class DataSyncService {
               final event = AlertEvent()
                 ..ruleId = newRuleId
                 ..ts = eventData['ts'] as int
-                ..rsi = eventData['rsi'] as double
+                ..indicatorValue = eventData['indicatorValue'] as double? ??
+                    eventData['rsi'] as double
+                ..indicator = eventData['indicator'] as String? ?? 'rsi'
                 ..level = eventData['level'] as double?
                 ..side = eventData['side'] as String?
                 ..barTs = eventData['barTs'] as int?

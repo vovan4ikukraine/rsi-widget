@@ -192,7 +192,7 @@ class NotificationService {
           AlertRuleSchema,
           AlertStateSchema,
           AlertEventSchema,
-          RsiDataSchema,
+          IndicatorDataSchema,
           DeviceInfoSchema
         ],
         directory: dir.path,
@@ -224,7 +224,7 @@ class NotificationService {
           AlertRuleSchema,
           AlertStateSchema,
           AlertEventSchema,
-          RsiDataSchema,
+          IndicatorDataSchema,
           DeviceInfoSchema
         ],
         directory: dir.path,

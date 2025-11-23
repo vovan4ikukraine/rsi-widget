@@ -6,14 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
+import '../services/indicator_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/symbol_search_service.dart';
 import '../services/alert_sync_service.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
+import '../state/app_state.dart';
+import '../widgets/indicator_selector.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -38,21 +42,25 @@ class _HomeScreenState extends State<HomeScreen> {
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
-  int _rsiPeriod = 14; // RSI period
-  double _lowerLevel = 30.0; // Lower zone (oversold)
-  double _upperLevel = 70.0; // Upper zone (overbought)
-  List<double> _rsiValues = [];
-  List<int> _rsiTimestamps = []; // Timestamps for each RSI point
-  double _currentRsi = 0.0;
+  int _indicatorPeriod = 14; // Indicator period (universal)
+  double _lowerLevel = 30.0; // Lower zone
+  double _upperLevel = 70.0; // Upper zone
+  List<double> _indicatorValues = []; // Universal indicator values
+  List<int> _indicatorTimestamps = []; // Timestamps for each indicator point
+  double _currentIndicatorValue = 0.0;
   bool _isLoading = false;
-  bool _rsiSettingsExpanded = false; // RSI settings expansion state
+  bool _indicatorSettingsExpanded = false; // Indicator settings expansion state
   String? _dataSource; // 'cache' or 'yahoo' - shows where data came from
+  AppState? _appState; // App state for selected indicator
+  int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
 
   // Controllers for input fields
-  final TextEditingController _rsiPeriodController = TextEditingController();
+  final TextEditingController _indicatorPeriodController =
+      TextEditingController();
   final TextEditingController _lowerLevelController = TextEditingController();
   final TextEditingController _upperLevelController = TextEditingController();
   final TextEditingController _symbolController = TextEditingController();
+  final TextEditingController _stochDPeriodController = TextEditingController();
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
   List<SymbolInfo> _popularSymbols = [];
@@ -69,6 +77,63 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSavedState();
     _loadPopularSymbols();
     unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppStateScope.of(context);
+    _appState?.addListener(_onIndicatorChanged);
+  }
+
+  void _onIndicatorChanged() {
+    if (_appState != null) {
+      final indicatorType = _appState!.selectedIndicator;
+
+      // Update settings to match the new indicator
+      setState(() {
+        _indicatorPeriod = indicatorType.defaultPeriod;
+        _lowerLevel = indicatorType.defaultLevels.first;
+        _upperLevel = indicatorType.defaultLevels.length > 1
+            ? indicatorType.defaultLevels[1]
+            : 100.0;
+
+        // For Stochastic, set default %D period
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = 3;
+        } else {
+          _stochDPeriod = null;
+        }
+
+        // Update controllers
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+        _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
+      });
+
+      // Save updated settings
+      _saveState();
+
+      // Reload data when indicator changes
+      _loadIndicatorData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _appState?.removeListener(_onIndicatorChanged);
+    _indicatorPeriodController.dispose();
+    _lowerLevelController.dispose();
+    _upperLevelController.dispose();
+    _symbolController.dispose();
+    _stochDPeriodController.dispose();
+    _symbolSearchService.cancelPending();
+    super.dispose();
   }
 
   void _setupMethodChannel() {
@@ -116,9 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _selectedTimeframe = prefsData['timeframe'] as String? ??
             prefs.getString('home_selected_timeframe') ??
             '15m';
-        _rsiPeriod = prefsData['rsiPeriod'] as int? ??
-            prefs.getInt('home_rsi_period') ??
-            14;
+        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+        _indicatorPeriod = prefsData['rsiPeriod'] as int? ??
+            prefs.getInt('home_${indicatorType.toJson()}_period') ??
+            indicatorType.defaultPeriod;
         _lowerLevel = prefsData['lowerLevel'] as double? ??
             prefs.getDouble('home_lower_level') ??
             30.0;
@@ -130,7 +196,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
         _selectedTimeframe =
             prefs.getString('home_selected_timeframe') ?? '15m';
-        _rsiPeriod = prefs.getInt('home_rsi_period') ?? 14;
+        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+        _indicatorPeriod =
+            prefs.getInt('home_${indicatorType.toJson()}_period') ??
+                indicatorType.defaultPeriod;
         _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
         _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
       }
@@ -143,9 +212,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedTimeframe = cacheData['timeframe'] as String? ??
           prefs.getString('home_selected_timeframe') ??
           '15m';
-      _rsiPeriod = cacheData['rsiPeriod'] as int? ??
-          prefs.getInt('home_rsi_period') ??
-          14;
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      _indicatorPeriod = cacheData['rsiPeriod'] as int? ??
+          prefs.getInt('home_${indicatorType.toJson()}_period') ??
+          indicatorType.defaultPeriod;
       _lowerLevel = cacheData['lowerLevel'] as double? ??
           prefs.getDouble('home_lower_level') ??
           30.0;
@@ -169,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _loadAlerts();
-    _loadRsiData();
+    _loadIndicatorData();
   }
 
   Future<void> _loadPopularSymbols() async {
@@ -188,28 +258,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('home_selected_symbol', _selectedSymbol);
     await prefs.setString('home_selected_timeframe', _selectedTimeframe);
-    await prefs.setInt('home_rsi_period', _rsiPeriod);
-    await prefs.setDouble('home_lower_level', _lowerLevel);
-    await prefs.setDouble('home_upper_level', _upperLevel);
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    await prefs.setInt(
+        'home_${indicatorType.toJson()}_period', _indicatorPeriod);
+    await prefs.setDouble(
+        'home_${indicatorType.toJson()}_lower_level', _lowerLevel);
+    await prefs.setDouble(
+        'home_${indicatorType.toJson()}_upper_level', _upperLevel);
+    if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+      await prefs.setInt('home_stoch_d_period', _stochDPeriod!);
+    }
 
     // Sync to server if authenticated, or save to cache if anonymous
     unawaited(DataSyncService.syncPreferences(
       symbol: _selectedSymbol,
       timeframe: _selectedTimeframe,
-      rsiPeriod: _rsiPeriod,
+      rsiPeriod: _indicatorPeriod,
       lowerLevel: _lowerLevel,
       upperLevel: _upperLevel,
     ));
-  }
-
-  @override
-  void dispose() {
-    _rsiPeriodController.dispose();
-    _lowerLevelController.dispose();
-    _upperLevelController.dispose();
-    _symbolController.dispose();
-    _symbolSearchService.cancelPending();
-    super.dispose();
   }
 
   Future<void> _loadAlerts() async {
@@ -227,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _loadRsiData({String? symbol}) async {
+  Future<void> _loadIndicatorData({String? symbol}) async {
     final requestedSymbol = (symbol ?? _selectedSymbol).trim().toUpperCase();
     if (requestedSymbol.isEmpty) {
       return;
@@ -265,66 +332,51 @@ class _HomeScreenState extends State<HomeScreen> {
             'No data for $requestedSymbol $_selectedTimeframe');
       }
 
-      final closes = candles.map((c) => c.close).toList();
+      // Convert candles to format expected by IndicatorService
+      final candlesList = candles
+          .map((c) => {
+                'open': c.open,
+                'high': c.high,
+                'low': c.low,
+                'close': c.close,
+                'timestamp': c.timestamp,
+              })
+          .toList();
 
-      // Use correct Wilder's algorithm for RSI calculation
-      // This is the standard algorithm used in TradingView and Yahoo Finance
-      final rsiValues = <double>[];
-      final rsiTimestamps = <int>[]; // Timestamps for each RSI point
-      final rsiPeriod = _rsiPeriod;
+      // Get selected indicator
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
 
-      if (closes.length < rsiPeriod + 1) {
-        // Insufficient data
-      } else {
-        // Calculate initial average values (simple average)
-        double gain = 0, loss = 0;
-        for (int i = 1; i <= rsiPeriod; i++) {
-          final change = closes[i] - closes[i - 1];
-          if (change > 0) {
-            gain += change;
-          } else {
-            loss -= change;
-          }
-        }
-
-        double au = gain / rsiPeriod; // Average Up
-        double ad = loss / rsiPeriod; // Average Down
-
-        // Incremental calculation for remaining points using Wilder's formula
-        for (int i = rsiPeriod + 1; i < closes.length; i++) {
-          final change = closes[i] - closes[i - 1];
-          final u = change > 0 ? change : 0.0;
-          final d = change < 0 ? -change : 0.0;
-
-          // Update using Wilder's formula: EMA = (prev * (n-1) + current) / n
-          au = (au * (rsiPeriod - 1) + u) / rsiPeriod;
-          ad = (ad * (rsiPeriod - 1) + d) / rsiPeriod;
-
-          // Calculate RSI
-          if (ad == 0) {
-            rsiValues.add(100.0);
-          } else {
-            final rs = au / ad;
-            final rsi = 100 - (100 / (1 + rs));
-            rsiValues.add(rsi.clamp(0, 100));
-          }
-
-          // Save timestamp of corresponding candle
-          rsiTimestamps.add(candles[i].timestamp);
-        }
+      // Prepare indicator parameters
+      Map<String, dynamic>? indicatorParams;
+      if (indicatorType == IndicatorType.stoch) {
+        indicatorParams = {'dPeriod': _stochDPeriod ?? 3};
       }
 
-      if (rsiValues.isEmpty && closes.length < 15) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                loc.t('home_insufficient_data',
-                    params: {'count': '${candles.length}'}),
+      // Calculate indicator using IndicatorService
+      final indicatorResults = IndicatorService.calculateIndicatorHistory(
+        candlesList,
+        indicatorType,
+        _indicatorPeriod,
+        indicatorParams,
+      );
+
+      if (indicatorResults.isEmpty) {
+        final minDataRequired = indicatorType == IndicatorType.stoch
+            ? _indicatorPeriod + (_stochDPeriod ?? 3) - 1
+            : _indicatorPeriod + 1;
+
+        if (candles.length < minDataRequired) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  loc.t('home_insufficient_data',
+                      params: {'count': '${candles.length}'}),
+                ),
+                duration: const Duration(seconds: 4),
               ),
-              duration: const Duration(seconds: 4),
-            ),
-          );
+            );
+          }
         }
       }
 
@@ -341,19 +393,27 @@ class _HomeScreenState extends State<HomeScreen> {
         maxChartPoints = 100; // For minute timeframes show last 100 points
       }
 
+      // Extract values and timestamps from results
+      final indicatorValues = indicatorResults.map((r) => r.value).toList();
+      final indicatorTimestamps =
+          indicatorResults.map((r) => r.timestamp).toList();
+
       // Take only last points for chart
-      final chartRsiValues = rsiValues.length > maxChartPoints
-          ? rsiValues.sublist(rsiValues.length - maxChartPoints)
-          : rsiValues;
-      final chartRsiTimestamps = rsiTimestamps.length > maxChartPoints
-          ? rsiTimestamps.sublist(rsiTimestamps.length - maxChartPoints)
-          : rsiTimestamps;
+      final chartIndicatorValues = indicatorValues.length > maxChartPoints
+          ? indicatorValues.sublist(indicatorValues.length - maxChartPoints)
+          : indicatorValues;
+      final chartIndicatorTimestamps =
+          indicatorTimestamps.length > maxChartPoints
+              ? indicatorTimestamps
+                  .sublist(indicatorTimestamps.length - maxChartPoints)
+              : indicatorTimestamps;
 
       setState(() {
         _selectedSymbol = requestedSymbol;
-        _rsiValues = chartRsiValues;
-        _rsiTimestamps = chartRsiTimestamps;
-        _currentRsi = rsiValues.isNotEmpty ? rsiValues.last : 0.0;
+        _indicatorValues = chartIndicatorValues;
+        _indicatorTimestamps = chartIndicatorTimestamps;
+        _currentIndicatorValue =
+            indicatorValues.isNotEmpty ? indicatorValues.last : 0.0;
         _dataSource = dataSource;
         _syncSymbolFieldText(requestedSymbol);
       });
@@ -523,7 +583,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadRsiData,
+              onRefresh: _loadIndicatorData,
               child: GestureDetector(
                 onTap: () {
                   // Remove focus when tapping on screen
@@ -542,15 +602,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 10),
 
                       // RSI settings
-                      _buildRsiSettingsCard(),
+                      _buildIndicatorSettingsCard(),
                       const SizedBox(height: 10),
 
                       // Current RSI
-                      _buildCurrentRsiCard(),
+                      // Indicator selector
+                      if (_appState != null)
+                        IndicatorSelector(appState: _appState!),
+
+                      _buildCurrentIndicatorCard(),
                       const SizedBox(height: 10),
 
-                      // RSI chart
-                      _buildRsiChart(),
+                      // Indicator chart
+                      _buildIndicatorChart(),
                       const SizedBox(height: 10),
 
                       // Active alerts
@@ -710,7 +774,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             final normalized = trimmedValue.toUpperCase();
                             _syncSymbolFieldText(normalized);
                             if (normalized != _selectedSymbol) {
-                              await _loadRsiData(symbol: normalized);
+                              await _loadIndicatorData(symbol: normalized);
                             }
                           }
                           // Remove focus on submit
@@ -743,7 +807,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final normalized = selection.symbol.toUpperCase();
                       _syncSymbolFieldText(normalized);
                       if (normalized != _selectedSymbol) {
-                        await _loadRsiData(symbol: normalized);
+                        await _loadIndicatorData(symbol: normalized);
                       }
                       // Remove focus after selection
                       FocusScope.of(context).unfocus();
@@ -910,7 +974,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _selectedTimeframe = value;
                         });
                         _saveState();
-                        _loadRsiData();
+                        _loadIndicatorData();
                       }
                     },
                   ),
@@ -923,10 +987,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCurrentRsiCard() {
+  Widget _buildCurrentIndicatorCard() {
     final loc = context.loc;
-    final zone = _getRsiZone(_currentRsi);
-    final color = _getZoneColor(zone);
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final zone = IndicatorService.getIndicatorZone(
+      _currentIndicatorValue,
+      [_lowerLevel, _upperLevel],
+      indicatorType,
+    );
+    final color = IndicatorService.getZoneColor(zone, indicatorType);
 
     return Card(
       child: Padding(
@@ -945,7 +1014,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _currentRsi.toStringAsFixed(1),
+                    _currentIndicatorValue.toStringAsFixed(1),
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -956,7 +1025,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             RsiZoneIndicator(
-              rsi: _currentRsi,
+              value: _currentIndicatorValue,
               symbol: _selectedSymbol,
               levels: [_lowerLevel, _upperLevel],
             ),
@@ -966,8 +1035,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildRsiChart() {
-    final loc = context.loc;
+  Widget _buildIndicatorChart() {
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+
+    if (_indicatorValues.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.only(
@@ -982,15 +1056,15 @@ class _HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                loc.t('home_rsi_chart_title'),
+                '${indicatorType.displayName} Chart',
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 8),
             RsiChart(
-              rsiValues: _rsiValues,
-              timestamps: _rsiTimestamps,
+              rsiValues: _indicatorValues,
+              timestamps: _indicatorTimestamps,
               symbol: _selectedSymbol,
               timeframe: _selectedTimeframe,
               levels: [_lowerLevel, _upperLevel],
@@ -1055,24 +1129,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _clearControllers() {
-    _rsiPeriodController.clear();
+    _indicatorPeriodController.clear();
     _lowerLevelController.clear();
     _upperLevelController.clear();
+    _stochDPeriodController.clear();
   }
 
-  void _applyRsiSettings() {
-    // Apply values from input fields
-    final period = int.tryParse(_rsiPeriodController.text);
+  void _applyIndicatorSettings() {
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final period = int.tryParse(_indicatorPeriodController.text);
     final lower = double.tryParse(_lowerLevelController.text);
     final upper = double.tryParse(_upperLevelController.text);
+    int? stochDPeriod;
+    if (indicatorType == IndicatorType.stoch) {
+      stochDPeriod = int.tryParse(_stochDPeriodController.text);
+    }
 
     bool changed = false;
 
     if (period != null &&
         period >= 2 &&
         period <= 100 &&
-        period != _rsiPeriod) {
-      _rsiPeriod = period;
+        period != _indicatorPeriod) {
+      _indicatorPeriod = period;
+      changed = true;
+      _saveState();
+    }
+
+    if (stochDPeriod != null &&
+        stochDPeriod >= 1 &&
+        stochDPeriod <= 100 &&
+        stochDPeriod != _stochDPeriod) {
+      _stochDPeriod = stochDPeriod;
       changed = true;
       _saveState();
     }
@@ -1100,39 +1188,49 @@ class _HomeScreenState extends State<HomeScreen> {
     // Clear input fields
     _clearControllers();
 
-    // Recalculate RSI if period changed
+    // Recalculate indicator if period changed
     if (changed && period != null) {
-      _loadRsiData();
+      _loadIndicatorData();
     } else if (changed) {
       setState(() {}); // Update only levels
     }
   }
 
-  void _resetRsiSettings() {
+  void _resetIndicatorSettings() {
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     setState(() {
-      _rsiPeriod = 14;
-      _lowerLevel = 30.0;
-      _upperLevel = 70.0;
+      _indicatorPeriod = indicatorType.defaultPeriod;
+      _lowerLevel = indicatorType.defaultLevels.first;
+      _upperLevel = indicatorType.defaultLevels.length > 1
+          ? indicatorType.defaultLevels[1]
+          : 100.0;
+      if (indicatorType == IndicatorType.stoch) {
+        _stochDPeriod = 3;
+      }
     });
     _saveState();
     _clearControllers();
-    _loadRsiData();
+    _loadIndicatorData();
   }
 
-  Widget _buildRsiSettingsCard() {
+  Widget _buildIndicatorSettingsCard() {
     final loc = context.loc;
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     return Card(
       child: Column(
         children: [
           InkWell(
             onTap: () {
               setState(() {
-                _rsiSettingsExpanded = !_rsiSettingsExpanded;
+                _indicatorSettingsExpanded = !_indicatorSettingsExpanded;
                 // When expanding, fill fields with current values
-                if (_rsiSettingsExpanded) {
-                  _rsiPeriodController.text = _rsiPeriod.toString();
+                if (_indicatorSettingsExpanded) {
+                  _indicatorPeriodController.text = _indicatorPeriod.toString();
                   _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
                   _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+                  if (_stochDPeriod != null) {
+                    _stochDPeriodController.text = _stochDPeriod.toString();
+                  }
                 }
               });
             },
@@ -1141,13 +1239,13 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   Text(
-                    loc.t('home_rsi_settings_title'),
+                    '${indicatorType.displayName} Settings',
                     style: const TextStyle(
                         fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const Spacer(),
                   Icon(
-                    _rsiSettingsExpanded
+                    _indicatorSettingsExpanded
                         ? Icons.expand_less
                         : Icons.expand_more,
                   ),
@@ -1155,7 +1253,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (_rsiSettingsExpanded) ...[
+          if (_indicatorSettingsExpanded) ...[
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -1165,15 +1263,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Expanded(
                         child: TextField(
-                          controller: _rsiPeriodController,
+                          controller: _indicatorPeriodController,
                           decoration: InputDecoration(
-                            labelText: loc.t('home_rsi_period_label'),
+                            labelText: indicatorType == IndicatorType.stoch
+                                ? '%K Period'
+                                : loc.t('home_rsi_period_label'),
                             border: const OutlineInputBorder(),
                             isDense: true,
                           ),
                           keyboardType: TextInputType.number,
                         ),
                       ),
+                      if (indicatorType == IndicatorType.stoch) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _stochDPeriodController,
+                            decoration: const InputDecoration(
+                              labelText: '%D Period',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
@@ -1209,7 +1323,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       IconButton(
                         icon: const Icon(Icons.refresh, size: 20),
                         tooltip: loc.t('home_reset_defaults_tooltip'),
-                        onPressed: _resetRsiSettings,
+                        onPressed: _resetIndicatorSettings,
                         color: Colors.grey[600],
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -1218,7 +1332,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       IconButton(
                         icon: const Icon(Icons.check, size: 20),
                         tooltip: loc.t('home_apply_changes_tooltip'),
-                        onPressed: _applyRsiSettings,
+                        onPressed: _applyIndicatorSettings,
                         color: Colors.blue,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -1259,7 +1373,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _loadRsiData(),
+                    onPressed: () => _loadIndicatorData(),
                     icon: const Icon(Icons.refresh),
                     label: Text(loc.t('home_refresh')),
                   ),
@@ -1405,22 +1519,5 @@ class _HomeScreenState extends State<HomeScreen> {
     final symbolUpper = info.symbol.toUpperCase();
     final nameUpper = info.name.toUpperCase();
     return symbolUpper.startsWith(upper) || nameUpper.startsWith(upper);
-  }
-
-  RsiZone _getRsiZone(double rsi) {
-    if (rsi < 30) return RsiZone.below;
-    if (rsi > 70) return RsiZone.above;
-    return RsiZone.between;
-  }
-
-  Color _getZoneColor(RsiZone zone) {
-    switch (zone) {
-      case RsiZone.below:
-        return Colors.red;
-      case RsiZone.between:
-        return Colors.blue;
-      case RsiZone.above:
-        return Colors.green;
-    }
   }
 }

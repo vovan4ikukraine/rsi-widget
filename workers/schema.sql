@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS alert_rule (
   user_id TEXT NOT NULL,
   symbol TEXT NOT NULL,
   timeframe TEXT NOT NULL,     -- 1m|5m|15m|1h|4h|1d
-  rsi_period INTEGER NOT NULL DEFAULT 14,
+  indicator TEXT NOT NULL DEFAULT 'rsi',  -- Type of indicator: 'rsi', 'stoch', 'macd', etc.
+  period INTEGER NOT NULL DEFAULT 14,      -- Main period (universal, replaces rsi_period)
+  indicator_params TEXT,                   -- JSON with additional parameters (e.g., %D period for Stochastic)
+  rsi_period INTEGER,                      -- Deprecated: kept for backward compatibility
   levels TEXT NOT NULL,        -- JSON array of levels
   mode TEXT NOT NULL,          -- cross|enter|exit
   hysteresis REAL NOT NULL DEFAULT 0.5,
@@ -49,14 +52,17 @@ CREATE TABLE IF NOT EXISTS alert_rule (
 -- Alert states table
 CREATE TABLE IF NOT EXISTS alert_state (
   rule_id INTEGER PRIMARY KEY,
-  last_rsi REAL,
+  last_indicator_value REAL,   -- Universal: last calculated indicator value
+  indicator_state TEXT,         -- JSON: state for incremental calculation (e.g., au/ad for RSI)
   last_bar_ts INTEGER,
   last_fire_ts INTEGER,
   last_side TEXT,              -- above|below|between
   was_above_upper INTEGER,     -- for hysteresis
   was_below_lower INTEGER,      -- for hysteresis
-  last_au REAL,                -- for incremental RSI
-  last_ad REAL,                -- for incremental RSI
+  -- Deprecated fields (kept for backward compatibility)
+  last_rsi REAL,               -- Deprecated: use last_indicator_value
+  last_au REAL,                -- Deprecated: use indicator_state JSON
+  last_ad REAL,                -- Deprecated: use indicator_state JSON
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
 );
@@ -68,17 +74,34 @@ CREATE TABLE IF NOT EXISTS alert_event (
   user_id TEXT NOT NULL,
   symbol TEXT NOT NULL,
   ts INTEGER NOT NULL,
-  rsi REAL NOT NULL,
+  indicator_value REAL NOT NULL,  -- Universal: indicator value that triggered
+  indicator TEXT,                  -- Optional: indicator type
   level REAL,
   side TEXT,                   -- cross_up|cross_down|enter_zone|exit_zone
   bar_ts INTEGER,
   message TEXT,
   is_read INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  -- Deprecated field (kept for backward compatibility)
+  rsi REAL,                     -- Deprecated: use indicator_value
   FOREIGN KEY (rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
 );
 
--- RSI data table (cache)
+-- Indicator data table (cache) - universal for all indicators
+CREATE TABLE IF NOT EXISTS indicator_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  indicator TEXT NOT NULL DEFAULT 'rsi',  -- Type of indicator
+  timestamp INTEGER NOT NULL,
+  value REAL NOT NULL,                    -- Indicator value
+  close REAL NOT NULL,
+  state TEXT,                             -- JSON: state for incremental calculation
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  UNIQUE(symbol, timeframe, indicator, timestamp)
+);
+
+-- Deprecated: Keep old table name for backward compatibility
 CREATE TABLE IF NOT EXISTS rsi_data (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   symbol TEXT NOT NULL,
@@ -86,8 +109,8 @@ CREATE TABLE IF NOT EXISTS rsi_data (
   timestamp INTEGER NOT NULL,
   rsi REAL NOT NULL,
   close REAL NOT NULL,
-  au REAL,                     -- for incremental calculation
-  ad REAL,                     -- for incremental calculation
+  au REAL,
+  ad REAL,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
   UNIQUE(symbol, timeframe, timestamp)
 );
@@ -144,6 +167,9 @@ CREATE INDEX IF NOT EXISTS idx_alert_event_user_id ON alert_event(user_id);
 CREATE INDEX IF NOT EXISTS idx_alert_event_ts ON alert_event(ts);
 CREATE INDEX IF NOT EXISTS idx_alert_event_is_read ON alert_event(is_read);
 
+CREATE INDEX IF NOT EXISTS idx_indicator_data_symbol_timeframe ON indicator_data(symbol, timeframe);
+CREATE INDEX IF NOT EXISTS idx_indicator_data_indicator ON indicator_data(indicator);
+CREATE INDEX IF NOT EXISTS idx_indicator_data_timestamp ON indicator_data(timestamp);
 CREATE INDEX IF NOT EXISTS idx_rsi_data_symbol_timeframe ON rsi_data(symbol, timeframe);
 CREATE INDEX IF NOT EXISTS idx_rsi_data_timestamp ON rsi_data(timestamp);
 
@@ -157,13 +183,16 @@ SELECT
   ar.user_id,
   ar.symbol,
   ar.timeframe,
-  ar.rsi_period,
+  ar.indicator,
+  ar.period,
+  ar.rsi_period,  -- Deprecated, kept for compatibility
   ar.levels,
   ar.mode,
   ar.hysteresis,
   ar.cooldown_sec,
   ar.description,
-  ars.last_rsi,
+  ars.last_indicator_value,
+  ars.last_rsi,  -- Deprecated, kept for compatibility
   ars.last_bar_ts,
   ars.last_fire_ts,
   ars.last_side

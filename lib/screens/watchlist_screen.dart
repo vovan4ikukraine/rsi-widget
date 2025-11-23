@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
+import '../services/indicator_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
+import '../state/app_state.dart';
+import '../widgets/indicator_selector.dart';
 
 class WatchlistScreen extends StatefulWidget {
   final Isar isar;
@@ -30,22 +34,26 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   static const String _sortOrderPrefKey = 'watchlist_sort_order';
 
   List<WatchlistItem> _watchlistItems = [];
-  final Map<String, _SymbolRsiData> _rsiDataMap = {};
+  final Map<String, _SymbolIndicatorData> _indicatorDataMap = {};
   bool _isLoading = false;
   bool _settingsExpanded = false;
   bool _isActionInProgress = false;
   _RsiSortOrder _currentSortOrder = _RsiSortOrder.none;
+  AppState? _appState; // App state for selected indicator
 
   // Settings for all charts
   String _timeframe = '15m';
-  int _rsiPeriod = 14;
+  int _indicatorPeriod = 14;
   double _lowerLevel = 30.0;
   double _upperLevel = 70.0;
+  int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
 
   // Controllers for settings input fields
-  final TextEditingController _rsiPeriodController = TextEditingController();
+  final TextEditingController _indicatorPeriodController =
+      TextEditingController();
   final TextEditingController _lowerLevelController = TextEditingController();
   final TextEditingController _upperLevelController = TextEditingController();
+  final TextEditingController _stochDPeriodController = TextEditingController();
 
   @override
   void initState() {
@@ -59,11 +67,59 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _loadSavedState();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppStateScope.of(context);
+    _appState?.addListener(_onIndicatorChanged);
+  }
+
+  void _onIndicatorChanged() {
+    if (_appState != null) {
+      final indicatorType = _appState!.selectedIndicator;
+
+      // Update settings to match the new indicator
+      setState(() {
+        _indicatorPeriod = indicatorType.defaultPeriod;
+        _lowerLevel = indicatorType.defaultLevels.first;
+        _upperLevel = indicatorType.defaultLevels.length > 1
+            ? indicatorType.defaultLevels[1]
+            : 100.0;
+
+        // For Stochastic, set default %D period
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = 3;
+        } else {
+          _stochDPeriod = null;
+        }
+
+        // Update controllers
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+        _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
+      });
+
+      // Save updated settings
+      _saveState();
+
+      // Clear data and reload when indicator changes
+      setState(() {
+        _indicatorDataMap.clear();
+      });
+      _loadAllIndicatorData();
+    }
+  }
+
   Future<void> _updateWidgetOrder(bool sortDescending) async {
     try {
       await _widgetService.updateWidget(
         timeframe: _timeframe,
-        rsiPeriod: _rsiPeriod,
+        rsiPeriod: _indicatorPeriod,
         sortDescending: sortDescending,
       );
     } catch (e, stackTrace) {
@@ -155,7 +211,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     double valueForSymbol(String symbol) {
-      final value = _rsiDataMap[symbol]?.rsi;
+      final value = _indicatorDataMap[symbol]?.currentIndicatorValue;
       if (value == null) {
         return order == _RsiSortOrder.descending
             ? double.negativeInfinity
@@ -204,7 +260,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     setState(() {
       // Use widget settings if available, otherwise use watchlist settings
       _timeframe = widgetTimeframe ?? watchlistTimeframe ?? '15m';
-      _rsiPeriod = widgetPeriod ?? watchlistPeriod ?? 14;
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      _indicatorPeriod =
+          widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
       _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
       _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
       _currentSortOrder =
@@ -212,10 +270,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     });
 
     // Save period and timeframe for widget to ensure consistency
-    await prefs.setInt('rsi_widget_period', _rsiPeriod);
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    await prefs.setInt('rsi_widget_period', _indicatorPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
     // Also save to watchlist settings for consistency
-    await prefs.setInt('watchlist_rsi_period', _rsiPeriod);
+    await prefs.setInt(
+        'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
     await prefs.setString('watchlist_timeframe', _timeframe);
 
     _loadWatchlist();
@@ -224,11 +284,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   Future<void> _saveState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('watchlist_timeframe', _timeframe);
-    await prefs.setInt('watchlist_rsi_period', _rsiPeriod);
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    await prefs.setInt(
+        'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
     await prefs.setDouble('watchlist_lower_level', _lowerLevel);
     await prefs.setDouble('watchlist_upper_level', _upperLevel);
     // Also save to widget settings to keep them in sync
-    await prefs.setInt('rsi_widget_period', _rsiPeriod);
+    await prefs.setInt('rsi_widget_period', _indicatorPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
   }
 
@@ -261,9 +323,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     // If period changed in widget, update it in app
-    if (widgetPeriod != null && widgetPeriod != _rsiPeriod) {
+    if (widgetPeriod != null) {
       setState(() {
-        _rsiPeriod = widgetPeriod;
+        _indicatorPeriod = widgetPeriod;
       });
       _saveState();
       needsUpdate = true;
@@ -275,21 +337,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       if (widgetNeedsRefresh) {
         await prefs.remove('widget_needs_refresh');
       }
-      _loadAllRsiData();
+      _loadAllIndicatorData();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _rsiPeriodController.dispose();
+    _indicatorPeriodController.dispose();
     _lowerLevelController.dispose();
     _upperLevelController.dispose();
+    _stochDPeriodController.dispose();
     super.dispose();
   }
 
   void _updateControllerHints() {
-    _rsiPeriodController.clear();
+    _indicatorPeriodController.clear();
     _lowerLevelController.clear();
     _upperLevelController.clear();
   }
@@ -316,7 +379,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         debugPrint('WatchlistScreen: Database is empty!');
         setState(() {
           _watchlistItems = [];
-          _rsiDataMap.clear();
+          _indicatorDataMap.clear();
         });
         return;
       }
@@ -348,11 +411,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
 
       // Load RSI data for all symbols
-      await _loadAllRsiData();
+      await _loadAllIndicatorData();
       // Update widget after loading watchlist (use current watchlist settings)
       unawaited(_widgetService.updateWidget(
         timeframe: _timeframe,
-        rsiPeriod: _rsiPeriod,
+        rsiPeriod: _indicatorPeriod,
         sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
       ));
     } catch (e, stackTrace) {
@@ -371,7 +434,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
   }
 
-  Future<void> _loadAllRsiData() async {
+  Future<void> _loadAllIndicatorData() async {
     if (_watchlistItems.isEmpty) return;
 
     setState(() {
@@ -388,7 +451,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       for (int i = 0; i < symbols.length; i += maxConcurrent) {
         final batch = symbols.skip(i).take(maxConcurrent).toList();
         await Future.wait(
-          batch.map((symbol) => _loadRsiDataForSymbol(symbol)),
+          batch.map((symbol) => _loadIndicatorDataForSymbol(symbol)),
           eagerError: false, // Continue even if some fail
         );
       }
@@ -406,15 +469,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Update widget after loading data (use current watchlist settings)
       unawaited(_widgetService.updateWidget(
         timeframe: _timeframe,
-        rsiPeriod: _rsiPeriod,
+        rsiPeriod: _indicatorPeriod,
         sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
       ));
     }
   }
 
-  Future<void> _loadRsiDataForSymbol(String symbol) async {
+  Future<void> _loadIndicatorDataForSymbol(String symbol) async {
     const maxRetries = 3;
     int attempt = 0;
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
 
     while (attempt < maxRetries) {
       try {
@@ -434,92 +498,102 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
         if (candles.isEmpty) {
           setState(() {
-            _rsiDataMap[symbol] = _SymbolRsiData(
-              rsi: 0.0,
-              rsiValues: [],
+            _indicatorDataMap[symbol] = _SymbolIndicatorData(
+              currentIndicatorValue: 0.0,
+              indicatorValues: [],
               timestamps: [],
             );
           });
           return;
         }
 
-        final closes = candles.map((c) => c.close).toList();
-        final rsiValues = <double>[];
-        final rsiTimestamps = <int>[];
+        // Convert candles to format expected by IndicatorService
+        final candlesList = candles
+            .map((c) => {
+                  'open': c.open,
+                  'high': c.high,
+                  'low': c.low,
+                  'close': c.close,
+                  'timestamp': c.timestamp,
+                })
+            .toList();
 
-        if (closes.length < _rsiPeriod + 1) {
+        // Prepare indicator parameters
+        Map<String, dynamic>? indicatorParams;
+        if (indicatorType == IndicatorType.stoch) {
+          indicatorParams = {'dPeriod': _stochDPeriod ?? 3};
+        }
+
+        // Check minimum data required
+        final minDataRequired = indicatorType == IndicatorType.stoch
+            ? _indicatorPeriod + (_stochDPeriod ?? 3) - 1
+            : _indicatorPeriod + 1;
+
+        if (candles.length < minDataRequired) {
           setState(() {
-            _rsiDataMap[symbol] = _SymbolRsiData(
-              rsi: 0.0,
-              rsiValues: [],
+            _indicatorDataMap[symbol] = _SymbolIndicatorData(
+              currentIndicatorValue: 0.0,
+              indicatorValues: [],
               timestamps: [],
             );
           });
           return;
         }
 
-        // RSI calculation using Wilder's algorithm
-        double gain = 0, loss = 0;
-        for (int i = 1; i <= _rsiPeriod; i++) {
-          final change = closes[i] - closes[i - 1];
-          if (change > 0) {
-            gain += change;
-          } else {
-            loss -= change;
-          }
+        // Calculate indicator using IndicatorService
+        final indicatorResults = IndicatorService.calculateIndicatorHistory(
+          candlesList,
+          indicatorType,
+          _indicatorPeriod,
+          indicatorParams,
+        );
+
+        if (indicatorResults.isEmpty) {
+          setState(() {
+            _indicatorDataMap[symbol] = _SymbolIndicatorData(
+              currentIndicatorValue: 0.0,
+              indicatorValues: [],
+              timestamps: [],
+            );
+          });
+          return;
         }
 
-        double au = gain / _rsiPeriod;
-        double ad = loss / _rsiPeriod;
-
-        for (int i = _rsiPeriod + 1; i < closes.length; i++) {
-          final change = closes[i] - closes[i - 1];
-          final u = change > 0 ? change : 0.0;
-          final d = change < 0 ? -change : 0.0;
-
-          au = (au * (_rsiPeriod - 1) + u) / _rsiPeriod;
-          ad = (ad * (_rsiPeriod - 1) + d) / _rsiPeriod;
-
-          if (ad == 0) {
-            rsiValues.add(100.0);
-          } else {
-            final rs = au / ad;
-            final rsi = 100 - (100 / (1 + rs));
-            rsiValues.add(rsi.clamp(0, 100));
-          }
-
-          rsiTimestamps.add(candles[i].timestamp);
-        }
+        // Extract values and timestamps
+        final indicatorValues = indicatorResults.map((r) => r.value).toList();
+        final indicatorTimestamps =
+            indicatorResults.map((r) => r.timestamp).toList();
 
         // Take only last 50 points for compact chart
-        final chartRsiValues = rsiValues.length > 50
-            ? rsiValues.sublist(rsiValues.length - 50)
-            : rsiValues;
-        final chartRsiTimestamps = rsiTimestamps.length > 50
-            ? rsiTimestamps.sublist(rsiTimestamps.length - 50)
-            : rsiTimestamps;
+        final chartIndicatorValues = indicatorValues.length > 50
+            ? indicatorValues.sublist(indicatorValues.length - 50)
+            : indicatorValues;
+        final chartIndicatorTimestamps = indicatorTimestamps.length > 50
+            ? indicatorTimestamps.sublist(indicatorTimestamps.length - 50)
+            : indicatorTimestamps;
 
         setState(() {
-          _rsiDataMap[symbol] = _SymbolRsiData(
-            rsi: rsiValues.isNotEmpty ? rsiValues.last : 0.0,
-            rsiValues: chartRsiValues,
-            timestamps: chartRsiTimestamps,
+          _indicatorDataMap[symbol] = _SymbolIndicatorData(
+            currentIndicatorValue:
+                indicatorValues.isNotEmpty ? indicatorValues.last : 0.0,
+            indicatorValues: chartIndicatorValues,
+            timestamps: chartIndicatorTimestamps,
           );
         });
         return; // Success, exit retry loop
       } catch (e) {
         attempt++;
         debugPrint(
-            'Error loading RSI for $symbol (attempt $attempt/$maxRetries): $e');
+            'Error loading indicator for $symbol (attempt $attempt/$maxRetries): $e');
 
         if (attempt >= maxRetries) {
           // All retries failed, set empty data
           debugPrint(
-              'Failed to load RSI for $symbol after $maxRetries attempts');
+              'Failed to load indicator for $symbol after $maxRetries attempts');
           setState(() {
-            _rsiDataMap[symbol] = _SymbolRsiData(
-              rsi: 0.0,
-              rsiValues: [],
+            _indicatorDataMap[symbol] = _SymbolIndicatorData(
+              currentIndicatorValue: 0.0,
+              indicatorValues: [],
               timestamps: [],
             );
           });
@@ -538,7 +612,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     });
     setState(() {
       _watchlistItems.remove(item);
-      _rsiDataMap.remove(item.symbol);
+      _indicatorDataMap.remove(item.symbol);
     });
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
@@ -549,7 +623,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     // Update widget after deletion
     unawaited(_widgetService.updateWidget(
       timeframe: _timeframe,
-      rsiPeriod: _rsiPeriod,
+      rsiPeriod: _indicatorPeriod,
       sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
     ));
   }
@@ -565,7 +639,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     try {
-      final period = int.tryParse(_rsiPeriodController.text);
+      final period = int.tryParse(_indicatorPeriodController.text);
       final lower = double.tryParse(_lowerLevelController.text);
       final upper = double.tryParse(_upperLevelController.text);
 
@@ -574,8 +648,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       if (period != null &&
           period >= 2 &&
           period <= 100 &&
-          period != _rsiPeriod) {
-        _rsiPeriod = period;
+          period != _indicatorPeriod) {
+        _indicatorPeriod = period;
         changed = true;
         _saveState();
       }
@@ -606,12 +680,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         // Save period for widget
         if (period != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setInt('rsi_widget_period', _rsiPeriod);
+          await prefs.setInt('rsi_widget_period', _indicatorPeriod);
         }
-        _loadAllRsiData();
+        _loadAllIndicatorData();
         // Update widget with new period
         unawaited(_widgetService.updateWidget(
-          rsiPeriod: _rsiPeriod,
+          rsiPeriod: _indicatorPeriod,
           sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
         ));
       } else {
@@ -643,20 +717,28 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     try {
       setState(() {
         _timeframe = '15m';
-        _rsiPeriod = 14;
-        _lowerLevel = 30.0;
-        _upperLevel = 70.0;
+        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+        _indicatorPeriod = indicatorType.defaultPeriod;
+        _lowerLevel = indicatorType.defaultLevels.first;
+        _upperLevel = indicatorType.defaultLevels.length > 1
+            ? indicatorType.defaultLevels[1]
+            : 100.0;
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = 3;
+        } else {
+          _stochDPeriod = null;
+        }
       });
       _saveState();
       // Save period for widget
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('rsi_widget_period', _rsiPeriod);
+      await prefs.setInt('rsi_widget_period', _indicatorPeriod);
       _updateControllerHints();
-      _loadAllRsiData();
+      _loadAllIndicatorData();
       // Update widget
       unawaited(_widgetService.updateWidget(
         timeframe: _timeframe,
-        rsiPeriod: _rsiPeriod,
+        rsiPeriod: _indicatorPeriod,
         sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
       ));
     } finally {
@@ -692,11 +774,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       _settingsExpanded = !_settingsExpanded;
                       // When expanding, fill fields with current values
                       if (_settingsExpanded) {
-                        _rsiPeriodController.text = _rsiPeriod.toString();
+                        _indicatorPeriodController.text =
+                            _indicatorPeriod.toString();
                         _lowerLevelController.text =
                             _lowerLevel.toStringAsFixed(0);
                         _upperLevelController.text =
                             _upperLevel.toStringAsFixed(0);
+                        if (_stochDPeriod != null) {
+                          _stochDPeriodController.text =
+                              _stochDPeriod.toString();
+                        } else {
+                          _stochDPeriodController.clear();
+                        }
                       }
                     });
                   },
@@ -705,7 +794,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     child: Row(
                       children: [
                         Text(
-                          loc.t('watchlist_settings_title'),
+                          _appState != null
+                              ? '${_appState!.selectedIndicator.displayName} Settings'
+                              : loc.t('watchlist_settings_title'),
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
@@ -728,7 +819,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             Expanded(
                               flex: 2,
                               child: DropdownButtonFormField<String>(
-                                value: _timeframe,
+                                initialValue: _timeframe,
                                 decoration: InputDecoration(
                                   labelText: loc.t('home_timeframe_label'),
                                   border: const OutlineInputBorder(),
@@ -763,12 +854,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                     await prefs.setString(
                                         'rsi_widget_timeframe', _timeframe);
                                     await prefs.setInt(
-                                        'rsi_widget_period', _rsiPeriod);
-                                    _loadAllRsiData(); // Automatically reload data when timeframe changes
+                                        'rsi_widget_period', _indicatorPeriod);
+                                    _loadAllIndicatorData(); // Automatically reload data when timeframe changes
                                     // Update widget
                                     unawaited(_widgetService.updateWidget(
                                       timeframe: _timeframe,
-                                      rsiPeriod: _rsiPeriod,
+                                      rsiPeriod: _indicatorPeriod,
                                       sortDescending: _currentSortOrder !=
                                           _RsiSortOrder.ascending,
                                     ));
@@ -779,9 +870,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             const SizedBox(width: 8),
                             Expanded(
                               child: TextField(
-                                controller: _rsiPeriodController,
+                                controller: _indicatorPeriodController,
                                 decoration: InputDecoration(
-                                  labelText: loc.t('home_rsi_period_label'),
+                                  labelText: _appState?.selectedIndicator ==
+                                          IndicatorType.stoch
+                                      ? '%K Period'
+                                      : loc.t('home_rsi_period_label'),
                                   border: const OutlineInputBorder(),
                                   isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -790,6 +884,34 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 keyboardType: TextInputType.number,
                               ),
                             ),
+                            if (_appState?.selectedIndicator ==
+                                IndicatorType.stoch) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: _stochDPeriodController,
+                                  decoration: const InputDecoration(
+                                    labelText: '%D Period',
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 8),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (value) {
+                                    final dPeriod = int.tryParse(value);
+                                    if (dPeriod != null &&
+                                        dPeriod >= 1 &&
+                                        dPeriod <= 100) {
+                                      setState(() {
+                                        _stochDPeriod = dPeriod;
+                                      });
+                                      _saveState();
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
                             const SizedBox(width: 8),
                             Expanded(
                               child: TextField(
@@ -907,6 +1029,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ],
             ),
           ),
+          // Indicator selector
+          if (_appState != null) IndicatorSelector(appState: _appState!),
+
           // Instruments list
           Expanded(
             child: _isLoading && _watchlistItems.isEmpty
@@ -959,15 +1084,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                       debugPrint(
                                           'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
 
-                                      final rsiData =
-                                          _rsiDataMap[item.symbol] ??
-                                              _SymbolRsiData(
-                                                rsi: 0.0,
-                                                rsiValues: [],
+                                      final indicatorData =
+                                          _indicatorDataMap[item.symbol] ??
+                                              _SymbolIndicatorData(
+                                                currentIndicatorValue: 0.0,
+                                                indicatorValues: [],
                                                 timestamps: [],
                                               );
 
-                                      return _buildWatchlistItem(item, rsiData);
+                                      return _buildWatchlistItem(
+                                          item, indicatorData);
                                     },
                                   );
                                 },
@@ -979,17 +1105,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     );
   }
 
-  Widget _buildWatchlistItem(WatchlistItem item, _SymbolRsiData rsiData) {
+  Widget _buildWatchlistItem(
+      WatchlistItem item, _SymbolIndicatorData indicatorData) {
     final loc = context.loc;
-    final rsi = rsiData.rsi;
-    Color rsiColor = Colors.grey;
-    if (rsi < _lowerLevel) {
-      rsiColor = Colors.red;
-    } else if (rsi > _upperLevel) {
-      rsiColor = Colors.green;
-    } else {
-      rsiColor = Colors.blue;
-    }
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final currentValue = indicatorData.currentIndicatorValue;
+    final zone = IndicatorService.getIndicatorZone(
+      currentValue,
+      [_lowerLevel, _upperLevel],
+      indicatorType,
+    );
+    final indicatorColor = IndicatorService.getZoneColor(zone, indicatorType);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1037,23 +1163,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   ),
                   const Spacer(),
                   Text(
-                    loc.t('watchlist_rsi_prefix',
-                        params: {'value': rsi.toStringAsFixed(1)}),
+                    '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
                     style: TextStyle(
                       fontSize: 11,
-                      color: rsiColor,
+                      color: indicatorColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              if (rsiData.rsiValues.isNotEmpty)
+              if (indicatorData.indicatorValues.isNotEmpty)
                 SizedBox(
                   height: 53, // Increased from 50 to 53 (approximately 5%)
                   child: RsiChart(
-                    rsiValues: rsiData.rsiValues,
-                    timestamps: rsiData.timestamps,
+                    rsiValues: indicatorData.indicatorValues,
+                    timestamps: indicatorData.timestamps,
                     symbol: item.symbol,
                     timeframe: _timeframe,
                     levels: [_lowerLevel, _upperLevel],
@@ -1081,14 +1206,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 }
 
-class _SymbolRsiData {
-  final double rsi;
-  final List<double> rsiValues;
+class _SymbolIndicatorData {
+  final double currentIndicatorValue;
+  final List<double> indicatorValues;
   final List<int> timestamps;
 
-  _SymbolRsiData({
-    required this.rsi,
-    required this.rsiValues,
+  _SymbolIndicatorData({
+    required this.currentIndicatorValue,
+    required this.indicatorValues,
     required this.timestamps,
   });
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/alert_sync_service.dart';
 import '../services/symbol_search_service.dart';
 import '../localization/app_localizations.dart';
+import '../state/app_state.dart';
+import '../widgets/indicator_selector.dart';
 
 class CreateAlertScreen extends StatefulWidget {
   final Isar isar;
@@ -28,7 +31,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
   String _selectedTimeframe = '15m';
-  int _rsiPeriod = 14;
+  int _indicatorPeriod = 14;
+  int? _stochDPeriod; // Stochastic %D period
   List<double> _levels = [30, 70];
   String _mode = 'cross';
   int _cooldownSec = 600;
@@ -38,6 +42,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
   List<SymbolInfo> _popularSymbols = [];
+  AppState? _appState;
 
   @override
   void initState() {
@@ -49,17 +54,40 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppStateScope.of(context);
+    // If creating new alert, use selected indicator
+    if (widget.alert == null && _appState != null) {
+      final indicatorType = _appState!.selectedIndicator;
+      _indicatorPeriod = indicatorType.defaultPeriod;
+      _levels = List.from(indicatorType.defaultLevels);
+      if (indicatorType == IndicatorType.stoch) {
+        _stochDPeriod = 3;
+      }
+    }
+  }
+
   void _loadAlertData() {
     final alert = widget.alert!;
     _symbolController.text = alert.symbol;
     _descriptionController.text = alert.description ?? '';
     _selectedTimeframe = alert.timeframe;
-    _rsiPeriod = alert.rsiPeriod;
+    _indicatorPeriod = alert.period;
     _levels = List.from(alert.levels);
     _mode = alert.mode;
     _cooldownSec = alert.cooldownSec;
     _repeatable = alert.repeatable;
     _soundEnabled = alert.soundEnabled;
+
+    // Load indicator-specific parameters
+    if (alert.indicatorParams != null) {
+      final params = alert.indicatorParams!;
+      if (params.containsKey('dPeriod')) {
+        _stochDPeriod = params['dPeriod'] as int?;
+      }
+    }
   }
 
   Future<void> _loadPopularSymbols() async {
@@ -107,12 +135,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // Indicator selector
+                  if (_appState != null)
+                    IndicatorSelector(appState: _appState!),
+                  const SizedBox(height: 16),
+
                   // Basic information
                   _buildBasicInfoCard(loc),
                   const SizedBox(height: 16),
 
-                  // RSI settings
-                  _buildRsiSettingsCard(loc),
+                  // Indicator settings
+                  _buildIndicatorSettingsCard(loc),
                   const SizedBox(height: 16),
 
                   // Alert settings
@@ -390,7 +423,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedTimeframe,
+              initialValue: _selectedTimeframe,
               decoration: InputDecoration(
                 labelText: loc.t('home_timeframe_label'),
                 border: const OutlineInputBorder(),
@@ -429,7 +462,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     );
   }
 
-  Widget _buildRsiSettingsCard(AppLocalizations loc) {
+  Widget _buildIndicatorSettingsCard(AppLocalizations loc) {
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -437,24 +471,56 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              loc.t('create_alert_rsi_settings_title'),
+              '${indicatorType.displayName} Settings',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              initialValue: _rsiPeriod.toString(),
-              decoration: InputDecoration(
-                labelText: loc.t('home_rsi_period_label'),
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.timeline),
-              ),
-              keyboardType: TextInputType.number,
-              onChanged: (value) {
-                final period = int.tryParse(value);
-                if (period != null && period >= 1 && period <= 100) {
-                  _rsiPeriod = period;
-                }
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: _indicatorPeriod.toString(),
+                    decoration: InputDecoration(
+                      labelText: indicatorType == IndicatorType.stoch
+                          ? '%K Period'
+                          : 'Period',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.timeline),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      final period = int.tryParse(value);
+                      if (period != null && period >= 1 && period <= 100) {
+                        setState(() {
+                          _indicatorPeriod = period;
+                        });
+                      }
+                    },
+                  ),
+                ),
+                if (indicatorType == IndicatorType.stoch) ...[
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: (_stochDPeriod ?? 3).toString(),
+                      decoration: const InputDecoration(
+                        labelText: '%D Period',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.timeline),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        final dPeriod = int.tryParse(value);
+                        if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100) {
+                          setState(() {
+                            _stochDPeriod = dPeriod;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 16),
             Text(
@@ -462,21 +528,24 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
-            _buildLevelsSelector(),
+            _buildLevelsSelector(indicatorType),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLevelsSelector() {
+  Widget _buildLevelsSelector(IndicatorType indicatorType) {
+    final defaultLevels = indicatorType.defaultLevels;
     return Column(
       children: [
         Row(
           children: [
             Expanded(
               child: TextFormField(
-                initialValue: _levels.isNotEmpty ? _levels[0].toString() : '30',
+                initialValue: _levels.isNotEmpty
+                    ? _levels[0].toString()
+                    : defaultLevels.first.toString(),
                 decoration: InputDecoration(
                   labelText: context.loc.t('create_alert_lower_level'),
                   border: const OutlineInputBorder(),
@@ -498,7 +567,11 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: TextFormField(
-                initialValue: _levels.length > 1 ? _levels[1].toString() : '70',
+                initialValue: _levels.length > 1
+                    ? _levels[1].toString()
+                    : (defaultLevels.length > 1
+                        ? defaultLevels[1].toString()
+                        : '100'),
                 decoration: InputDecoration(
                   labelText: context.loc.t('create_alert_upper_level'),
                   border: const OutlineInputBorder(),
@@ -561,7 +634,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _mode,
+              initialValue: _mode,
               decoration: InputDecoration(
                 labelText: loc.t('create_alert_type_label'),
                 border: const OutlineInputBorder(),
@@ -690,15 +763,64 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         return;
       }
 
+      // Validate that symbol exists
+      try {
+        final symbolInfo =
+            await _symbolSearchService.resolveSuggestions(symbol);
+        final exactMatch =
+            symbolInfo.where((s) => s.symbol.toUpperCase() == symbol).toList();
+        if (exactMatch.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Symbol "$symbol" not found. Please enter a valid symbol.'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        // If validation fails, still allow creation but show warning
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Could not validate symbol "$symbol". Please verify it exists.'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+
+      // Get selected indicator
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      final indicatorName = indicatorType.toJson();
+
+      // Prepare indicator parameters
+      Map<String, dynamic>? indicatorParams;
+      if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+        indicatorParams = {'dPeriod': _stochDPeriod};
+      }
+
       // Check for duplicate alert (only when creating new, not editing)
       if (widget.alert == null) {
-        final existingAlerts = await widget.isar.alertRules
+        // Note: Isar doesn't support filtering by indicator field directly,
+        // so we'll filter in memory after fetching
+        final allAlerts = await widget.isar.alertRules
             .filter()
             .symbolEqualTo(symbol)
             .timeframeEqualTo(_selectedTimeframe)
             .modeEqualTo(_mode)
-            .rsiPeriodEqualTo(_rsiPeriod)
             .findAll();
+
+        final existingAlerts = allAlerts
+            .where((a) =>
+                a.indicator == indicatorName && a.period == _indicatorPeriod)
+            .toList();
 
         // Check if there's an identical alert (same symbol, timeframe, mode, period, and levels)
         final sortedLevels = List.from(_levels)..sort();
@@ -732,7 +854,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       final alert = widget.alert ?? AlertRule();
       alert.symbol = symbol;
       alert.timeframe = _selectedTimeframe;
-      alert.rsiPeriod = _rsiPeriod;
+      alert.indicator = indicatorName;
+      alert.period = _indicatorPeriod;
+      alert.indicatorParams = indicatorParams;
       alert.levels = List.from(_levels);
       alert.mode = _mode;
       alert.cooldownSec = _cooldownSec;
