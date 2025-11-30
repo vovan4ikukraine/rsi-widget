@@ -22,6 +22,7 @@ import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
 import 'watchlist_screen.dart';
+import 'markets_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Isar isar;
@@ -34,10 +35,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final YahooProtoSource _yahooService =
-      YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
-  static const MethodChannel _channel =
-      MethodChannel('com.example.rsi_widget/widget');
+  final YahooProtoSource _yahooService = YahooProtoSource(
+    'https://rsi-workers.vovan4ikukraine.workers.dev',
+  );
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.rsi_widget/widget',
+  );
   late final WidgetService _widgetService;
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
@@ -145,12 +148,20 @@ class _HomeScreenState extends State<HomeScreen> {
             call.arguments['minimizeAfterUpdate'] as bool? ?? false;
 
         print(
-            'HomeScreen: Refresh widget requested - timeframe: $timeframe, period: $rsiPeriod, minimize: $minimizeAfterUpdate');
+          'HomeScreen: Refresh widget requested - timeframe: $timeframe, period: $rsiPeriod, minimize: $minimizeAfterUpdate',
+        );
 
         // Update widget with specified timeframe and period
+        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+        final indicatorParams =
+            indicatorType == IndicatorType.stoch && _stochDPeriod != null
+                ? {'dPeriod': _stochDPeriod}
+                : null;
         await _widgetService.updateWidget(
           timeframe: timeframe,
           rsiPeriod: rsiPeriod,
+          indicator: indicatorType,
+          indicatorParams: indicatorParams,
         );
 
         print('HomeScreen: Widget updated successfully');
@@ -260,23 +271,31 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString('home_selected_timeframe', _selectedTimeframe);
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     await prefs.setInt(
-        'home_${indicatorType.toJson()}_period', _indicatorPeriod);
+      'home_${indicatorType.toJson()}_period',
+      _indicatorPeriod,
+    );
     await prefs.setDouble(
-        'home_${indicatorType.toJson()}_lower_level', _lowerLevel);
+      'home_${indicatorType.toJson()}_lower_level',
+      _lowerLevel,
+    );
     await prefs.setDouble(
-        'home_${indicatorType.toJson()}_upper_level', _upperLevel);
+      'home_${indicatorType.toJson()}_upper_level',
+      _upperLevel,
+    );
     if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
       await prefs.setInt('home_stoch_d_period', _stochDPeriod!);
     }
 
     // Sync to server if authenticated, or save to cache if anonymous
-    unawaited(DataSyncService.syncPreferences(
-      symbol: _selectedSymbol,
-      timeframe: _selectedTimeframe,
-      rsiPeriod: _indicatorPeriod,
-      lowerLevel: _lowerLevel,
-      upperLevel: _upperLevel,
-    ));
+    unawaited(
+      DataSyncService.syncPreferences(
+        symbol: _selectedSymbol,
+        timeframe: _selectedTimeframe,
+        rsiPeriod: _indicatorPeriod,
+        lowerLevel: _lowerLevel,
+        upperLevel: _upperLevel,
+      ),
+    );
   }
 
   Future<void> _loadAlerts() async {
@@ -325,22 +344,26 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       debugPrint(
-          'HomeScreen: Received ${candles.length} candles for $requestedSymbol $_selectedTimeframe from $dataSource (limit was $limit)');
+        'HomeScreen: Received ${candles.length} candles for $requestedSymbol $_selectedTimeframe from $dataSource (limit was $limit)',
+      );
 
       if (candles.isEmpty) {
         throw YahooException(
-            'No data for $requestedSymbol $_selectedTimeframe');
+          'No data for $requestedSymbol $_selectedTimeframe',
+        );
       }
 
       // Convert candles to format expected by IndicatorService
       final candlesList = candles
-          .map((c) => {
-                'open': c.open,
-                'high': c.high,
-                'low': c.low,
-                'close': c.close,
-                'timestamp': c.timestamp,
-              })
+          .map(
+            (c) => {
+              'open': c.open,
+              'high': c.high,
+              'low': c.low,
+              'close': c.close,
+              'timestamp': c.timestamp,
+            },
+          )
           .toList();
 
       // Get selected indicator
@@ -370,8 +393,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  loc.t('home_insufficient_data',
-                      params: {'count': '${candles.length}'}),
+                  loc.t(
+                    'home_insufficient_data',
+                    params: {'count': '${candles.length}'},
+                  ),
                 ),
                 duration: const Duration(seconds: 4),
               ),
@@ -404,8 +429,9 @@ class _HomeScreenState extends State<HomeScreen> {
           : indicatorValues;
       final chartIndicatorTimestamps =
           indicatorTimestamps.length > maxChartPoints
-              ? indicatorTimestamps
-                  .sublist(indicatorTimestamps.length - maxChartPoints)
+              ? indicatorTimestamps.sublist(
+                  indicatorTimestamps.length - maxChartPoints,
+                )
               : indicatorTimestamps;
 
       setState(() {
@@ -432,8 +458,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         String message;
         if (e is YahooException && e.message.contains('No data')) {
-          message = loc.t('home_no_data_for_timeframe',
-              params: {'timeframe': _selectedTimeframe});
+          message = loc.t(
+            'home_no_data_for_timeframe',
+            params: {'timeframe': _selectedTimeframe},
+          );
           if (_selectedTimeframe == '4h' || _selectedTimeframe == '1d') {
             final now = DateTime.now();
             final dayOfWeek = now.weekday;
@@ -467,10 +495,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(loc.t('home_error_label_symbol',
-                              params: {'symbol': requestedSymbol})),
-                          Text(loc.t('home_error_label_timeframe',
-                              params: {'timeframe': _selectedTimeframe})),
+                          Text(
+                            loc.t(
+                              'home_error_label_symbol',
+                              params: {'symbol': requestedSymbol},
+                            ),
+                          ),
+                          Text(
+                            loc.t(
+                              'home_error_label_timeframe',
+                              params: {'timeframe': _selectedTimeframe},
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             loc.t('home_error_label'),
@@ -542,6 +578,18 @@ class _HomeScreenState extends State<HomeScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.trending_up),
+            tooltip: 'Markets',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MarketsScreen(isar: widget.isar),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.bookmark_border),
             tooltip: loc.t('home_watchlist_tooltip'),
             onPressed: () async {
@@ -592,8 +640,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 behavior: HitTestBehavior.opaque,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -828,7 +878,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Center(
                                 child: Text(
                                   loc.t('search_no_results'),
-                                  style: const TextStyle(color: Colors.grey),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                  ),
                                 ),
                               ),
                             ),
@@ -841,14 +893,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Material(
                           elevation: 4.0,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 400),
+                            constraints: const BoxConstraints(
+                              maxHeight: 400,
+                            ),
                             child: ListView.builder(
                               padding: EdgeInsets.zero,
                               shrinkWrap: true,
                               itemCount: options.length,
                               itemBuilder: (BuildContext context, int index) {
-                                final SymbolInfo option =
-                                    options.elementAt(index);
+                                final SymbolInfo option = options.elementAt(
+                                  index,
+                                );
                                 return InkWell(
                                   onTap: () {
                                     onSelected(option);
@@ -889,7 +944,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                                             .blueGrey[900],
                                                         borderRadius:
                                                             BorderRadius
-                                                                .circular(12),
+                                                                .circular(
+                                                          12,
+                                                        ),
                                                       ),
                                                       child: Text(
                                                         option.displayType,
@@ -906,7 +963,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 Padding(
                                                   padding:
                                                       const EdgeInsets.only(
-                                                          top: 4.0),
+                                                    top: 4.0,
+                                                  ),
                                                   child: Text(
                                                     option.name,
                                                     style: TextStyle(
@@ -920,7 +978,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 Padding(
                                                   padding:
                                                       const EdgeInsets.only(
-                                                          top: 2.0),
+                                                    top: 2.0,
+                                                  ),
                                                   child: Text(
                                                     option.shortExchange,
                                                     style: TextStyle(
@@ -953,7 +1012,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: const OutlineInputBorder(),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 16),
+                        horizontal: 12,
+                        vertical: 16,
+                      ),
                     ),
                     isExpanded: true,
                     style: TextStyle(
@@ -991,10 +1052,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final loc = context.loc;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     final zone = IndicatorService.getIndicatorZone(
-      _currentIndicatorValue,
-      [_lowerLevel, _upperLevel],
-      indicatorType,
-    );
+        _currentIndicatorValue,
+        [
+          _lowerLevel,
+          _upperLevel,
+        ],
+        indicatorType);
     final color = IndicatorService.getZoneColor(zone, indicatorType);
 
     return Card(
@@ -1007,10 +1070,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    loc.t('home_current_rsi_title',
-                        params: {'symbol': _selectedSymbol}),
+                    loc.t(
+                      'home_current_rsi_title',
+                      params: {'symbol': _selectedSymbol},
+                    ),
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -1045,20 +1112,22 @@ class _HomeScreenState extends State<HomeScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.only(
-            left: 4,
-            right: 4,
-            top: 16,
-            bottom:
-                16), // Minimum horizontal padding for maximum chart stretching
+          left: 4,
+          right: 4,
+          top: 16,
+          bottom: 16,
+        ), // Minimum horizontal padding for maximum chart stretching
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                '${indicatorType.displayName} Chart',
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                '${indicatorType.name} Chart',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1089,7 +1158,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   loc.t('home_active_alerts_title'),
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -1110,18 +1181,21 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_alerts.isEmpty)
               Text(loc.t('home_no_active_alerts'))
             else
-              ..._alerts.take(3).map((alert) => ListTile(
-                    title: Text(alert.symbol),
-                    subtitle:
-                        Text('${alert.timeframe} • ${alert.levels.join('/')}'),
-                    trailing: Icon(
-                      alert.active
-                          ? Icons.notifications_active
-                          : Icons.notifications_off,
-                      color: alert.active ? Colors.green : Colors.grey,
+              ..._alerts.take(3).map(
+                    (alert) => ListTile(
+                      title: Text(alert.symbol),
+                      subtitle: Text(
+                        '${alert.timeframe} • ${alert.levels.join('/')}',
+                      ),
+                      trailing: Icon(
+                        alert.active
+                            ? Icons.notifications_active
+                            : Icons.notifications_off,
+                        color: alert.active ? Colors.green : Colors.grey,
+                      ),
+                      onTap: () => _editAlert(alert),
                     ),
-                    onTap: () => _editAlert(alert),
-                  )),
+                  ),
           ],
         ),
       ),
@@ -1239,9 +1313,11 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   Text(
-                    '${indicatorType.displayName} Settings',
+                    '${indicatorType.name} Settings',
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const Spacer(),
                   Icon(
@@ -1298,7 +1374,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             isDense: true,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1311,7 +1388,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             isDense: true,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                         ),
                       ),
                     ],
@@ -1419,7 +1497,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                loc.t('home_watchlist_limit_reached', params: {'limit': '50'})),
+              loc.t('home_watchlist_limit_reached', params: {'limit': '50'}),
+            ),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1449,10 +1528,12 @@ class _HomeScreenState extends State<HomeScreen> {
     // Add to watchlist
     // Get all existing items to ensure ID is assigned correctly (already fetched above for limit check)
     debugPrint(
-        'HomeScreen: Before adding $symbol there are ${allExistingItems.length} items');
+      'HomeScreen: Before adding $symbol there are ${allExistingItems.length} items',
+    );
     if (allExistingItems.isNotEmpty) {
       debugPrint(
-          'HomeScreen: Existing items: ${allExistingItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
+        'HomeScreen: Existing items: ${allExistingItems.map((e) => '${e.symbol} (id:${e.id})').toList()}',
+      );
     }
 
     // Calculate next available ID
@@ -1488,9 +1569,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // Verify that item was actually added
     final allItems = await widget.isar.watchlistItems.where().findAll();
     debugPrint(
-        'HomeScreen: After adding $symbol total items: ${allItems.length}');
+      'HomeScreen: After adding $symbol total items: ${allItems.length}',
+    );
     debugPrint(
-        'HomeScreen: Symbols in watchlist: ${allItems.map((e) => '${e.symbol} (id:${e.id})').toList()}');
+      'HomeScreen: Symbols in watchlist: ${allItems.map((e) => '${e.symbol} (id:${e.id})').toList()}',
+    );
 
     // Verify that new item actually has unique ID
     final addedItem = await widget.isar.watchlistItems
@@ -1498,10 +1581,12 @@ class _HomeScreenState extends State<HomeScreen> {
         .symbolEqualTo(symbol)
         .findAll();
     debugPrint(
-        'HomeScreen: Found items with symbol $symbol: ${addedItem.length}');
+      'HomeScreen: Found items with symbol $symbol: ${addedItem.length}',
+    );
     if (addedItem.length > 1) {
       debugPrint(
-          'HomeScreen: WARNING! Duplicates for $symbol: ${addedItem.map((e) => e.id).toList()}');
+        'HomeScreen: WARNING! Duplicates for $symbol: ${addedItem.map((e) => e.id).toList()}',
+      );
     }
 
     if (mounted) {

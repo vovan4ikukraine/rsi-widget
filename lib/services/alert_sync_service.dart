@@ -109,7 +109,7 @@ class AlertSyncService {
           await isar.alertRules.filter().remoteIdIsNotNull().findAll();
       final existingRemoteIds = existingAlerts
           .where((a) => a.remoteId != null)
-          .map((a) => a.remoteId!)
+          .map((a) => a.remoteId as int)
           .toSet();
 
       if (rules == null || rules.isEmpty) {

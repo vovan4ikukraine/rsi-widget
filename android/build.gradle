@@ -19,6 +19,15 @@ allprojects {
         google()
         mavenCentral()
     }
+    
+    // Force Material Design 3 version to support lStar attribute
+    // Material 1.11.0+ supports Material Design 3 and lStar attribute
+    configurations.all {
+        resolutionStrategy {
+            force 'com.google.android.material:material:1.11.0'
+            force 'androidx.appcompat:appcompat:1.7.0'
+        }
+    }
 }
 
 // Add namespace for isar_flutter_libs BEFORE project evaluation
@@ -27,6 +36,13 @@ gradle.beforeProject { project ->
         project.afterEvaluate {
             if (project.hasProperty("android")) {
                 project.android.namespace = "dev.isar.flutter_libs"
+                // Ensure isar_flutter_libs uses compatible SDK versions for lStar support
+                if (project.android.hasProperty("compileSdkVersion")) {
+                    project.android.compileSdkVersion = 34
+                }
+                if (project.android.hasProperty("compileSdk")) {
+                    project.android.compileSdk = 34
+                }
             }
         }
     }

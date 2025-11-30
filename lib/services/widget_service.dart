@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
 import 'yahoo_proto.dart';
+import 'indicator_service.dart';
 
 /// Service for updating Android widget with watchlist data
 class WidgetService {
@@ -22,20 +25,32 @@ class WidgetService {
     String? timeframe,
     int? rsiPeriod,
     bool sortDescending = true,
+    IndicatorType? indicator,
+    Map<String, dynamic>? indicatorParams,
   }) async {
     try {
       // Load saved settings from widget (if timeframe was changed in widget)
       final prefs = await SharedPreferences.getInstance();
       final savedTimeframe = prefs.getString('rsi_widget_timeframe');
       final savedPeriod = prefs.getInt('rsi_widget_period');
+      final savedIndicator = prefs.getString('rsi_widget_indicator');
+      final savedSortOrder = prefs.getBool('rsi_widget_sort_descending');
 
       // Use passed parameters or saved in widget
       final finalTimeframe = timeframe ?? savedTimeframe ?? '15m';
       final finalPeriod = rsiPeriod ?? savedPeriod ?? 14;
+      final finalIndicator = indicator ??
+          (savedIndicator != null
+              ? IndicatorType.fromJson(savedIndicator)
+              : IndicatorType.rsi);
+      final finalSortDescending = savedSortOrder ?? sortDescending;
+      final finalIndicatorParams = indicatorParams;
 
       // Save used values
       await prefs.setString('rsi_widget_timeframe', finalTimeframe);
       await prefs.setInt('rsi_widget_period', finalPeriod);
+      await prefs.setString('rsi_widget_indicator', finalIndicator.toJson());
+      await prefs.setBool('rsi_widget_sort_descending', finalSortDescending);
 
       // Load watchlist
       final watchlistItems = await isar.watchlistItems.where().findAll();
@@ -66,29 +81,51 @@ class WidgetService {
 
           if (candles.isEmpty) continue;
 
-          // Calculate RSI
-          final closes = candles.map((c) => c.close).toList();
-          final rsiValues = _calculateRSI(closes, finalPeriod);
+          // Convert candles to format expected by IndicatorService
+          final candlesList = candles
+              .map(
+                (c) => {
+                  'open': c.open,
+                  'high': c.high,
+                  'low': c.low,
+                  'close': c.close,
+                  'timestamp': c.timestamp,
+                },
+              )
+              .toList();
 
-          if (rsiValues.isEmpty) continue;
+          // Calculate indicator using IndicatorService
+          final indicatorResults = IndicatorService.calculateIndicatorHistory(
+            candlesList,
+            finalIndicator,
+            finalPeriod,
+            finalIndicatorParams,
+          );
 
-          final currentRsi = rsiValues.last;
-          final currentPrice = closes.last;
-          final previousPrice =
-              closes.length > 1 ? closes[closes.length - 2] : currentPrice;
+          if (indicatorResults.isEmpty) continue;
+
+          final currentValue = indicatorResults.last.value;
+          final currentPrice = candles.last.close;
+          final previousPrice = candles.length > 1
+              ? candles[candles.length - 2].close
+              : currentPrice;
           final change = currentPrice - previousPrice;
 
           // Take last 20 values for chart
-          final chartValues = rsiValues.length > 20
-              ? rsiValues.sublist(rsiValues.length - 20)
-              : rsiValues;
+          final indicatorValues = indicatorResults.map((r) => r.value).toList();
+          final chartValues = indicatorValues.length > 20
+              ? indicatorValues.sublist(indicatorValues.length - 20)
+              : indicatorValues;
 
           widgetData.add({
             'symbol': item.symbol,
-            'rsi': currentRsi,
+            'indicatorValue': currentValue,
+            'rsi': currentValue, // Keep for backward compatibility
+            'indicator': finalIndicator.toJson(),
             'price': currentPrice,
             'change': change,
             'rsiValues': chartValues,
+            'indicatorValues': chartValues, // New field for generic indicator
           });
         } catch (e) {
           // Skip symbols with errors
@@ -97,19 +134,24 @@ class WidgetService {
         }
       }
 
-      // Convert to JSON
-      double resolveRsi(Map<String, dynamic> item) {
-        final rsi = (item['rsi'] as num?)?.toDouble();
-        if (rsi == null) {
-          return sortDescending ? double.negativeInfinity : double.infinity;
+      // Sort data
+      double resolveValue(Map<String, dynamic> item) {
+        final value = (item['indicatorValue'] as num?)?.toDouble() ??
+            (item['rsi'] as num?)?.toDouble();
+        if (value == null) {
+          return finalSortDescending
+              ? double.negativeInfinity
+              : double.infinity;
         }
-        return rsi;
+        return value;
       }
 
       widgetData.sort((a, b) {
-        final rsiA = resolveRsi(a);
-        final rsiB = resolveRsi(b);
-        return sortDescending ? rsiB.compareTo(rsiA) : rsiA.compareTo(rsiB);
+        final valueA = resolveValue(a);
+        final valueB = resolveValue(b);
+        return finalSortDescending
+            ? valueB.compareTo(valueA)
+            : valueA.compareTo(valueB);
       });
       final sortedSymbols =
           widgetData.map((item) => item['symbol'] as String).toList();
@@ -117,63 +159,46 @@ class WidgetService {
 
       final jsonData = jsonEncode(widgetData);
 
-      // Update widget via MethodChannel
-      await _channel.invokeMethod('updateWidget', {
-        'watchlistData': jsonData,
-        'timeframe': finalTimeframe,
-        'rsiPeriod': finalPeriod,
-        'watchlistSymbols': sortedSymbols,
-      });
+      // Update widget via MethodChannel (Android)
+      if (Platform.isAndroid) {
+        await _channel.invokeMethod('updateWidget', {
+          'watchlistData': jsonData,
+          'timeframe': finalTimeframe,
+          'rsiPeriod': finalPeriod,
+          'indicator': finalIndicator.toJson(),
+          'indicatorParams': finalIndicatorParams != null
+              ? jsonEncode(finalIndicatorParams)
+              : null,
+          'watchlistSymbols': sortedSymbols,
+        });
+      }
+
+      // For iOS, save to App Group UserDefaults
+      if (Platform.isIOS) {
+        try {
+          await _channel.invokeMethod('saveToAppGroup', {
+            'watchlistData': jsonData,
+            'timeframe': finalTimeframe,
+            'rsiPeriod': finalPeriod,
+            'indicator': finalIndicator.toJson(),
+            'indicatorParams': finalIndicatorParams != null
+                ? jsonEncode(finalIndicatorParams)
+                : null,
+            'watchlistSymbols': sortedSymbols,
+          });
+
+          // Also reload widget timeline
+          await _channel.invokeMethod('reloadWidgetTimeline');
+        } catch (e) {
+          print('Error saving to iOS App Group: $e');
+          // Fallback: save to standard UserDefaults (will need App Group configured)
+        }
+      }
 
       print('Widget updated with ${widgetData.length} items');
     } catch (e) {
       print('Error updating widget: $e');
     }
-  }
-
-  /// Calculates RSI using Wilder's algorithm
-  List<double> _calculateRSI(List<double> closes, int period) {
-    if (closes.length < period + 1) {
-      return [];
-    }
-
-    final rsiValues = <double>[];
-
-    // Calculate initial average values
-    double gain = 0, loss = 0;
-    for (int i = 1; i <= period; i++) {
-      final change = closes[i] - closes[i - 1];
-      if (change > 0) {
-        gain += change;
-      } else {
-        loss -= change;
-      }
-    }
-
-    double au = gain / period; // Average Up
-    double ad = loss / period; // Average Down
-
-    // Incremental calculation for remaining points
-    for (int i = period + 1; i < closes.length; i++) {
-      final change = closes[i] - closes[i - 1];
-      final u = change > 0 ? change : 0.0;
-      final d = change < 0 ? -change : 0.0;
-
-      // Update using Wilder's formula
-      au = (au * (period - 1) + u) / period;
-      ad = (ad * (period - 1) + d) / period;
-
-      // Calculate RSI
-      if (ad == 0) {
-        rsiValues.add(100.0);
-      } else {
-        final rs = au / ad;
-        final rsi = 100 - (100 / (1 + rs));
-        rsiValues.add(rsi.clamp(0, 100));
-      }
-    }
-
-    return rsiValues;
   }
 
   int _candlesLimitForTimeframe(String timeframe) {

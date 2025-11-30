@@ -253,7 +253,7 @@ export class FcmService {
             message: {
                 token: token,
                 notification: {
-                    title: `RSI Alert: ${trigger.symbol}`,
+                    title: `Watchlist: ${trigger.symbol}`,
                     body: trigger.message,
                 },
                 data: {

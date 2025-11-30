@@ -18,17 +18,18 @@ import 'screens/login_screen.dart';
 import 'localization/app_localizations.dart';
 import 'state/app_state.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1️⃣ Initialize Firebase
+  // 1️⃣ Initialize Firebase (critical for auth)
   await Firebase.initializeApp();
 
-  // 2️⃣ Get path for local database (Isar requires directory)
+  // 2️⃣ Get path for local database (Isar requires directory) - quick operation
   final dir = await getApplicationDocumentsDirectory();
 
-  // 3️⃣ Initialize Isar
+  // 3️⃣ Initialize Isar - can be slow on large databases, but necessary
   final isar = await Isar.open(
     [
       AlertRuleSchema,
@@ -42,6 +43,7 @@ void main() async {
     name: 'rsi_alert_db',
   );
 
+  // 4️⃣ Load preferences (quick)
   final prefs = await SharedPreferences.getInstance();
   final languageCode = prefs.getString('language') ?? 'ru';
   final theme = prefs.getString('theme') ?? 'dark';
@@ -50,18 +52,34 @@ void main() async {
     themeMode: theme == 'light' ? ThemeMode.light : ThemeMode.dark,
   );
 
-  // 4️⃣ Initialize services
-  await NotificationService.initialize();
-  await FirebaseService.initialize();
-  await UserService.initialize();
-
-  // 5️⃣ Launch application
+  // 5️⃣ Launch application immediately
   runApp(
     AppStateScope(
       notifier: appState,
       child: RSIWidgetApp(isar: isar, appState: appState),
     ),
   );
+
+  // 6️⃣ Initialize non-critical services in background (don't block UI)
+  // These can be initialized after app is shown
+  unawaited(_initializeServicesInBackground());
+}
+
+/// Initialize services that are not critical for showing the UI
+Future<void> _initializeServicesInBackground() async {
+  try {
+    // Initialize services in parallel where possible
+    await Future.wait([
+      NotificationService.initialize(),
+      FirebaseService.initializeWithoutFirebaseInit(), // Don't re-init Firebase
+    ]);
+
+    // UserService depends on FirebaseService, so initialize after
+    await UserService.initialize();
+  } catch (e) {
+    // Silently handle errors - services will be initialized when needed
+    debugPrint('Error initializing services in background: $e');
+  }
 }
 
 class RSIWidgetApp extends StatefulWidget {
@@ -70,11 +88,7 @@ class RSIWidgetApp extends StatefulWidget {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  const RSIWidgetApp({
-    super.key,
-    required this.isar,
-    required this.appState,
-  });
+  const RSIWidgetApp({super.key, required this.isar, required this.appState});
 
   @override
   State<RSIWidgetApp> createState() => _RSIWidgetAppState();
@@ -129,14 +143,13 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
-                    color: Colors.blue.withValues(alpha: 0.5), width: 1.6),
+                  color: Colors.blue.withValues(alpha: 0.5),
+                  width: 1.6,
+                ),
               ),
             ),
             dropdownMenuTheme: DropdownMenuThemeData(
-              textStyle: TextStyle(
-                color: Colors.blueGrey[900],
-                fontSize: 14,
-              ),
+              textStyle: TextStyle(color: Colors.blueGrey[900], fontSize: 14),
             ),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.transparent,
@@ -175,14 +188,13 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
-                    color: Colors.blue.withValues(alpha: 0.5), width: 1.5),
+                  color: Colors.blue.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
               ),
             ),
             dropdownMenuTheme: const DropdownMenuThemeData(
-              textStyle: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
+              textStyle: TextStyle(color: Colors.white, fontSize: 14),
             ),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.transparent,
@@ -197,6 +209,16 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
               // Open watchlist to update widget
               return MaterialPageRoute(
                 builder: (context) => HomeScreen(isar: widget.isar),
+              );
+            }
+            // Handle navigation to home with symbol
+            if (settings.name == '/home') {
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => HomeScreen(
+                  isar: widget.isar,
+                  initialSymbol: args?['symbol'] as String?,
+                ),
                 settings: settings,
               );
             }
@@ -263,9 +285,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   }
 
   Future<void> _checkAuthState() async {
-    // Wait a bit for Firebase to initialize
-    await Future.delayed(const Duration(milliseconds: 500));
-
+    // Check auth state immediately (Firebase is already initialized in main)
     final prefs = await SharedPreferences.getInstance();
     final authSkipped = prefs.getBool('auth_skipped') ?? false;
     final isSignedIn = AuthService.isSignedIn;
@@ -288,11 +308,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Show login screen only on first launch

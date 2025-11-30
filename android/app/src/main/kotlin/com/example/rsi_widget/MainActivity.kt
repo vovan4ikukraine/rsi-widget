@@ -26,9 +26,11 @@ class MainActivity: FlutterActivity() {
                         val watchlistData = call.argument<String>("watchlistData")
                         val timeframe = call.argument<String>("timeframe") ?: "15m"
                         val rsiPeriod = call.argument<Int>("rsiPeriod") ?: 14
+                        val indicator = call.argument<String>("indicator") ?: "rsi"
+                        val indicatorParams = call.argument<String>("indicatorParams")
                         val watchlistSymbols = call.argument<List<String>>("watchlistSymbols")
                         
-                        Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod")
+                        Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
                         
                         // Save data to SharedPreferences
                         val prefs = getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
@@ -37,6 +39,12 @@ class MainActivity: FlutterActivity() {
                             putString("timeframe", timeframe)
                             putInt("rsi_period", rsiPeriod)
                             putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
+                            putString("widget_indicator", indicator)
+                            if (indicatorParams != null) {
+                                putString("widget_indicator_params", indicatorParams)
+                            } else {
+                                remove("widget_indicator_params")
+                            }
                             watchlistSymbols?.let {
                                 putString("watchlist_symbols", JSONArray(it).toString())
                             }

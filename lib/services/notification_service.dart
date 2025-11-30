@@ -256,7 +256,7 @@ class NotificationService {
     }
 
     try {
-      final title = 'RSI Alert: $symbol';
+      final title = 'Watchlist: $symbol';
       final body = message ?? 'RSI $rsi crossed level $level ($type)';
 
       const androidDetails = AndroidNotificationDetails(

@@ -13,25 +13,51 @@ class FirebaseService {
   static String? _fcmToken;
   static String? _userId;
 
-  /// Initialize Firebase
+  /// Initialize Firebase (full initialization)
   static Future<void> initialize() async {
     try {
-      await Firebase.initializeApp();
+      // Check if Firebase is already initialized
+      try {
+        Firebase.app();
+      } catch (_) {
+        // Not initialized, initialize now
+        await Firebase.initializeApp();
+      }
+      await initializeWithoutFirebaseInit();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error initializing Firebase: $e');
+      }
+    }
+  }
+
+  /// Initialize Firebase services without re-initializing Firebase itself
+  /// Use this when Firebase is already initialized in main()
+  static Future<void> initializeWithoutFirebaseInit() async {
+    try {
       _messaging = FirebaseMessaging.instance;
 
       // Setup message handlers
       _setupMessageHandlers();
 
-      // Get FCM token
-      await _getFcmToken();
+      // Get FCM token (don't block - can be slow)
+      // Get token in background to avoid blocking app startup
+      _getFcmToken().then((token) {
+        if (kDebugMode && token != null) {
+          print('FCM Token obtained: $token');
+        }
+      }).catchError((e) {
+        if (kDebugMode) {
+          print('Error getting FCM token in background: $e');
+        }
+      });
 
       if (kDebugMode) {
-        print('Firebase initialized');
-        print('FCM Token: $_fcmToken');
+        print('Firebase services initialized');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error initializing Firebase: $e');
+        print('Error initializing Firebase services: $e');
       }
     }
   }

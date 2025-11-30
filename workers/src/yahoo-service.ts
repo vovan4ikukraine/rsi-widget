@@ -325,8 +325,33 @@ export class YahooService {
                 const cacheTime = data.timestamp;
                 const now = Date.now();
 
-                // Cache valid for 60 seconds
-                if (now - cacheTime < 60 * 1000) {
+                // Cache duration depends on timeframe to balance freshness and KV usage
+                // Short timeframes need fresher data, long timeframes can use longer cache
+                let cacheDurationMs: number;
+                switch (timeframe) {
+                    case '1m':
+                        cacheDurationMs = 30 * 1000; // 30 seconds for 1m
+                        break;
+                    case '5m':
+                        cacheDurationMs = 60 * 1000; // 1 minute for 5m
+                        break;
+                    case '15m':
+                        cacheDurationMs = 90 * 1000; // 1.5 minutes for 15m
+                        break;
+                    case '1h':
+                        cacheDurationMs = 3 * 60 * 1000; // 3 minutes for 1h
+                        break;
+                    case '4h':
+                        cacheDurationMs = 5 * 60 * 1000; // 5 minutes for 4h
+                        break;
+                    case '1d':
+                        cacheDurationMs = 10 * 60 * 1000; // 10 minutes for 1d
+                        break;
+                    default:
+                        cacheDurationMs = 2 * 60 * 1000; // 2 minutes default
+                }
+
+                if (now - cacheTime < cacheDurationMs) {
                     return data.candles;
                 }
             }

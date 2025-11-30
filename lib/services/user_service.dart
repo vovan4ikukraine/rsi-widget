@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -49,7 +50,8 @@ class UserService {
     }
 
     FirebaseService.setUserId(_userId!);
-    await FirebaseService.registerDeviceWithServer();
+    // Don't block initialization - register device in background
+    unawaited(FirebaseService.registerDeviceWithServer());
     return _userId!;
   }
 

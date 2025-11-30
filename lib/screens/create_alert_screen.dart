@@ -471,7 +471,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${indicatorType.displayName} Settings',
+              '${indicatorType.name} Settings',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),

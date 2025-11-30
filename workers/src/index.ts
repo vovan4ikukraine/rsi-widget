@@ -760,8 +760,37 @@ const worker: ExportedHandler<Env> = {
             // Get active rules (we already know there are some)
             const rules = await indicatorEngine.getActiveRules();
 
+            // Filter rules based on timeframe - check long timeframes less frequently
+            // This reduces KV operations while maintaining timely alerts for short timeframes
+            const now = new Date();
+            const currentMinute = now.getMinutes();
+            const filteredRules = rules.filter(rule => {
+                // Always check short timeframes (1m, 5m, 15m) every minute
+                if (['1m', '5m', '15m'].includes(rule.timeframe)) {
+                    return true;
+                }
+                // Check 1h every minute (still important for timely alerts)
+                if (rule.timeframe === '1h') {
+                    return true;
+                }
+                // Check 4h every 2 minutes (less critical, can wait a bit)
+                if (rule.timeframe === '4h') {
+                    return currentMinute % 2 === 0;
+                }
+                // Check 1d every 5 minutes (daily timeframe, less urgent)
+                if (rule.timeframe === '1d') {
+                    return currentMinute % 5 === 0;
+                }
+                return true; // Default: check every minute
+            });
+
+            if (filteredRules.length === 0) {
+                Logger.debug('No rules to check this minute (filtered by timeframe)', env);
+                return;
+            }
+
             // Group by symbols and timeframes
-            const groupedRules = indicatorEngine.groupRulesBySymbolTimeframe(rules);
+            const groupedRules = indicatorEngine.groupRulesBySymbolTimeframe(filteredRules);
             const symbolTimeframePairs = Object.entries(groupedRules);
 
             // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits

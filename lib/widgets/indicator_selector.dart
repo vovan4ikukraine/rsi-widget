@@ -34,7 +34,7 @@ class IndicatorSelector extends StatelessWidget {
                 items: IndicatorType.values.map((indicator) {
                   return DropdownMenuItem<IndicatorType>(
                     value: indicator,
-                    child: Text(indicator.displayName),
+                    child: Text(indicator.name),
                   );
                 }).toList(),
                 onChanged: (IndicatorType? newIndicator) {
