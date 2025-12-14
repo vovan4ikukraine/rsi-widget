@@ -412,13 +412,13 @@ class RsiMiniChart extends StatelessWidget {
 
 /// RSI zone indicator
 class RsiZoneIndicator extends StatelessWidget {
-  final double rsi;
+  final double value;
   final List<double> levels;
   final String symbol;
 
   const RsiZoneIndicator({
     super.key,
-    required this.rsi,
+    required this.value,
     this.levels = const [30, 70],
     required this.symbol,
   });
@@ -426,7 +426,7 @@ class RsiZoneIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = context.loc;
-    final zone = _getRsiZone(rsi, levels);
+    final zone = _getRsiZone(value, levels);
     final color = _getZoneColor(zone);
     final icon = _getZoneIcon(zone);
     final text = _getZoneText(loc, zone);
@@ -456,50 +456,50 @@ class RsiZoneIndicator extends StatelessWidget {
     );
   }
 
-  RsiZone _getRsiZone(double rsi, List<double> levels) {
-    if (levels.isEmpty) return RsiZone.between;
+  IndicatorZone _getRsiZone(double value, List<double> levels) {
+    if (levels.isEmpty) return IndicatorZone.between;
 
     final lowerLevel = levels.first;
     final upperLevel = levels.length > 1 ? levels[1] : 100.0;
 
-    if (rsi < lowerLevel) {
-      return RsiZone.below;
-    } else if (rsi > upperLevel) {
-      return RsiZone.above;
+    if (value < lowerLevel) {
+      return IndicatorZone.below;
+    } else if (value > upperLevel) {
+      return IndicatorZone.above;
     } else {
-      return RsiZone.between;
+      return IndicatorZone.between;
     }
   }
 
-  Color _getZoneColor(RsiZone zone) {
+  Color _getZoneColor(IndicatorZone zone) {
     switch (zone) {
-      case RsiZone.below:
+      case IndicatorZone.below:
         return Colors.red;
-      case RsiZone.between:
+      case IndicatorZone.between:
         return Colors.blue;
-      case RsiZone.above:
+      case IndicatorZone.above:
         return Colors.green;
     }
   }
 
-  IconData _getZoneIcon(RsiZone zone) {
+  IconData _getZoneIcon(IndicatorZone zone) {
     switch (zone) {
-      case RsiZone.below:
+      case IndicatorZone.below:
         return Icons.trending_down;
-      case RsiZone.between:
+      case IndicatorZone.between:
         return Icons.trending_flat;
-      case RsiZone.above:
+      case IndicatorZone.above:
         return Icons.trending_up;
     }
   }
 
-  String _getZoneText(AppLocalizations loc, RsiZone zone) {
+  String _getZoneText(AppLocalizations loc, IndicatorZone zone) {
     switch (zone) {
-      case RsiZone.below:
+      case IndicatorZone.below:
         return loc.t('chart_zone_oversold');
-      case RsiZone.between:
+      case IndicatorZone.between:
         return loc.t('chart_zone_neutral');
-      case RsiZone.above:
+      case IndicatorZone.above:
         return loc.t('chart_zone_overbought');
     }
   }

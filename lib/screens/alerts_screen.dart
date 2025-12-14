@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
 import 'create_alert_screen.dart';
 import '../localization/app_localizations.dart';
 import '../services/alert_sync_service.dart';
+import '../state/app_state.dart';
+import '../widgets/indicator_selector.dart';
 
 class AlertsScreen extends StatefulWidget {
   final Isar isar;
@@ -14,16 +19,55 @@ class AlertsScreen extends StatefulWidget {
   State<AlertsScreen> createState() => _AlertsScreenState();
 }
 
-class _AlertsScreenState extends State<AlertsScreen> {
+class _AlertsScreenState extends State<AlertsScreen>
+    with WidgetsBindingObserver {
   List<AlertRule> _alerts = [];
   List<AlertEvent> _events = [];
   bool _isLoading = true;
   String _filter = 'all'; // all, active, inactive
+  AppState? _appState;
+  bool _isSelectionMode = false;
+  Set<int> _selectedAlertIds = {};
+  bool _needsRefresh = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Always refresh when screen is opened to ensure Watchlist Alert changes are reflected
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh when app comes to foreground
+      _loadData();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppStateScope.of(context);
+    // Refresh when dependencies change (e.g., when returning from another screen)
+    if (_needsRefresh) {
+      _needsRefresh = false;
+      _loadData();
+    }
+  }
+
+  @override
+  void didUpdateWidget(AlertsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Mark that we need to refresh when dependencies are ready
+    _needsRefresh = true;
   }
 
   Future<void> _loadData() async {
@@ -36,7 +80,27 @@ class _AlertsScreenState extends State<AlertsScreen> {
       await AlertSyncService.fetchAndSyncAlerts(widget.isar);
       await AlertSyncService.syncPendingAlerts(widget.isar);
 
-      final alerts = await widget.isar.alertRules.where().findAll();
+      final allAlerts = await widget.isar.alertRules.where().findAll();
+      // Temporarily show Watchlist Alert in list for debugging
+      // TODO: Filter out Watchlist Alert - they are background monitoring, not visible in list
+      final alerts = allAlerts;
+      // Uncomment below to filter out Watchlist Alert:
+      // final alerts = allAlerts.where((a) {
+      //   // Exclude alerts with description containing "WATCHLIST:"
+      //   final desc = a.description;
+      //   if (desc == null) return true;
+      //   return !desc.toUpperCase().contains('WATCHLIST:');
+      // }).toList();
+
+      if (kDebugMode) {
+        final watchlistCount = allAlerts
+            .where((a) =>
+                a.description != null &&
+                a.description!.toUpperCase().contains('WATCHLIST:'))
+            .length;
+        debugPrint(
+            'AlertsScreen: Loaded ${allAlerts.length} total alerts (${watchlistCount} Watchlist Alerts, ${allAlerts.length - watchlistCount} custom alerts)');
+      }
 
       final events = await widget.isar.alertEvents.where().findAll();
 
@@ -80,28 +144,119 @@ class _AlertsScreenState extends State<AlertsScreen> {
   Widget build(BuildContext context) {
     final loc = context.loc;
 
+    // Refresh data when screen becomes visible (e.g., when returning from another screen)
+    // This ensures Watchlist Alert changes are reflected immediately
+    if (_needsRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _needsRefresh = false;
+          _loadData();
+        }
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('alerts_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              setState(() {
-                _filter = value;
-              });
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(value: 'all', child: Text(loc.t('common_all'))),
-              PopupMenuItem(
-                  value: 'active', child: Text(loc.t('alerts_filter_active'))),
-              PopupMenuItem(
-                  value: 'inactive',
-                  child: Text(loc.t('alerts_filter_inactive'))),
-            ],
-            child: const Icon(Icons.filter_list),
-          ),
+          if (_isSelectionMode) ...[
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: 'Select All',
+              onPressed: () {
+                setState(() {
+                  _selectedAlertIds = _filteredAlerts.map((a) => a.id).toSet();
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.deselect),
+              tooltip: 'Deselect All',
+              onPressed: () {
+                setState(() {
+                  _selectedAlertIds.clear();
+                });
+              },
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) => _handleBulkAction(value),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'enable',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.play_arrow),
+                      const SizedBox(width: 8),
+                      Text(loc.t('common_enable')),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'disable',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.pause),
+                      const SizedBox(width: 8),
+                      Text(loc.t('common_disable')),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.delete, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Text(
+                        loc.t('common_delete'),
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              child: const Icon(Icons.more_vert),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Cancel Selection',
+              onPressed: () {
+                setState(() {
+                  _isSelectionMode = false;
+                  _selectedAlertIds.clear();
+                });
+              },
+            ),
+          ] else ...[
+            IconButton(
+              icon: const Icon(Icons.checklist),
+              tooltip: 'Select Alerts',
+              onPressed: () {
+                setState(() {
+                  _isSelectionMode = true;
+                });
+              },
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                setState(() {
+                  _filter = value;
+                });
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(value: 'all', child: Text(loc.t('common_all'))),
+                PopupMenuItem(
+                    value: 'active',
+                    child: Text(loc.t('alerts_filter_active'))),
+                PopupMenuItem(
+                    value: 'inactive',
+                    child: Text(loc.t('alerts_filter_inactive'))),
+              ],
+              child: const Icon(Icons.filter_list),
+            ),
+          ],
         ],
       ),
       body: _isLoading
@@ -110,6 +265,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
               onRefresh: _loadData,
               child: Column(
                 children: [
+                  // Indicator selector
+                  if (_appState != null)
+                    IndicatorSelector(appState: _appState!),
+
                   // Statistics
                   _buildStatsCard(loc),
 
@@ -130,8 +289,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createAlert(),
-        child: const Icon(Icons.add),
         tooltip: loc.t('home_create_alert'),
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -225,16 +384,33 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Widget _buildAlertCard(AppLocalizations loc, AlertRule alert) {
+    final isSelected = _selectedAlertIds.contains(alert.id);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: isSelected ? Colors.blue[50] : null,
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: alert.active ? Colors.green : Colors.grey,
-          child: Icon(
-            alert.active ? Icons.notifications_active : Icons.notifications_off,
-            color: Colors.white,
-          ),
-        ),
+        leading: _isSelectionMode
+            ? Checkbox(
+                value: isSelected,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _selectedAlertIds.add(alert.id);
+                    } else {
+                      _selectedAlertIds.remove(alert.id);
+                    }
+                  });
+                },
+              )
+            : CircleAvatar(
+                backgroundColor: alert.active ? Colors.green : Colors.grey,
+                child: Icon(
+                  alert.active
+                      ? Icons.notifications_active
+                      : Icons.notifications_off,
+                  color: Colors.white,
+                ),
+              ),
         title: Text(
           alert.symbol,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -242,7 +418,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${alert.timeframe} • RSI(${alert.rsiPeriod})'),
+            Text(_getAlertDescription(alert)),
             Text(
               loc.t(
                 'alerts_levels_prefix',
@@ -252,57 +428,79 @@ class _AlertsScreenState extends State<AlertsScreen> {
             if (alert.description != null) Text(alert.description!),
           ],
         ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) => _handleAlertAction(value, alert),
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'toggle',
-              child: Row(
-                children: [
-                  Icon(alert.active ? Icons.pause : Icons.play_arrow),
-                  const SizedBox(width: 8),
-                  Text(alert.active
-                      ? loc.t('common_disable')
-                      : loc.t('common_enable')),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  const Icon(Icons.edit),
-                  const SizedBox(width: 8),
-                  Text(loc.t('common_edit')),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'duplicate',
-              child: Row(
-                children: [
-                  const Icon(Icons.copy),
-                  const SizedBox(width: 8),
-                  Text(loc.t('common_duplicate')),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  const Icon(Icons.delete, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(
-                    loc.t('common_delete'),
-                    style: const TextStyle(color: Colors.red),
+        trailing: _isSelectionMode
+            ? null
+            : PopupMenuButton<String>(
+                onSelected: (value) => _handleAlertAction(value, alert),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(
+                      children: [
+                        Icon(alert.active ? Icons.pause : Icons.play_arrow),
+                        const SizedBox(width: 8),
+                        Text(alert.active
+                            ? loc.t('common_disable')
+                            : loc.t('common_enable')),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit),
+                        const SizedBox(width: 8),
+                        Text(loc.t('common_edit')),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'duplicate',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.copy),
+                        const SizedBox(width: 8),
+                        Text(loc.t('common_duplicate')),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.delete, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Text(
+                          loc.t('common_delete'),
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-        onTap: () => _editAlert(alert),
+        onTap: () {
+          if (_isSelectionMode) {
+            setState(() {
+              if (_selectedAlertIds.contains(alert.id)) {
+                _selectedAlertIds.remove(alert.id);
+              } else {
+                _selectedAlertIds.add(alert.id);
+              }
+            });
+          } else {
+            _editAlert(alert);
+          }
+        },
+        onLongPress: () {
+          if (!_isSelectionMode) {
+            setState(() {
+              _isSelectionMode = true;
+              _selectedAlertIds.add(alert.id);
+            });
+          }
+        },
       ),
     );
   }
@@ -386,7 +584,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
       final newAlert = AlertRule()
         ..symbol = alert.symbol
         ..timeframe = alert.timeframe
-        ..rsiPeriod = alert.rsiPeriod
+        ..indicator = alert.indicator
+        ..period = alert.period
+        ..indicatorParams = alert.indicatorParams != null
+            ? Map<String, dynamic>.from(alert.indicatorParams!)
+            : null
         ..levels = List.from(alert.levels)
         ..mode = alert.mode
         ..cooldownSec = alert.cooldownSec
@@ -456,6 +658,225 @@ class _AlertsScreenState extends State<AlertsScreen> {
         );
       } catch (e) {
         if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              loc.t('alerts_error_generic', params: {'message': '$e'}),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  String _getAlertDescription(AlertRule alert) {
+    final indicatorType = IndicatorType.fromJson(alert.indicator);
+    final indicatorName = indicatorType.name.toUpperCase();
+    String params = '${alert.period}';
+
+    // Add %D period for Stochastic
+    if (indicatorType == IndicatorType.stoch && alert.indicatorParams != null) {
+      final dPeriod = alert.indicatorParams?['dPeriod'] as int?;
+      if (dPeriod != null) {
+        params = '$params/$dPeriod';
+      }
+    }
+
+    return '${alert.timeframe} • $indicatorName($params)';
+  }
+
+  Future<void> _handleBulkAction(String action) async {
+    if (_selectedAlertIds.isEmpty) return;
+
+    final selectedAlerts =
+        _alerts.where((a) => _selectedAlertIds.contains(a.id)).toList();
+    final loc = context.loc;
+
+    // Show loading indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Text('Processing ${selectedAlerts.length} alert(s)...'),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    try {
+      switch (action) {
+        case 'enable':
+          // Update all alerts in one transaction
+          await widget.isar.writeTxn(() async {
+            for (final alert in selectedAlerts) {
+              alert.active = true;
+              await widget.isar.alertRules.put(alert);
+            }
+          });
+
+          // Sync all alerts in parallel (non-blocking)
+          unawaited(Future.wait(
+            selectedAlerts
+                .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+          ));
+
+          // Update UI immediately
+          if (mounted) {
+            setState(() {
+              for (final alert in selectedAlerts) {
+                final index = _alerts.indexWhere((a) => a.id == alert.id);
+                if (index != -1) {
+                  _alerts[index].active = true;
+                }
+              }
+              _isSelectionMode = false;
+              _selectedAlertIds.clear();
+            });
+
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${selectedAlerts.length} alert(s) enabled'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+          return;
+
+        case 'disable':
+          // Update all alerts in one transaction
+          await widget.isar.writeTxn(() async {
+            for (final alert in selectedAlerts) {
+              alert.active = false;
+              await widget.isar.alertRules.put(alert);
+            }
+          });
+
+          // Sync all alerts in parallel (non-blocking)
+          unawaited(Future.wait(
+            selectedAlerts
+                .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+          ));
+
+          // Update UI immediately
+          if (mounted) {
+            setState(() {
+              for (final alert in selectedAlerts) {
+                final index = _alerts.indexWhere((a) => a.id == alert.id);
+                if (index != -1) {
+                  _alerts[index].active = false;
+                }
+              }
+              _isSelectionMode = false;
+              _selectedAlertIds.clear();
+            });
+
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${selectedAlerts.length} alert(s) disabled'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+
+        case 'delete':
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(loc.t('common_delete')),
+              content: Text('Delete ${selectedAlerts.length} alert(s)?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(loc.t('common_cancel')),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(
+                    loc.t('common_delete'),
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          if (confirmed == true) {
+            // Delete all alerts in one transaction
+            await widget.isar.writeTxn(() async {
+              for (final alert in selectedAlerts) {
+                // Delete alert state
+                try {
+                  final alertState = await widget.isar.alertStates
+                      .filter()
+                      .ruleIdEqualTo(alert.id)
+                      .findFirst();
+                  if (alertState != null && alertState.id > 0) {
+                    await widget.isar.alertStates.delete(alertState.id);
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+
+                // Delete alert events
+                try {
+                  final events = await widget.isar.alertEvents
+                      .filter()
+                      .ruleIdEqualTo(alert.id)
+                      .findAll();
+                  for (final event in events) {
+                    await widget.isar.alertEvents.delete(event.id);
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+
+                // Delete alert
+                await widget.isar.alertRules.delete(alert.id);
+              }
+            });
+
+            // Sync deletions in parallel (non-blocking)
+            unawaited(Future.wait(
+              selectedAlerts.map((alert) =>
+                  AlertSyncService.deleteAlert(alert, hardDelete: true)),
+            ));
+
+            // Update UI immediately
+            if (mounted) {
+              setState(() {
+                _alerts.removeWhere((a) => _selectedAlertIds.contains(a.id));
+                _isSelectionMode = false;
+                _selectedAlertIds.clear();
+              });
+
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${selectedAlerts.length} alert(s) deleted'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+          return;
+
+        default:
+          return;
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

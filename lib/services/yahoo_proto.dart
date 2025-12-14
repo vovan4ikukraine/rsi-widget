@@ -28,16 +28,29 @@ class YahooProtoSource {
   }) async {
     try {
       // Check client-side cache first for instant response
+      // But only use cache if data is fresh (< 60 seconds) for trading app
       final cacheKey = '$symbol:$timeframe';
       final cachedCandles = DataCache.getCandles(cacheKey);
-      if (cachedCandles != null && cachedCandles.isNotEmpty) {
-        // Apply limit if specified and different from cached data
-        final result = limit < cachedCandles.length
-            ? cachedCandles.sublist(cachedCandles.length - limit)
-            : cachedCandles;
-        debugPrint(
-            'YahooProto: Using client cache for $symbol $timeframe (${result.length} candles)');
-        return (result, 'client-cache');
+      final cacheTimestamp = DataCache.getCacheTimestamp(cacheKey);
+
+      if (cachedCandles != null &&
+          cachedCandles.isNotEmpty &&
+          cacheTimestamp != null) {
+        // Check if cache is fresh (less than 60 seconds old)
+        final cacheAge = DateTime.now().difference(cacheTimestamp);
+        if (cacheAge.inSeconds < 60) {
+          // Cache is fresh, use it for instant display
+          final result = limit < cachedCandles.length
+              ? cachedCandles.sublist(cachedCandles.length - limit)
+              : cachedCandles;
+          debugPrint(
+              'YahooProto: Using fresh client cache for $symbol $timeframe (${result.length} candles, age: ${cacheAge.inSeconds}s)');
+          return (result, 'client-cache');
+        } else {
+          // Cache is stale (> 60 seconds), will fetch fresh data below
+          debugPrint(
+              'YahooProto: Client cache is stale for $symbol $timeframe (age: ${cacheAge.inSeconds}s), fetching fresh data');
+        }
       }
 
       final uri = Uri.parse('$endpoint/yf/candles').replace(
@@ -442,12 +455,18 @@ class DataCache {
   static final Map<String, SymbolInfo> _infoCache = {};
 
   static const int _maxCacheSize = 100;
-  static const Duration _cacheExpiry = Duration(minutes: 5);
+  // Client cache: 2 minutes for quick display, but always refresh on app open
+  // Server cache is 60 seconds, ensuring fresh data when requested
+  static const Duration _cacheExpiry = Duration(minutes: 2);
   static final Map<String, DateTime> _cacheTimestamps = {};
 
   static List<CandleData>? getCandles(String key) {
     if (_isExpired(key)) return null;
     return _candlesCache[key];
+  }
+
+  static DateTime? getCacheTimestamp(String key) {
+    return _cacheTimestamps[key];
   }
 
   static void setCandles(String key, List<CandleData> candles) {
@@ -480,6 +499,11 @@ class DataCache {
     final timestamp = _cacheTimestamps[key];
     if (timestamp == null) return true;
     return DateTime.now().difference(timestamp) > _cacheExpiry;
+  }
+
+  static void clearCandles(String key) {
+    _candlesCache.remove(key);
+    _cacheTimestamps.remove(key);
   }
 
   static void _cleanupCache() {

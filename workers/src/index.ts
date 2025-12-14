@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { RsiEngine } from './rsi-engine';
+import { IndicatorEngine } from './rsi-engine';
 import { FcmService } from './fcm-service';
 import { YahooService } from './yahoo-service';
 import { Logger } from './logger';
@@ -16,7 +16,7 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-async function ensureTables(db: D1Database) {
+async function ensureTables(db: D1Database, env?: any) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS device (
         id TEXT PRIMARY KEY,
@@ -33,13 +33,49 @@ async function ensureTables(db: D1Database) {
         user_id TEXT NOT NULL,
         symbol TEXT NOT NULL,
         timeframe TEXT NOT NULL,
-        rsi_period INTEGER NOT NULL,
+        indicator TEXT NOT NULL DEFAULT 'rsi',
+        period INTEGER NOT NULL DEFAULT 14,
+        indicator_params TEXT,
+        rsi_period INTEGER,
         levels TEXT NOT NULL,
         mode TEXT NOT NULL,
         cooldown_sec INTEGER NOT NULL,
         active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL
       )
+    `).run();
+
+    // Migration: Add indicator and period columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN indicator TEXT`).run();
+    } catch (e: any) {
+        // Column already exists, ignore
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN period INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: period column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN indicator_params TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_params column may already exist', env);
+        }
+    }
+
+    // Migration: Copy rsi_period to period for existing records
+    await db.prepare(`
+      UPDATE alert_rule 
+      SET period = rsi_period, indicator = 'rsi'
+      WHERE period IS NULL OR indicator IS NULL
     `).run();
 
     await db.prepare(`
@@ -67,22 +103,64 @@ async function ensureTables(db: D1Database) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alert_state (
         rule_id INTEGER PRIMARY KEY,
-        last_rsi REAL,
+        last_indicator_value REAL,
+        indicator_state TEXT,
         last_bar_ts INTEGER,
         last_fire_ts INTEGER,
         last_side TEXT,
+        last_rsi REAL,
         last_au REAL,
         last_ad REAL,
         FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
       )
     `).run();
 
+    // Migration: Add new columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN last_indicator_value REAL`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_indicator_value column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN indicator_state TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_state column may already exist', env);
+        }
+    }
+
+    // Migration: Copy last_rsi to last_indicator_value for existing records
+    await db.prepare(`
+      UPDATE alert_state 
+      SET last_indicator_value = last_rsi
+      WHERE last_indicator_value IS NULL AND last_rsi IS NOT NULL
+    `).run();
+
+    // Migration: Convert last_au/last_ad to indicator_state JSON
+    const states = await db.prepare(`SELECT rule_id, last_au, last_ad FROM alert_state WHERE last_au IS NOT NULL OR last_ad IS NOT NULL`).all();
+    for (const state of states.results as any[]) {
+        const stateJson = JSON.stringify({
+            au: state.last_au,
+            ad: state.last_ad
+        });
+        await db.prepare(`
+          UPDATE alert_state 
+          SET indicator_state = ?
+          WHERE rule_id = ? AND indicator_state IS NULL
+        `).bind(stateJson, state.rule_id).run();
+    }
+
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alert_event (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         rule_id INTEGER NOT NULL,
         ts INTEGER NOT NULL,
-        rsi REAL NOT NULL,
+        indicator_value REAL NOT NULL,
+        indicator TEXT,
+        rsi REAL,
         level REAL,
         side TEXT,
         bar_ts INTEGER,
@@ -90,6 +168,50 @@ async function ensureTables(db: D1Database) {
         FOREIGN KEY(rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
       )
     `).run();
+
+    // Migration: Add new columns if they don't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_event ADD COLUMN indicator_value REAL`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator_value column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_event ADD COLUMN indicator TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: indicator column may already exist', env);
+        }
+    }
+
+    // Migration: Copy rsi to indicator_value for existing records
+    await db.prepare(`
+      UPDATE alert_event 
+      SET indicator_value = rsi, indicator = 'rsi'
+      WHERE indicator_value IS NULL AND rsi IS NOT NULL
+    `).run();
+
+    // Create candles cache table (replaces KV for candles cache - much cheaper)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS candles_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        candles_json TEXT NOT NULL,
+        cached_at INTEGER NOT NULL,
+        UNIQUE(symbol, timeframe)
+      )
+    `).run();
+
+    // Create indexes for candles cache
+    try {
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_candles_cache_symbol_timeframe ON candles_cache(symbol, timeframe)`).run();
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_candles_cache_cached_at ON candles_cache(cached_at)`).run();
+    } catch (e: any) {
+        // Indexes may already exist, ignore
+    }
 }
 
 // CORS middleware
@@ -136,11 +258,11 @@ app.get('/yf/candles', async (c) => {
         }
 
         const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
-        const kv = c.env?.KV as KVNamespace;
+        const db = c.env?.DB as D1Database;
 
-        // Try to get from cache first
-        if (kv) {
-            const cachedCandles = await yahooService.getCachedCandles(symbol, tf, kv);
+        // Try to get from D1 cache first (much cheaper than KV)
+        if (db) {
+            const cachedCandles = await yahooService.getCachedCandles(symbol, tf, db);
             if (cachedCandles) {
                 Logger.cacheHit(symbol, tf, cachedCandles.length, c.env);
 
@@ -173,7 +295,7 @@ app.get('/yf/candles', async (c) => {
             }
         }
 
-        // Cache miss or no KV - fetch from Yahoo
+        // Cache miss or no DB - fetch from Yahoo
         Logger.cacheMiss(symbol, tf, c.env);
 
         const candles = await yahooService.getCandles(symbol, tf, {
@@ -181,9 +303,9 @@ app.get('/yf/candles', async (c) => {
             limit: limit ? parseInt(limit) : 1000,
         });
 
-        // Save to cache for future requests
-        if (kv && candles.length > 0) {
-            await yahooService.setCachedCandles(symbol, tf, candles, kv);
+        // Save to D1 cache for future requests (much cheaper than KV)
+        if (db && candles.length > 0) {
+            await yahooService.setCachedCandles(symbol, tf, candles, db);
             Logger.cacheSave(symbol, tf, candles.length, c.env);
         }
 
@@ -300,7 +422,10 @@ app.post('/alerts/create', async (c) => {
             userId,
             symbol,
             timeframe,
-            rsiPeriod,
+            indicator,
+            period,
+            rsiPeriod,  // Deprecated, kept for backward compatibility
+            indicatorParams,
             levels,
             mode,
             cooldownSec
@@ -324,10 +449,26 @@ app.post('/alerts/create', async (c) => {
             return c.json({ error: `Invalid timeframe: must be one of ${validTimeframes.join(', ')}` }, 400);
         }
 
-        // Validate RSI period (1-100)
-        const period = rsiPeriod || 14;
-        if (!Number.isInteger(period) || period < 1 || period > 100) {
-            return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+        // Validate indicator (default to 'rsi')
+        const alertIndicator = indicator || 'rsi';
+        const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+        if (!validIndicators.includes(alertIndicator)) {
+            return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+        }
+
+        // Validate period (1-100) - universal period for all indicators
+        const alertPeriod = period || rsiPeriod || (alertIndicator === 'stoch' ? 14 : 14);
+        if (!Number.isInteger(alertPeriod) || alertPeriod < 1 || alertPeriod > 100) {
+            return c.json({ error: 'Invalid period: must be between 1 and 100' }, 400);
+        }
+
+        // Validate indicator parameters if provided
+        let indicatorParamsJson: string | null = null;
+        if (indicatorParams) {
+            if (typeof indicatorParams !== 'object') {
+                return c.json({ error: 'Invalid indicatorParams: must be an object' }, 400);
+            }
+            indicatorParamsJson = JSON.stringify(indicatorParams);
         }
 
         // Validate levels (array of numbers between 0-100)
@@ -367,11 +508,12 @@ app.post('/alerts/create', async (c) => {
 
         const result = await db.prepare(`
       INSERT INTO alert_rule (
-        user_id, symbol, timeframe, rsi_period, levels, mode, 
+        user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
         cooldown_sec, active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     `).bind(
-            userId, symbol.toUpperCase(), timeframe, period,
+            userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
+            indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
             JSON.stringify(levels), alertMode,
             cooldown, Date.now()
         ).run();
@@ -446,9 +588,33 @@ app.put('/alerts/:ruleId', async (c) => {
             }
         }
 
+        if (updates.indicator !== undefined) {
+            const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+            if (!validIndicators.includes(updates.indicator)) {
+                return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+            }
+        }
+
+        if (updates.period !== undefined) {
+            if (!Number.isInteger(updates.period) || updates.period < 1 || updates.period > 100) {
+                return c.json({ error: 'Invalid period: must be between 1 and 100' }, 400);
+            }
+        }
+
+        if (updates.indicatorParams !== undefined) {
+            if (typeof updates.indicatorParams !== 'object') {
+                return c.json({ error: 'Invalid indicatorParams: must be an object' }, 400);
+            }
+            updates.indicatorParams = JSON.stringify(updates.indicatorParams);
+        }
+
         if (updates.rsi_period !== undefined) {
             if (!Number.isInteger(updates.rsi_period) || updates.rsi_period < 1 || updates.rsi_period > 100) {
                 return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+            }
+            // Also update period for consistency
+            if (updates.period === undefined) {
+                updates.period = updates.rsi_period;
             }
         }
 
@@ -560,11 +726,8 @@ app.post('/alerts/check', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
-        // RsiEngine expects (DB, YahooService, KV?)
-        const rsiEngine = new RsiEngine(db, new YahooService(c.env?.YAHOO_ENDPOINT as string || ''), c.env?.KV);
-        const results = await rsiEngine.checkAlerts(symbols, timeframes);
-
-        return c.json({ results });
+        // Note: This endpoint is deprecated, use CRON job instead
+        return c.json({ error: 'This endpoint is deprecated. Use CRON job for alert checking.' }, 400);
     } catch (error) {
         Logger.error('Error checking alerts:', error, c.env);
         return c.json({ error: 'Failed to check alerts' }, 500);
@@ -599,7 +762,7 @@ const worker: ExportedHandler<Env> = {
 
             Logger.info(`Running scheduled RSI check for ${activeCount} active rule(s)...`, env);
 
-            // Check FCM configuration only if we have active rules
+            // Check FCM configuration
             if (!env.FCM_SERVICE_ACCOUNT_JSON || env.FCM_SERVICE_ACCOUNT_JSON.trim() === '') {
                 Logger.error('FCM_SERVICE_ACCOUNT_JSON is not set! Please set it via: wrangler secret put FCM_SERVICE_ACCOUNT_JSON', undefined, env);
                 Logger.error('Paste the entire Service Account JSON file content', undefined, env);
@@ -611,214 +774,222 @@ const worker: ExportedHandler<Env> = {
                 return;
             }
 
-            const rsiEngine = new RsiEngine(db, new YahooService(env.YAHOO_ENDPOINT), env.KV);
+            await ensureTables(db);
+            const indicatorEngine = new IndicatorEngine(db, new YahooService(env.YAHOO_ENDPOINT));
             const fcmService = new FcmService(env.FCM_SERVICE_ACCOUNT_JSON, env.FCM_PROJECT_ID, env.KV, env.DB);
 
-            // Get active rules (we already know there are some)
-            const rules = await rsiEngine.getActiveRules();
+            // Check regular alerts (custom alerts created by users)
+            if (activeCount > 0) {
+                // Get active rules (we already know there are some)
+                const rules = await indicatorEngine.getActiveRules();
 
-            // Group by symbols and timeframes
-            const groupedRules = rsiEngine.groupRulesBySymbolTimeframe(rules);
-            const symbolTimeframePairs = Object.entries(groupedRules);
+                // Group by symbols and timeframes - this automatically groups user requests
+                // If 100 users have alerts for AAPL 15m, we check it once, not 100 times
+                const groupedRules = indicatorEngine.groupRulesBySymbolTimeframe(rules);
+                const symbolTimeframePairs = Object.entries(groupedRules);
 
-            // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits
-            // This spreads requests over time (e.g., 300 pairs = ~100 seconds max)
-            const RATE_LIMIT_DELAY_MS = 350; // ~3 requests per second
-            let requestCount = 0;
+                // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits
+                // This spreads requests over time (e.g., 300 pairs = ~100 seconds max)
+                const RATE_LIMIT_DELAY_MS = 350; // ~3 requests per second
+                let requestCount = 0;
 
-            // Check each symbol/timeframe with rate limiting
-            for (const [key, rules] of symbolTimeframePairs) {
-                const [symbol, timeframe] = key.split('|');
+                // Check each symbol/timeframe with rate limiting
+                for (const [key, rules] of symbolTimeframePairs) {
+                    const [symbol, timeframe] = key.split('|');
 
-                // Add delay between requests to respect rate limits
-                if (requestCount > 0) {
-                    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-                }
+                    // Add delay between requests to respect rate limits
+                    if (requestCount > 0) {
+                        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+                    }
 
-                try {
-                    const triggers = await rsiEngine.checkSymbolTimeframe(
-                        symbol,
-                        timeframe,
-                        rules
-                    );
+                    try {
+                        const triggers = await indicatorEngine.checkSymbolTimeframe(
+                            symbol,
+                            timeframe,
+                            rules
+                        );
 
-                    // Only increment if we actually made a request (cache miss)
-                    // This is approximate - actual rate limiting happens in checkSymbolTimeframe
-                    requestCount++;
+                        // Only increment if we actually made a request (cache miss)
+                        // This is approximate - actual rate limiting happens in checkSymbolTimeframe
+                        requestCount++;
 
-                    if (triggers.length > 0) {
-                        Logger.info(`Found ${triggers.length} triggers for ${symbol} ${timeframe}`, env);
+                        if (triggers.length > 0) {
+                            Logger.info(`Found ${triggers.length} triggers for ${symbol} ${timeframe}`, env);
 
-                        // Send notifications
-                        for (const trigger of triggers) {
-                            await fcmService.sendAlert(trigger);
+                            // Send notifications
+                            for (const trigger of triggers) {
+                                await fcmService.sendAlert(trigger);
+                            }
+                        }
+                    } catch (error) {
+                        Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
+                        // If we get rate limited (429), add extra delay
+                        if (error instanceof Error && error.message.includes('429')) {
+                            Logger.warn('Rate limit detected, adding extra delay', env);
+                            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
                         }
                     }
-                } catch (error) {
-                    Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
-                    // If we get rate limited (429), add extra delay
-                    if (error instanceof Error && error.message.includes('429')) {
-                        Logger.warn('Rate limit detected, adding extra delay', env);
-                        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-                    }
                 }
-            }
 
-            Logger.info('RSI check completed', env);
+                // Watchlist Alerts are now handled as regular AlertRule with description "WATCHLIST:"
+                // They are automatically processed by IndicatorEngine above, so no separate logic needed
+
+                Logger.info('RSI check completed', env);
+            }
         } catch (error) {
             Logger.error('Error in scheduled RSI check:', error, env);
         }
     }
 };
 
-// User watchlist endpoints
-app.post('/user/watchlist', async (c) => {
-    try {
-        const { userId, symbols } = await c.req.json();
+    // User watchlist endpoints
+    app.post('/user/watchlist', async (c) => {
+        try {
+            const { userId, symbols } = await c.req.json();
 
-        if (!userId || !symbols) {
-            return c.json({ error: 'Missing userId or symbols' }, 400);
-        }
-
-        // Validate symbols array
-        if (!Array.isArray(symbols)) {
-            return c.json({ error: 'Symbols must be an array' }, 400);
-        }
-
-        // Limit watchlist size (max 50 symbols to prevent DoS)
-        if (symbols.length > 50) {
-            return c.json({ error: 'Watchlist limit exceeded: maximum 50 symbols per user' }, 400);
-        }
-
-        // Validate each symbol
-        const validSymbols: string[] = [];
-        for (const symbol of symbols) {
-            if (typeof symbol !== 'string') {
-                continue; // Skip invalid entries
+            if (!userId || !symbols) {
+                return c.json({ error: 'Missing userId or symbols' }, 400);
             }
-            const symbolUpper = symbol.trim().toUpperCase();
-            // Validate symbol (max 20 chars, alphanumeric and common symbols only)
-            if (symbolUpper.length > 0 && symbolUpper.length <= 20 && /^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
-                // Deduplicate (UNIQUE constraint will also prevent duplicates)
-                if (!validSymbols.includes(symbolUpper)) {
-                    validSymbols.push(symbolUpper);
+
+            // Validate symbols array
+            if (!Array.isArray(symbols)) {
+                return c.json({ error: 'Symbols must be an array' }, 400);
+            }
+
+            // Limit watchlist size (max 50 symbols to prevent DoS)
+            if (symbols.length > 50) {
+                return c.json({ error: 'Watchlist limit exceeded: maximum 50 symbols per user' }, 400);
+            }
+
+            // Validate each symbol
+            const validSymbols: string[] = [];
+            for (const symbol of symbols) {
+                if (typeof symbol !== 'string') {
+                    continue; // Skip invalid entries
+                }
+                const symbolUpper = symbol.trim().toUpperCase();
+                // Validate symbol (max 20 chars, alphanumeric and common symbols only)
+                if (symbolUpper.length > 0 && symbolUpper.length <= 20 && /^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
+                    // Deduplicate (UNIQUE constraint will also prevent duplicates)
+                    if (!validSymbols.includes(symbolUpper)) {
+                        validSymbols.push(symbolUpper);
+                    }
                 }
             }
-        }
 
-        if (validSymbols.length === 0 && symbols.length > 0) {
-            return c.json({ error: 'No valid symbols provided' }, 400);
-        }
+            if (validSymbols.length === 0 && symbols.length > 0) {
+                return c.json({ error: 'No valid symbols provided' }, 400);
+            }
 
-        const db = c.env?.DB as D1Database;
-        await ensureTables(db);
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
 
-        // Delete existing watchlist for user
-        await db.prepare(`
+            // Delete existing watchlist for user
+            await db.prepare(`
       DELETE FROM user_watchlist WHERE user_id = ?
     `).bind(userId).run();
 
-        // Insert new watchlist (only valid symbols)
-        for (const symbol of validSymbols) {
-            try {
-                await db.prepare(`
+            // Insert new watchlist (only valid symbols)
+            for (const symbol of validSymbols) {
+                try {
+                    await db.prepare(`
           INSERT INTO user_watchlist (user_id, symbol, created_at)
           VALUES (?, ?, ?)
         `).bind(userId, symbol, Date.now()).run();
-            } catch (insertError: any) {
-                // Ignore duplicate errors (UNIQUE constraint)
-                if (!insertError?.message?.includes('UNIQUE')) {
-                    Logger.error(`Error inserting symbol ${symbol}:`, insertError, c.env);
+                } catch (insertError: any) {
+                    // Ignore duplicate errors (UNIQUE constraint)
+                    if (!insertError?.message?.includes('UNIQUE')) {
+                        Logger.error(`Error inserting symbol ${symbol}:`, insertError, c.env);
+                    }
                 }
             }
+
+            return c.json({ success: true, count: validSymbols.length });
+        } catch (error) {
+            Logger.error('Error syncing watchlist:', error, c.env);
+            return c.json({ error: 'Failed to sync watchlist' }, 500);
         }
+    });
 
-        return c.json({ success: true, count: validSymbols.length });
-    } catch (error) {
-        Logger.error('Error syncing watchlist:', error, c.env);
-        return c.json({ error: 'Failed to sync watchlist' }, 500);
-    }
-});
+    app.get('/user/watchlist/:userId', async (c) => {
+        try {
+            const userId = c.req.param('userId');
 
-app.get('/user/watchlist/:userId', async (c) => {
-    try {
-        const userId = c.req.param('userId');
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
 
-        const db = c.env?.DB as D1Database;
-        await ensureTables(db);
-
-        const result = await db.prepare(`
+            const result = await db.prepare(`
       SELECT symbol FROM user_watchlist WHERE user_id = ? ORDER BY created_at
     `).bind(userId).all();
 
-        return c.json({ symbols: result.results.map((r: any) => r.symbol) });
-    } catch (error) {
-        Logger.error('Error fetching watchlist:', error, c.env);
-        return c.json({ error: 'Failed to fetch watchlist' }, 500);
-    }
-});
-
-// User preferences endpoints
-app.post('/user/preferences', async (c) => {
-    try {
-        const { userId, selected_symbol, selected_timeframe, rsi_period, lower_level, upper_level } = await c.req.json();
-
-        if (!userId) {
-            return c.json({ error: 'Missing userId' }, 400);
+            return c.json({ symbols: result.results.map((r: any) => r.symbol) });
+        } catch (error) {
+            Logger.error('Error fetching watchlist:', error, c.env);
+            return c.json({ error: 'Failed to fetch watchlist' }, 500);
         }
+    });
 
-        // Validate symbol if provided
-        let validatedSymbol: string | null = null;
-        if (selected_symbol !== undefined && selected_symbol !== null) {
-            if (typeof selected_symbol !== 'string' || selected_symbol.length > 20) {
-                return c.json({ error: 'Invalid symbol: must be string of max 20 characters' }, 400);
+    // User preferences endpoints
+    app.post('/user/preferences', async (c) => {
+        try {
+            const { userId, selected_symbol, selected_timeframe, rsi_period, lower_level, upper_level } = await c.req.json();
+
+            if (!userId) {
+                return c.json({ error: 'Missing userId' }, 400);
             }
-            const symbolUpper = selected_symbol.trim().toUpperCase();
-            if (!/^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
-                return c.json({ error: 'Invalid symbol: contains invalid characters' }, 400);
+
+            // Validate symbol if provided
+            let validatedSymbol: string | null = null;
+            if (selected_symbol !== undefined && selected_symbol !== null) {
+                if (typeof selected_symbol !== 'string' || selected_symbol.length > 20) {
+                    return c.json({ error: 'Invalid symbol: must be string of max 20 characters' }, 400);
+                }
+                const symbolUpper = selected_symbol.trim().toUpperCase();
+                if (!/^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
+                    return c.json({ error: 'Invalid symbol: contains invalid characters' }, 400);
+                }
+                validatedSymbol = symbolUpper;
             }
-            validatedSymbol = symbolUpper;
-        }
 
-        // Validate timeframe if provided
-        if (selected_timeframe !== undefined && selected_timeframe !== null) {
-            const validTimeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
-            if (!validTimeframes.includes(selected_timeframe)) {
-                return c.json({ error: `Invalid timeframe: must be one of ${validTimeframes.join(', ')}` }, 400);
+            // Validate timeframe if provided
+            if (selected_timeframe !== undefined && selected_timeframe !== null) {
+                const validTimeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
+                if (!validTimeframes.includes(selected_timeframe)) {
+                    return c.json({ error: `Invalid timeframe: must be one of ${validTimeframes.join(', ')}` }, 400);
+                }
             }
-        }
 
-        // Validate RSI period if provided
-        if (rsi_period !== undefined && rsi_period !== null) {
-            if (!Number.isInteger(rsi_period) || rsi_period < 1 || rsi_period > 100) {
-                return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+            // Validate RSI period if provided
+            if (rsi_period !== undefined && rsi_period !== null) {
+                if (!Number.isInteger(rsi_period) || rsi_period < 1 || rsi_period > 100) {
+                    return c.json({ error: 'Invalid RSI period: must be between 1 and 100' }, 400);
+                }
             }
-        }
 
-        // Validate levels if provided
-        if (lower_level !== undefined && lower_level !== null) {
-            if (typeof lower_level !== 'number' || lower_level < 0 || lower_level > 100 || !isFinite(lower_level)) {
-                return c.json({ error: 'Invalid lower_level: must be number between 0 and 100' }, 400);
+            // Validate levels if provided
+            if (lower_level !== undefined && lower_level !== null) {
+                if (typeof lower_level !== 'number' || lower_level < 0 || lower_level > 100 || !isFinite(lower_level)) {
+                    return c.json({ error: 'Invalid lower_level: must be number between 0 and 100' }, 400);
+                }
             }
-        }
 
-        if (upper_level !== undefined && upper_level !== null) {
-            if (typeof upper_level !== 'number' || upper_level < 0 || upper_level > 100 || !isFinite(upper_level)) {
-                return c.json({ error: 'Invalid upper_level: must be number between 0 and 100' }, 400);
+            if (upper_level !== undefined && upper_level !== null) {
+                if (typeof upper_level !== 'number' || upper_level < 0 || upper_level > 100 || !isFinite(upper_level)) {
+                    return c.json({ error: 'Invalid upper_level: must be number between 0 and 100' }, 400);
+                }
             }
-        }
 
-        const db = c.env?.DB as D1Database;
-        await ensureTables(db);
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
 
-        // Check if preferences exist
-        const existing = await db.prepare(`
+            // Check if preferences exist
+            const existing = await db.prepare(`
       SELECT user_id FROM user_preferences WHERE user_id = ?
     `).bind(userId).first();
 
-        if (existing) {
-            // Update
-            await db.prepare(`
+            if (existing) {
+                // Update
+                await db.prepare(`
         UPDATE user_preferences SET
           selected_symbol = COALESCE(?, selected_symbol),
           selected_timeframe = COALESCE(?, selected_timeframe),
@@ -828,64 +999,64 @@ app.post('/user/preferences', async (c) => {
           updated_at = ?
         WHERE user_id = ?
       `            ).bind(
-                validatedSymbol || null,
-                selected_timeframe || null,
-                rsi_period || null,
-                lower_level || null,
-                upper_level || null,
-                Date.now(),
-                userId
-            ).run();
-        } else {
-            // Insert
-            await db.prepare(`
+                    validatedSymbol || null,
+                    selected_timeframe || null,
+                    rsi_period || null,
+                    lower_level || null,
+                    upper_level || null,
+                    Date.now(),
+                    userId
+                ).run();
+            } else {
+                // Insert
+                await db.prepare(`
         INSERT INTO user_preferences (
           user_id, selected_symbol, selected_timeframe, rsi_period, lower_level, upper_level, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `).bind(
-                userId,
-                validatedSymbol || null,
-                selected_timeframe || null,
-                rsi_period || null,
-                lower_level || null,
-                upper_level || null,
-                Date.now()
-            ).run();
+                    userId,
+                    validatedSymbol || null,
+                    selected_timeframe || null,
+                    rsi_period || null,
+                    lower_level || null,
+                    upper_level || null,
+                    Date.now()
+                ).run();
+            }
+
+            return c.json({ success: true });
+        } catch (error) {
+            Logger.error('Error syncing preferences:', error, c.env);
+            return c.json({ error: 'Failed to sync preferences' }, 500);
         }
+    });
 
-        return c.json({ success: true });
-    } catch (error) {
-        Logger.error('Error syncing preferences:', error, c.env);
-        return c.json({ error: 'Failed to sync preferences' }, 500);
-    }
-});
+    app.get('/user/preferences/:userId', async (c) => {
+        try {
+            const userId = c.req.param('userId');
 
-app.get('/user/preferences/:userId', async (c) => {
-    try {
-        const userId = c.req.param('userId');
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
 
-        const db = c.env?.DB as D1Database;
-        await ensureTables(db);
-
-        const result = await db.prepare(`
+            const result = await db.prepare(`
       SELECT * FROM user_preferences WHERE user_id = ?
     `).bind(userId).first();
 
-        if (!result) {
-            return c.json({});
+            if (!result) {
+                return c.json({});
+            }
+
+            return c.json({
+                selected_symbol: result.selected_symbol,
+                selected_timeframe: result.selected_timeframe,
+                rsi_period: result.rsi_period,
+                lower_level: result.lower_level,
+                upper_level: result.upper_level,
+            });
+        } catch (error) {
+            Logger.error('Error fetching preferences:', error, c.env);
+            return c.json({ error: 'Failed to fetch preferences' }, 500);
         }
+    });
 
-        return c.json({
-            selected_symbol: result.selected_symbol,
-            selected_timeframe: result.selected_timeframe,
-            rsi_period: result.rsi_period,
-            lower_level: result.lower_level,
-            upper_level: result.upper_level,
-        });
-    } catch (error) {
-        Logger.error('Error fetching preferences:', error, c.env);
-        return c.json({ error: 'Failed to fetch preferences' }, 500);
-    }
-});
-
-export default worker;
+    export default worker;

@@ -5,7 +5,10 @@ export interface AlertRule {
     user_id: string;
     symbol: string;
     timeframe: string;
-    rsi_period: number;
+    indicator?: string;  // Type of indicator: 'rsi', 'stoch', etc.
+    period?: number;     // Universal period (replaces rsi_period)
+    indicator_params?: string;  // JSON with additional parameters
+    rsi_period?: number;  // Deprecated: kept for backward compatibility
     levels: number[];
     mode: string;
     cooldown_sec: number;
@@ -15,10 +18,13 @@ export interface AlertRule {
 
 export interface AlertState {
     rule_id: number;
-    last_rsi?: number;
+    last_indicator_value?: number;  // Universal: last calculated indicator value
+    indicator_state?: string;       // JSON: state for incremental calculation
     last_bar_ts?: number;
     last_fire_ts?: number;
     last_side?: string;
+    // Deprecated fields (kept for backward compatibility)
+    last_rsi?: number;
     last_au?: number;
     last_ad?: number;
 }
@@ -27,18 +33,20 @@ export interface AlertTrigger {
     ruleId: number;
     userId: string;
     symbol: string;
-    rsi: number;
+    indicatorValue: number;  // Universal: indicator value that triggered
+    indicator?: string;      // Optional: indicator type
     level: number;
     type: 'cross_up' | 'cross_down' | 'enter_zone' | 'exit_zone';
     timestamp: number;
     message: string;
+    // Deprecated (kept for backward compatibility)
+    rsi?: number;
 }
 
-export class RsiEngine {
+export class IndicatorEngine {
     constructor(
         private db: D1Database,
-        private yahooService: YahooService,
-        private kv?: KVNamespace
+        private yahooService: YahooService
     ) { }
 
     /**
@@ -53,6 +61,9 @@ export class RsiEngine {
 
         return result.results.map((row: any) => ({
             ...row,
+            indicator: row.indicator || 'rsi',  // Default to 'rsi' for backward compatibility
+            period: row.period || row.rsi_period || 14,  // Use period, fallback to rsi_period
+            indicator_params: row.indicator_params ? JSON.parse(row.indicator_params) : undefined,
             levels: JSON.parse(row.levels || '[]'),
         })) as AlertRule[];
     }
@@ -85,15 +96,16 @@ export class RsiEngine {
         const triggers: AlertTrigger[] = [];
 
         try {
-            // Get candles - try cache first, then Yahoo
+            // Get candles - try D1 cache first (much cheaper than KV), then Yahoo
             let candles: any[] = [];
+            let lastCandleTimestamp: number | null = null;
 
-            if (this.kv) {
-                const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.kv);
-                if (cached && cached.length > 0) {
-                    candles = cached;
-                    console.log(`RSI Engine: Using cached candles for ${symbol} ${timeframe} (${candles.length} candles)`);
-                }
+            // Use D1 database for candles cache (much cheaper than KV)
+            const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.db);
+            if (cached && cached.length > 0) {
+                candles = cached;
+                lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+                console.log(`RSI Engine: Using cached candles from D1 for ${symbol} ${timeframe} (${candles.length} candles)`);
             }
 
             // If no cache or cache miss, fetch from Yahoo
@@ -103,10 +115,11 @@ export class RsiEngine {
                         limit: 1000
                     });
 
-                    // Save to cache for future use
-                    if (this.kv && candles.length > 0) {
-                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.kv);
-                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles for ${symbol} ${timeframe}`);
+                    // Save to D1 cache for future use (much cheaper than KV)
+                    if (candles.length > 0) {
+                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.db);
+                        lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles in D1 for ${symbol} ${timeframe}`);
                     }
                 } catch (error: any) {
                     // If rate limited (429), rethrow to trigger backoff in caller
@@ -120,6 +133,23 @@ export class RsiEngine {
             if (candles.length < 2) {
                 console.log(`Not enough candles for ${symbol} ${timeframe}`);
                 return triggers;
+            }
+
+            // Smart check: only process alerts if last candle timestamp has changed
+            // This avoids unnecessary calculations when data hasn't updated
+            const currentLastTimestamp = candles[candles.length - 1]?.timestamp;
+            if (currentLastTimestamp && lastCandleTimestamp !== null && currentLastTimestamp === lastCandleTimestamp) {
+                // Check if we already processed this candle by checking alert states
+                // If all rules already processed this candle, skip processing
+                const stateChecks = await Promise.all(rules.map(async (rule) => {
+                    const state = await this.getAlertState(rule.id);
+                    return state.last_bar_ts === currentLastTimestamp;
+                }));
+
+                if (stateChecks.every(r => r)) {
+                    console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
+                    return triggers;
+                }
             }
 
             // Check each rule
@@ -140,7 +170,7 @@ export class RsiEngine {
     }
 
     /**
-     * Check specific rule
+     * Check specific rule (universal for all indicators)
      */
     async checkRule(rule: AlertRule, candles: any[]): Promise<AlertTrigger[]> {
         const triggers: AlertTrigger[] = [];
@@ -149,34 +179,45 @@ export class RsiEngine {
             // Get rule state
             const state = await this.getAlertState(rule.id);
 
-            // Calculate RSI
-            const rsiData = this.calculateRsi(candles, rule.rsi_period);
+            // Determine indicator type and period
+            const indicator = rule.indicator || 'rsi';
+            const period = rule.period || rule.rsi_period || 14;
 
-            if (rsiData.length < 2) {
-                console.log(`Rule ${rule.id}: not enough RSI data (size=${rsiData.length})`);
+            // Calculate indicator value(s)
+            const indicatorData = this.calculateIndicator(candles, indicator, period, rule.indicator_params);
+
+            if (indicatorData.length < 2) {
+                console.log(`Rule ${rule.id}: not enough indicator data (size=${indicatorData.length})`);
                 return triggers;
             }
 
-            const currentRsi = rsiData[rsiData.length - 1];
-            const previousRsi = state.last_rsi ?? rsiData[rsiData.length - 2];
-            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) current RSI=${currentRsi.toFixed(2)}, previous=${previousRsi.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}`);
+            const currentValue = indicatorData[indicatorData.length - 1].value;
+            const previousValue = state.last_indicator_value ?? state.last_rsi ?? indicatorData[indicatorData.length - 2].value;
+            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) ${indicator.toUpperCase()}=${currentValue.toFixed(2)}, previous=${previousValue.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}`);
 
             // Check crossings
             const ruleTriggers = this.checkCrossings(
                 rule,
-                currentRsi,
-                previousRsi,
-                Date.now()
+                currentValue,
+                previousValue,
+                Date.now(),
+                indicator
             );
             if (ruleTriggers.length === 0) {
                 console.log(`Rule ${rule.id}: no trigger this run`);
             }
 
-            // Always update RSI state to prevent duplicate triggers
+            // Always update indicator state to prevent duplicate triggers
             const stateUpdates: Partial<AlertState> = {
-                last_rsi: currentRsi,
+                last_indicator_value: currentValue,
+                last_rsi: currentValue,  // Keep for backward compatibility
                 last_bar_ts: candles[candles.length - 1].timestamp,
             };
+
+            // Save indicator state if available (for incremental calculations)
+            if (indicatorData.length > 0 && indicatorData[0].state) {
+                stateUpdates.indicator_state = JSON.stringify(indicatorData[0].state);
+            }
 
             if (ruleTriggers.length > 0) {
                 // Check cooldown
@@ -186,7 +227,7 @@ export class RsiEngine {
                 if (canFire) {
                     // Save state with fire timestamp
                     stateUpdates.last_fire_ts = Date.now();
-                    stateUpdates.last_side = this.getRsiZone(currentRsi, rule.levels);
+                    stateUpdates.last_side = this.getIndicatorZone(currentValue, rule.levels);
 
                     // Save events
                     for (const trigger of ruleTriggers) {
@@ -195,7 +236,7 @@ export class RsiEngine {
 
                     triggers.push(...ruleTriggers);
                 }
-                // Even if cooldown blocks firing, update RSI state to prevent duplicate detection
+                // Even if cooldown blocks firing, update indicator state to prevent duplicate detection
             }
 
             // Update state regardless of whether triggers fired
@@ -207,6 +248,28 @@ export class RsiEngine {
         console.log(`Rule ${rule.id}: total triggers collected ${triggers.length}`);
 
         return triggers;
+    }
+
+    /**
+     * Calculate indicator value(s) - universal method for all indicators
+     * Returns array of objects with {value: number, state?: any}
+     */
+    calculateIndicator(candles: any[], indicator: string, period: number, indicatorParams?: any): Array<{ value: number, state?: any }> {
+        switch (indicator.toLowerCase()) {
+            case 'rsi':
+                return this.calculateRsi(candles, period).map(v => ({ value: v }));
+            case 'stoch':
+                return this.calculateStochastic(candles, period, indicatorParams);
+            case 'macd':
+                return this.calculateMacd(candles, period, indicatorParams);
+            case 'bollinger':
+                return this.calculateBollinger(candles, period, indicatorParams);
+            case 'williams':
+                return this.calculateWilliams(candles, period).map(v => ({ value: v }));
+            default:
+                // Default to RSI for unknown indicators
+                return this.calculateRsi(candles, period).map(v => ({ value: v }));
+        }
     }
 
     /**
@@ -249,50 +312,141 @@ export class RsiEngine {
     }
 
     /**
-     * Check level crossings
+     * Calculate Stochastic Oscillator (%K and %D)
+     */
+    calculateStochastic(candles: any[], kPeriod: number, params?: any): Array<{ value: number, state?: any }> {
+        const dPeriod = params?.dPeriod || 3;
+        if (candles.length < kPeriod + dPeriod - 1) {
+            return [];
+        }
+
+        const highs = candles.map(c => c.high);
+        const lows = candles.map(c => c.low);
+        const closes = candles.map(c => c.close);
+        const kValues: number[] = [];
+
+        // Calculate %K values
+        for (let i = kPeriod - 1; i < candles.length; i++) {
+            const periodHighs = highs.slice(i - kPeriod + 1, i + 1);
+            const periodLows = lows.slice(i - kPeriod + 1, i + 1);
+
+            const highestHigh = Math.max(...periodHighs);
+            const lowestLow = Math.min(...periodLows);
+            const close = closes[i];
+
+            if (highestHigh === lowestLow) {
+                kValues.push(50.0);
+            } else {
+                const k = ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0;
+                kValues.push(Math.max(0, Math.min(100, k)));
+            }
+        }
+
+        if (kValues.length === 0) {
+            return [];
+        }
+
+        // Calculate %D (smoothed %K) and return %K values
+        const result: Array<{ value: number, state?: any }> = [];
+        for (let i = 0; i < kValues.length; i++) {
+            const k = kValues[i];
+            let d: number | undefined;
+
+            if (i >= dPeriod - 1) {
+                const dPeriodValues = kValues.slice(i - dPeriod + 1, i + 1);
+                d = dPeriodValues.reduce((a, b) => a + b, 0) / dPeriod;
+            } else {
+                const availableValues = kValues.slice(0, i + 1);
+                d = availableValues.reduce((a, b) => a + b, 0) / availableValues.length;
+            }
+
+            result.push({
+                value: k,  // Use %K as main value
+                state: { k, d }  // Store both %K and %D in state
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculate MACD (placeholder - to be implemented)
+     */
+    calculateMacd(_candles: any[], _fastPeriod: number, _params?: any): Array<{ value: number, state?: any }> {
+        // TODO: Implement MACD calculation
+        // For now, return empty array
+        return [];
+    }
+
+    /**
+     * Calculate Bollinger Bands (placeholder - to be implemented)
+     */
+    calculateBollinger(_candles: any[], _period: number, _params?: any): Array<{ value: number, state?: any }> {
+        // TODO: Implement Bollinger Bands calculation
+        // For now, return empty array
+        return [];
+    }
+
+    /**
+     * Calculate Williams %R (placeholder - to be implemented)
+     */
+    calculateWilliams(_candles: any[], _period: number): number[] {
+        // TODO: Implement Williams %R calculation
+        // For now, return empty array
+        return [];
+    }
+
+    /**
+     * Check level crossings (universal for all indicators)
      */
     checkCrossings(
         rule: AlertRule,
-        currentRsi: number,
-        previousRsi: number,
-        timestamp: number
+        currentValue: number,
+        previousValue: number,
+        timestamp: number,
+        indicator: string = 'rsi'
     ): AlertTrigger[] {
         const triggers: AlertTrigger[] = [];
+        const indicatorName = indicator.toUpperCase();
 
         if (rule.mode === 'cross') {
             for (const level of rule.levels) {
                 // Upward crossing
-                if (this.checkCrossUp(currentRsi, previousRsi, level)) {
+                if (this.checkCrossUp(currentValue, previousValue, level)) {
                     triggers.push({
                         ruleId: rule.id,
                         userId: rule.user_id,
                         symbol: rule.symbol,
-                        rsi: currentRsi,
+                        indicatorValue: currentValue,
+                        indicator: indicator,
+                        rsi: currentValue,  // Keep for backward compatibility
                         level: level,
                         type: 'cross_up',
                         timestamp: timestamp,
-                        message: `RSI crossed level ${level} upward (${currentRsi.toFixed(1)})`
+                        message: `${indicatorName} crossed level ${level} upward (${currentValue.toFixed(1)})`
                     });
                 }
 
                 // Downward crossing
-                if (this.checkCrossDown(currentRsi, previousRsi, level)) {
+                if (this.checkCrossDown(currentValue, previousValue, level)) {
                     triggers.push({
                         ruleId: rule.id,
                         userId: rule.user_id,
                         symbol: rule.symbol,
-                        rsi: currentRsi,
+                        indicatorValue: currentValue,
+                        indicator: indicator,
+                        rsi: currentValue,  // Keep for backward compatibility
                         level: level,
                         type: 'cross_down',
                         timestamp: timestamp,
-                        message: `RSI crossed level ${level} downward (${currentRsi.toFixed(1)})`
+                        message: `${indicatorName} crossed level ${level} downward (${currentValue.toFixed(1)})`
                     });
                 }
             }
         } else if (rule.mode === 'enter' && rule.levels.length >= 2) {
             if (this.checkEnterZone(
-                currentRsi,
-                previousRsi,
+                currentValue,
+                previousValue,
                 rule.levels[0],
                 rule.levels[1]
             )) {
@@ -300,17 +454,19 @@ export class RsiEngine {
                     ruleId: rule.id,
                     userId: rule.user_id,
                     symbol: rule.symbol,
-                    rsi: currentRsi,
+                    indicatorValue: currentValue,
+                    indicator: indicator,
+                    rsi: currentValue,  // Keep for backward compatibility
                     level: rule.levels[1],
                     type: 'enter_zone',
                     timestamp: timestamp,
-                    message: `RSI entered zone ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
+                    message: `${indicatorName} entered zone ${rule.levels[0]}-${rule.levels[1]} (${currentValue.toFixed(1)})`
                 });
             }
         } else if (rule.mode === 'exit' && rule.levels.length >= 2) {
             if (this.checkExitZone(
-                currentRsi,
-                previousRsi,
+                currentValue,
+                previousValue,
                 rule.levels[0],
                 rule.levels[1]
             )) {
@@ -318,11 +474,13 @@ export class RsiEngine {
                     ruleId: rule.id,
                     userId: rule.user_id,
                     symbol: rule.symbol,
-                    rsi: currentRsi,
+                    indicatorValue: currentValue,
+                    indicator: indicator,
+                    rsi: currentValue,  // Keep for backward compatibility
                     level: rule.levels[1],
                     type: 'exit_zone',
                     timestamp: timestamp,
-                    message: `RSI exited zone ${rule.levels[0]}-${rule.levels[1]} (${currentRsi.toFixed(1)})`
+                    message: `${indicatorName} exited zone ${rule.levels[0]}-${rule.levels[1]} (${currentValue.toFixed(1)})`
                 });
             }
         }
@@ -385,17 +543,24 @@ export class RsiEngine {
     }
 
     /**
-     * Determine RSI zone
+     * Determine indicator zone (universal for all indicators)
      */
-    getRsiZone(rsi: number, levels: number[]): string {
+    getIndicatorZone(value: number, levels: number[]): string {
         if (levels.length === 0) return 'between';
 
         const lowerLevel = levels[0];
         const upperLevel = levels.length > 1 ? levels[1] : 100;
 
-        if (rsi < lowerLevel) return 'below';
-        if (rsi > upperLevel) return 'above';
+        if (value < lowerLevel) return 'below';
+        if (value > upperLevel) return 'above';
         return 'between';
+    }
+
+    /**
+     * Deprecated: Use getIndicatorZone instead
+     */
+    getRsiZone(rsi: number, levels: number[]): string {
+        return this.getIndicatorZone(rsi, levels);
     }
 
     /**
@@ -406,13 +571,21 @@ export class RsiEngine {
           SELECT * FROM alert_state WHERE rule_id = ?
         `).bind(ruleId).first();
 
-        return (result as unknown as AlertState) || {
+        const state = (result as unknown as AlertState) || {
             rule_id: ruleId,
+            last_indicator_value: undefined,
             last_rsi: undefined,
             last_bar_ts: undefined,
             last_fire_ts: undefined,
             last_side: undefined,
         };
+
+        // Migrate last_rsi to last_indicator_value if needed
+        if (state.last_rsi !== undefined && state.last_indicator_value === undefined) {
+            state.last_indicator_value = state.last_rsi;
+        }
+
+        return state;
     }
 
     /**
@@ -435,16 +608,18 @@ export class RsiEngine {
     }
 
     /**
-     * Save alert event
+     * Save alert event (universal for all indicators)
      */
     async saveAlertEvent(ruleId: number, trigger: AlertTrigger): Promise<void> {
         await this.db.prepare(`
-      INSERT INTO alert_event (rule_id, ts, rsi, level, side, bar_ts, symbol)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO alert_event (rule_id, ts, indicator_value, indicator, rsi, level, side, bar_ts, symbol)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
             ruleId,
             trigger.timestamp,
-            trigger.rsi,
+            trigger.indicatorValue,
+            trigger.indicator || 'rsi',
+            trigger.rsi || trigger.indicatorValue,  // Keep rsi for backward compatibility
             trigger.level,
             trigger.type,
             trigger.timestamp,

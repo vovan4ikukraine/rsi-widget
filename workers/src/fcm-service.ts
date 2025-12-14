@@ -42,7 +42,7 @@ export class FcmService {
         private db?: D1Database
     ) {
         try {
-            this.serviceAccount = JSON.parse(serviceAccountJson);
+            this.serviceAccount = JSON.parse(this.serviceAccountJson);
         } catch (error) {
             console.error('Failed to parse service account JSON:', error);
         }
@@ -155,7 +155,7 @@ export class FcmService {
             throw new Error(`Failed to get access token: ${response.status} - ${errorText}`);
         }
 
-        const data = await response.json();
+        const data = await response.json() as { access_token: string; expires_in?: number };
         return {
             access_token: data.access_token,
             expires_in: data.expires_in || 3600
@@ -169,12 +169,14 @@ export class FcmService {
         // Check cache in KV first
         if (this.kv) {
             try {
-                const cached = await this.kv.get('fcm_access_token', { type: 'json' });
+                const cached = await this.kv.get('fcm_access_token', { type: 'json' }) as { token: string; expiry: number } | null;
                 if (cached && cached.expiry > Date.now() + 60000) { // Refresh 1 min before expiry
                     this.accessToken = cached.token;
                     this.tokenExpiry = cached.expiry;
                     console.log('Using cached FCM access token');
-                    return this.accessToken;
+                    if (this.accessToken) {
+                        return this.accessToken;
+                    }
                 }
             } catch (error) {
                 console.warn('Failed to read from KV cache:', error);
@@ -253,7 +255,7 @@ export class FcmService {
             message: {
                 token: token,
                 notification: {
-                    title: `RSI Alert: ${trigger.symbol}`,
+                    title: `Watchlist: ${trigger.symbol}`,
                     body: trigger.message,
                 },
                 data: {

@@ -198,10 +198,11 @@ class RSIWidgetProvider : AppWidgetProvider() {
             // Use widget period first, fallback to rsi_period, then default to 14
             val rsiPeriod = prefs.getInt("rsi_widget_period",
                 prefs.getInt("rsi_period", 14))
+            val indicator = prefs.getString("widget_indicator", "rsi") ?: "rsi"
             val isLoading = prefs.getBoolean(PREF_IS_LOADING, false)
             
             Log.d(TAG, "Updating widget $appWidgetId")
-            Log.d(TAG, "Data JSON length: ${watchlistJson?.length ?: 0}, timeframe: $timeframe, period: $rsiPeriod")
+            Log.d(TAG, "Data JSON length: ${watchlistJson?.length ?: 0}, timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
             
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             views.setViewVisibility(
@@ -233,7 +234,8 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.widget_loading_text, View.GONE)
             } else {
                 // Has data - show list
-                views.setTextViewText(R.id.widget_title, "RSI Watchlist ($timeframe, RSI($rsiPeriod))")
+                val indicatorName = indicator.uppercase()
+                views.setTextViewText(R.id.widget_title, "Watchlist ($timeframe, $indicatorName($rsiPeriod))")
                 views.setViewVisibility(R.id.widget_empty_text, View.GONE)
                 views.setViewVisibility(R.id.widget_list, View.VISIBLE)
                 views.setViewVisibility(R.id.widget_timeframe_selector, View.VISIBLE)

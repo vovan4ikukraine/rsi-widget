@@ -32,9 +32,11 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
     
     data class WidgetItem(
         val symbol: String,
-        val rsi: Double,
+        val rsi: Double, // Keep for backward compatibility
+        val indicatorValue: Double, // New field for generic indicator value
+        val indicator: String, // Indicator type: "rsi", "stoch", etc.
         val price: Double,
-        val rsiValues: List<Double>
+        val rsiValues: List<Double> // Keep for backward compatibility
     )
     
     override fun onCreate() {
@@ -63,19 +65,21 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                 try {
                     val item = watchlistArray.getJSONObject(i)
                     val symbol = item.getString("symbol")
-                    val rsi = item.optDouble("rsi", 0.0)
+                    val indicatorValue = item.optDouble("indicatorValue", item.optDouble("rsi", 0.0))
+                    val rsi = item.optDouble("rsi", indicatorValue) // Keep for backward compatibility
+                    val indicator = item.optString("indicator", "rsi")
                     val price = item.optDouble("price", 0.0)
-                    // Parse RSI values array for chart
-                    val rsiValuesArray = item.optJSONArray("rsiValues")
+                    // Parse indicator values array for chart (can be rsiValues or indicatorValues)
+                    val indicatorValuesArray = item.optJSONArray("indicatorValues") ?: item.optJSONArray("rsiValues")
                     val rsiValues = mutableListOf<Double>()
-                    if (rsiValuesArray != null) {
-                        for (j in 0 until rsiValuesArray.length()) {
-                            rsiValues.add(rsiValuesArray.getDouble(j))
+                    if (indicatorValuesArray != null) {
+                        for (j in 0 until indicatorValuesArray.length()) {
+                            rsiValues.add(indicatorValuesArray.getDouble(j))
                         }
                     }
                     
-                    items.add(WidgetItem(symbol, rsi, price, rsiValues))
-                    Log.d(TAG, "Loaded item: $symbol, RSI: $rsi, Price: $price, RSI values: ${rsiValues.size}")
+                    items.add(WidgetItem(symbol, rsi, indicatorValue, indicator, price, rsiValues))
+                    Log.d(TAG, "Loaded item: $symbol, Indicator: $indicator, Value: $indicatorValue, Price: $price, Chart values: ${rsiValues.size}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing item $i: ${e.message}", e)
                 }
@@ -100,22 +104,29 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         
         // Set data
         views.setTextViewText(R.id.widget_symbol, item.symbol)
-        views.setTextViewText(R.id.widget_rsi, String.format("%.2f", item.rsi))
+        views.setTextViewText(R.id.widget_rsi, String.format("%.2f", item.indicatorValue))
         views.setTextViewText(R.id.widget_price, String.format("%.2f", item.price))
         
-        // Set RSI text color depending on value
-        val rsiTextColor = when {
-            item.rsi < 30 -> Color.parseColor("#66BB6A") // Green for oversold
-            item.rsi > 70 -> Color.parseColor("#EF5350") // Red for overbought
-            else -> Color.parseColor("#42A5F5") // Blue for normal state
+        // Set indicator text color depending on value and indicator type
+        val indicatorTextColor = when (item.indicator.lowercase()) {
+            "stoch" -> when {
+                item.indicatorValue < 20 -> Color.parseColor("#66BB6A") // Green for oversold
+                item.indicatorValue > 80 -> Color.parseColor("#EF5350") // Red for overbought
+                else -> Color.parseColor("#42A5F5") // Blue for normal state
+            }
+            else -> when { // Default to RSI levels
+                item.indicatorValue < 30 -> Color.parseColor("#66BB6A") // Green for oversold
+                item.indicatorValue > 70 -> Color.parseColor("#EF5350") // Red for overbought
+                else -> Color.parseColor("#42A5F5") // Blue for normal state
+            }
         }
-        views.setTextColor(R.id.widget_rsi, rsiTextColor)
+        views.setTextColor(R.id.widget_rsi, indicatorTextColor)
         
-        // Create RSI chart as Bitmap (increase size for better visibility)
+        // Create indicator chart as Bitmap (increase size for better visibility)
         if (item.rsiValues.isNotEmpty()) {
-            Log.d(TAG, "Creating chart for ${item.symbol} at position $position: ${item.rsiValues.size} values, current RSI: ${item.rsi}")
+            Log.d(TAG, "Creating chart for ${item.symbol} at position $position: ${item.rsiValues.size} values, current ${item.indicator.uppercase()}: ${item.indicatorValue}")
             Log.d(TAG, "Chart values range: min=${item.rsiValues.minOrNull()}, max=${item.rsiValues.maxOrNull()}")
-            val chartBitmap = createChartBitmap(item.rsiValues, item.rsi, 600, 80)
+            val chartBitmap = createChartBitmap(item.rsiValues, item.indicatorValue, item.indicator, 600, 80)
             views.setImageViewBitmap(R.id.widget_chart, chartBitmap)
             Log.d(TAG, "Chart bitmap created and set for ${item.symbol}")
         } else {
@@ -135,7 +146,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         return views
     }
     
-    private fun createChartBitmap(rsiValues: List<Double>, currentRsi: Double, width: Int, height: Int): Bitmap {
+    private fun createChartBitmap(rsiValues: List<Double>, currentValue: Double, indicator: String, width: Int, height: Int): Bitmap {
         // Increase resolution for better clarity (2x for Retina)
         val scale = 2f
         val scaledWidth = (width * scale).toInt()
@@ -152,26 +163,32 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             return Bitmap.createScaledBitmap(bitmap, width, height, true)
         }
         
-        // Use fixed 0-100 scale for RSI
+        // Use fixed 0-100 scale for indicators
         val padding = 8f * scale
         val chartWidth = scaledWidth - padding * 2
         val chartHeight = scaledHeight - padding * 2
         
-        // Overbought zone (above 70) - dark red with transparency
+        // Determine levels based on indicator type
+        val (upperLevel, lowerLevel) = when (indicator.lowercase()) {
+            "stoch" -> Pair(80f, 20f)
+            else -> Pair(70f, 30f) // Default to RSI levels
+        }
+        
+        // Overbought zone - dark red with transparency
         val overboughtPaint = Paint().apply {
             color = Color.parseColor("#33F44336") // Red with transparency
             style = Paint.Style.FILL
         }
-        val y70 = padding + ((100 - 70) / 100f) * chartHeight
-        canvas.drawRect(padding, padding, scaledWidth - padding, y70, overboughtPaint)
+        val yUpper = padding + ((100 - upperLevel) / 100f) * chartHeight
+        canvas.drawRect(padding, padding, scaledWidth - padding, yUpper, overboughtPaint)
         
-        // Oversold zone (below 30) - dark green with transparency
+        // Oversold zone - dark green with transparency
         val oversoldPaint = Paint().apply {
             color = Color.parseColor("#334CAF50") // Green with transparency
             style = Paint.Style.FILL
         }
-        val y30 = padding + ((100 - 30) / 100f) * chartHeight
-        canvas.drawRect(padding, y30, scaledWidth - padding, scaledHeight - padding, oversoldPaint)
+        val yLower = padding + ((100 - lowerLevel) / 100f) * chartHeight
+        canvas.drawRect(padding, yLower, scaledWidth - padding, scaledHeight - padding, oversoldPaint)
         
         // Draw level lines (thin, more visible)
         val levelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -180,11 +197,11 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             style = Paint.Style.STROKE
         }
         
-        // Line 70 (overbought)
-        canvas.drawLine(padding, y70, scaledWidth - padding, y70, levelPaint)
+        // Upper level line (overbought)
+        canvas.drawLine(padding, yUpper, scaledWidth - padding, yUpper, levelPaint)
         
-        // Line 30 (oversold)
-        canvas.drawLine(padding, y30, scaledWidth - padding, y30, levelPaint)
+        // Lower level line (oversold)
+        canvas.drawLine(padding, yLower, scaledWidth - padding, yLower, levelPaint)
         
         // Line 50 (neutral zone)
         val y50 = padding + ((100 - 50) / 100f) * chartHeight
@@ -196,11 +213,18 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         }
         canvas.drawLine(padding, y50, scaledWidth - padding, y50, midLinePaint)
         
-        // Draw chart (thin, clear line, color depends on current RSI)
-        val lineColor = when {
-            currentRsi < 30 -> Color.parseColor("#66BB6A") // Light green - oversold
-            currentRsi > 70 -> Color.parseColor("#EF5350") // Light red - overbought
-            else -> Color.parseColor("#42A5F5") // Light blue - normal
+        // Draw chart (thin, clear line, color depends on current indicator value)
+        val lineColor = when (indicator.lowercase()) {
+            "stoch" -> when {
+                currentValue < 20 -> Color.parseColor("#66BB6A") // Light green - oversold
+                currentValue > 80 -> Color.parseColor("#EF5350") // Light red - overbought
+                else -> Color.parseColor("#42A5F5") // Light blue - normal
+            }
+            else -> when { // Default to RSI levels
+                currentValue < 30 -> Color.parseColor("#66BB6A") // Light green - oversold
+                currentValue > 70 -> Color.parseColor("#EF5350") // Light red - overbought
+                else -> Color.parseColor("#42A5F5") // Light blue - normal
+            }
         }
         
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -241,16 +265,22 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             val maxIndex = rsiValues.indexOf(maxValue)
             val minIndex = rsiValues.indexOf(minValue)
             
-            // Maximum point (if above 70)
-            if (maxValue > 70) {
+            // Determine levels based on indicator type
+            val (upperLevel, lowerLevel) = when (indicator.lowercase()) {
+                "stoch" -> Pair(80f, 20f)
+                else -> Pair(70f, 30f) // Default to RSI levels
+            }
+            
+            // Maximum point (if above upper level)
+            if (maxValue > upperLevel) {
                 val maxX = padding + maxIndex * stepX
                 val maxY = padding + ((100f - maxValue.toFloat()) / 100f) * chartHeight
                 pointPaint.color = Color.parseColor("#EF5350")
                 canvas.drawCircle(maxX, maxY, 3f * scale, pointPaint)
             }
             
-            // Minimum point (if below 30)
-            if (minValue < 30) {
+            // Minimum point (if below lower level)
+            if (minValue < lowerLevel) {
                 val minX = padding + minIndex * stepX
                 val minY = padding + ((100f - minValue.toFloat()) / 100f) * chartHeight
                 pointPaint.color = Color.parseColor("#66BB6A")
@@ -260,7 +290,7 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             // Current point (last point) - slightly larger
             val lastIndex = rsiValues.size - 1
             val lastX = padding + lastIndex * stepX
-            val lastY = padding + ((100f - currentRsi.coerceIn(0.0, 100.0).toFloat()) / 100f) * chartHeight
+            val lastY = padding + ((100f - currentValue.coerceIn(0.0, 100.0).toFloat()) / 100f) * chartHeight
             pointPaint.color = lineColor
             // Draw outline for better visibility
             pointPaint.style = Paint.Style.FILL

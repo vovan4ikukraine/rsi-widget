@@ -109,7 +109,7 @@ class AlertSyncService {
           await isar.alertRules.filter().remoteIdIsNotNull().findAll();
       final existingRemoteIds = existingAlerts
           .where((a) => a.remoteId != null)
-          .map((a) => a.remoteId!)
+          .map((a) => a.remoteId as int)
           .toSet();
 
       if (rules == null || rules.isEmpty) {
@@ -195,7 +195,14 @@ class AlertSyncService {
               ..remoteId = remoteId
               ..symbol = ruleData['symbol'] as String
               ..timeframe = ruleData['timeframe'] as String
-              ..rsiPeriod = ruleData['rsi_period'] as int? ?? 14
+              ..indicator = ruleData['indicator'] as String? ?? 'rsi'
+              ..period = ruleData['period'] as int? ??
+                  ruleData['rsi_period'] as int? ??
+                  14
+              ..indicatorParams = ruleData['indicator_params'] != null
+                  ? Map<String, dynamic>.from(
+                      jsonDecode(ruleData['indicator_params'] as String))
+                  : null
               ..levels = levelsList
               ..mode = ruleData['mode'] as String? ?? 'cross'
               ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
@@ -222,7 +229,15 @@ class AlertSyncService {
             existing
               ..symbol = ruleData['symbol'] as String
               ..timeframe = ruleData['timeframe'] as String
-              ..rsiPeriod = ruleData['rsi_period'] as int? ?? 14
+              ..indicator =
+                  ruleData['indicator'] as String? ?? existing.indicator
+              ..period = ruleData['period'] as int? ??
+                  ruleData['rsi_period'] as int? ??
+                  existing.period
+              ..indicatorParams = ruleData['indicator_params'] != null
+                  ? Map<String, dynamic>.from(
+                      jsonDecode(ruleData['indicator_params'] as String))
+                  : existing.indicatorParams
               ..levels = levelsList
               ..mode = ruleData['mode'] as String? ?? 'cross'
               ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
@@ -293,7 +308,9 @@ class AlertSyncService {
       'deviceId': await FirebaseService.getDeviceId(),
       'symbol': alert.symbol,
       'timeframe': alert.timeframe,
-      'rsiPeriod': alert.rsiPeriod,
+      'indicator': alert.indicator,
+      'period': alert.period,
+      'indicatorParams': alert.indicatorParams,
       'levels': alert.levels,
       'mode': alert.mode,
       'cooldownSec': alert.cooldownSec,
@@ -341,7 +358,12 @@ class AlertSyncService {
     final payload = {
       'symbol': alert.symbol,
       'timeframe': alert.timeframe,
-      'rsi_period': alert.rsiPeriod,
+      'indicator': alert.indicator,
+      'period': alert.period,
+      'indicator_params': alert.indicatorParams != null
+          ? jsonEncode(alert.indicatorParams)
+          : null,
+      'rsi_period': alert.period, // Keep for backward compatibility
       'levels': jsonEncode(alert.levels),
       'mode': alert.mode,
       'cooldown_sec': alert.cooldownSec,

@@ -39,10 +39,10 @@ class RsiService {
   }
 
   /// Incremental RSI calculation with state
-  static RsiResult computeRsiIncremental(
+  static IndicatorResult computeRsiIncremental(
     double currentClose,
     double previousClose,
-    RsiState? previousState,
+    IndicatorState? previousState,
     int period,
     int timestamp,
   ) {
@@ -57,11 +57,13 @@ class RsiService {
       ad = d;
     } else {
       // Incremental update using Wilder's formula
-      au = (previousState.au * (period - 1) + u) / period;
-      ad = (previousState.ad * (period - 1) + d) / period;
+      final prevAu = previousState.data['au'] as double? ?? 0.0;
+      final prevAd = previousState.data['ad'] as double? ?? 0.0;
+      au = (prevAu * (period - 1) + u) / period;
+      ad = (prevAd * (period - 1) + d) / period;
     }
 
-    final state = RsiState(au, ad);
+    final state = IndicatorState({'au': au, 'ad': ad});
     double rsi;
 
     if (ad == 0) {
@@ -71,27 +73,28 @@ class RsiService {
       rsi = 100 - (100 / (1 + rs));
     }
 
-    return RsiResult(
-      rsi: rsi.clamp(0, 100),
+    return IndicatorResult(
+      value: rsi.clamp(0, 100),
       state: state,
       timestamp: timestamp,
       close: currentClose,
+      indicator: 'rsi',
     );
   }
 
-  /// Determine RSI zone
-  static RsiZone getRsiZone(double rsi, List<double> levels) {
-    if (levels.isEmpty) return RsiZone.between;
+  /// Determine indicator zone (universal)
+  static IndicatorZone getRsiZone(double value, List<double> levels) {
+    if (levels.isEmpty) return IndicatorZone.between;
 
     final lowerLevel = levels.first;
     final upperLevel = levels.length > 1 ? levels[1] : 100.0;
 
-    if (rsi < lowerLevel) {
-      return RsiZone.below;
-    } else if (rsi > upperLevel) {
-      return RsiZone.above;
+    if (value < lowerLevel) {
+      return IndicatorZone.below;
+    } else if (value > upperLevel) {
+      return IndicatorZone.above;
     } else {
-      return RsiZone.between;
+      return IndicatorZone.between;
     }
   }
 
@@ -155,7 +158,8 @@ class RsiService {
           triggers.add(AlertTrigger(
             ruleId: rule.id,
             symbol: rule.symbol,
-            rsi: currentRsi,
+            indicatorValue: currentRsi,
+            indicator: 'rsi',
             level: level,
             type: AlertType.crossUp,
             zone: zone,
@@ -168,7 +172,8 @@ class RsiService {
           triggers.add(AlertTrigger(
             ruleId: rule.id,
             symbol: rule.symbol,
-            rsi: currentRsi,
+            indicatorValue: currentRsi,
+            indicator: 'rsi',
             level: level,
             type: AlertType.crossDown,
             zone: zone,
@@ -187,7 +192,8 @@ class RsiService {
         triggers.add(AlertTrigger(
           ruleId: rule.id,
           symbol: rule.symbol,
-          rsi: currentRsi,
+          indicatorValue: currentRsi,
+          indicator: 'rsi',
           level: rule.levels[1],
           type: AlertType.enterZone,
           zone: zone,
@@ -205,7 +211,8 @@ class RsiService {
         triggers.add(AlertTrigger(
           ruleId: rule.id,
           symbol: rule.symbol,
-          rsi: currentRsi,
+          indicatorValue: currentRsi,
+          indicator: 'rsi',
           level: rule.levels[1],
           type: AlertType.exitZone,
           zone: zone,

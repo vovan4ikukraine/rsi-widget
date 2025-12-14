@@ -21,12 +21,30 @@ allprojects {
     }
 }
 
-// Add namespace for isar_flutter_libs BEFORE project evaluation
+// Fix isar_flutter_libs AndroidManifest.xml compatibility issue
 gradle.beforeProject { project ->
     if (project.name == "isar_flutter_libs") {
         project.afterEvaluate {
             if (project.hasProperty("android")) {
                 project.android.namespace = "dev.isar.flutter_libs"
+                
+                // Fix AndroidManifest.xml - remove package attribute before processing
+                project.tasks.configureEach { task ->
+                    if (task.name.contains("process") && (task.name.contains("Manifest") || task.name.contains("merge"))) {
+                        task.doFirst {
+                            def manifestFile = project.file("src/main/AndroidManifest.xml")
+                            if (manifestFile.exists()) {
+                                def manifestContent = manifestFile.text
+                                // Remove package attribute from manifest tag if present
+                                if (manifestContent.contains('package=')) {
+                                    manifestContent = manifestContent.replaceAll(/package="[^"]*"\s*/, '')
+                                    manifestFile.text = manifestContent
+                                    println "Fixed AndroidManifest.xml: removed package attribute"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

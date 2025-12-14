@@ -25,7 +25,7 @@ object WidgetDataService {
     /**
      * Loads widget data in background
      */
-           suspend fun refreshWidgetData(context: Context, requestId: Long): Boolean {
+    suspend fun refreshWidgetData(context: Context, requestId: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
@@ -75,8 +75,10 @@ object WidgetDataService {
                 // Use period from widget if set, otherwise from general settings
                 val rsiPeriod = prefs.getInt("rsi_widget_period",
                     prefs.getInt("rsi_period", 14))
+                val indicator = prefs.getString("widget_indicator", "rsi") ?: "rsi"
+                val indicatorParamsJson = prefs.getString("widget_indicator_params", null)
 
-                Log.d(TAG, "Loading data with timeframe: $timeframe, period: $rsiPeriod")
+                Log.d(TAG, "Loading data with timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
 
                 // Load data for each symbol
                 val widgetData = mutableListOf<WidgetItem>()
@@ -87,8 +89,8 @@ object WidgetDataService {
                         return@withContext false
                     }
                     try {
-                        Log.d(TAG, "Loading data for symbol: $symbol with timeframe: $timeframe, period: $rsiPeriod")
-                        val item = loadSymbolData(symbol, timeframe, rsiPeriod)
+                        Log.d(TAG, "Loading data for symbol: $symbol with timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
+                        val item = loadSymbolData(symbol, timeframe, rsiPeriod, indicator, indicatorParamsJson)
                         if (item != null) {
                             widgetData.add(item)
                             Log.d(TAG, "Successfully loaded data for $symbol: RSI=${item.rsi}, Price=${item.price}, Chart values=${item.rsiValues.size}")
@@ -115,6 +117,12 @@ object WidgetDataService {
                 editor.putString("timeframe", timeframe)
                 editor.putInt("rsi_period", rsiPeriod)
                 editor.putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
+                editor.putString("widget_indicator", indicator)
+                if (indicatorParamsJson != null) {
+                    editor.putString("widget_indicator_params", indicatorParamsJson)
+                } else {
+                    editor.remove("widget_indicator_params")
+                }
                 val saved = editor.commit() // commit() executes synchronously
 
                 if (saved) {
@@ -140,23 +148,26 @@ object WidgetDataService {
         }
     }
 
-           private fun candlesLimitForTimeframe(timeframe: String): Int {
-               return when (timeframe.lowercase()) {
-                   "4h" -> 500
-                   "1d" -> 730
-                   else -> 100
-               }
-           }
+    private fun candlesLimitForTimeframe(timeframe: String): Int {
+        return when (timeframe.lowercase()) {
+            "4h" -> 500
+            "1d" -> 730
+            else -> 100
+        }
+    }
 
-           /**
+    /**
      * Loads data for one symbol
+     * Note: Currently calculates RSI only. For other indicators (like Stochastic),
+     * the data is calculated in Flutter and passed via watchlistData.
+     * This method is used only when widget refreshes data itself.
      */
-    private suspend fun loadSymbolData(symbol: String, timeframe: String, rsiPeriod: Int): WidgetItem? {
+    private suspend fun loadSymbolData(symbol: String, timeframe: String, rsiPeriod: Int, indicator: String = "rsi", indicatorParams: String? = null): WidgetItem? {
         return withContext(Dispatchers.IO) {
             try {
                 // Load candles
-                       val limit = candlesLimitForTimeframe(timeframe)
-                       val url = "$YAHOO_ENDPOINT/yf/candles?symbol=$symbol&tf=$timeframe&limit=$limit"
+                val limit = candlesLimitForTimeframe(timeframe)
+                val url = "$YAHOO_ENDPOINT/yf/candles?symbol=$symbol&tf=$timeframe&limit=$limit"
                 Log.d(TAG, "Fetching candles from: $url")
                 val request = Request.Builder()
                     .url(url)
@@ -199,11 +210,13 @@ object WidgetDataService {
                     rsiValues
                 }
 
-                Log.d(TAG, "Calculated RSI for $symbol: current=$currentRsi, chart values=${chartValues.size}, first=${chartValues.firstOrNull()}, last=${chartValues.lastOrNull()}")
+                Log.d(TAG, "Calculated $indicator for $symbol: current=$currentRsi, chart values=${chartValues.size}, first=${chartValues.firstOrNull()}, last=${chartValues.lastOrNull()}")
 
                 return@withContext WidgetItem(
                     symbol = symbol,
                     rsi = currentRsi,
+                    indicatorValue = currentRsi,
+                    indicator = indicator,
                     price = currentPrice,
                     rsiValues = chartValues
                 )
@@ -306,13 +319,16 @@ object WidgetDataService {
         for (item in items) {
             val obj = JSONObject()
             obj.put("symbol", item.symbol)
-            obj.put("rsi", item.rsi)
+            obj.put("rsi", item.rsi) // Keep for backward compatibility
+            obj.put("indicatorValue", item.indicatorValue)
+            obj.put("indicator", item.indicator)
             obj.put("price", item.price)
             val rsiArray = JSONArray()
             for (rsiValue in item.rsiValues) {
                 rsiArray.put(rsiValue)
             }
             obj.put("rsiValues", rsiArray)
+            obj.put("indicatorValues", rsiArray) // Also add as indicatorValues for consistency
             array.put(obj)
         }
         return array.toString()
@@ -335,9 +351,11 @@ object WidgetDataService {
      */
     data class WidgetItem(
         val symbol: String,
-        val rsi: Double,
+        val rsi: Double, // Keep for backward compatibility
+        val indicatorValue: Double, // New field for generic indicator value
+        val indicator: String = "rsi", // Indicator type: "rsi", "stoch", etc.
         val price: Double,
-        val rsiValues: List<Double>
+        val rsiValues: List<Double> // Keep for backward compatibility
     )
 }
 
