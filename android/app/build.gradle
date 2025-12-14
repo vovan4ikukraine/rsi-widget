@@ -43,8 +43,14 @@ flutter {
     source = "../.."
 }
 
+configurations.all {
+    resolutionStrategy {
+        force 'com.android.tools:desugar_jdk_libs:2.1.4'
+    }
+}
+
 dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     
     // AndroidX Material for lStar and other Material Design 3 attributes support
     // Material 1.11.0+ supports Material Design 3 and lStar attribute (requires API 31+)

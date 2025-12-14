@@ -28,10 +28,10 @@
         "@cloudflare/workers-types": "^4.20251014.0",
         "@types/node": "^20.19.23",
         "typescript": "^5.9.3",
-        "wrangler": "^3.114.15"
+        "wrangler": "^4.54.0"
     },
     "dependencies": {
-        "hono": "^3.11.0",
-        "googleapis": "^144.0.0"
+        "googleapis": "^144.0.0",
+        "hono": "^4.11.0"
     }
 }

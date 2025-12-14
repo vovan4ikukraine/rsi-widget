@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final YahooProtoSource _yahooService = YahooProtoSource(
     'https://rsi-workers.vovan4ikukraine.workers.dev',
   );
@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _widgetService = WidgetService(
       isar: widget.isar,
       yahooService: _yahooService,
@@ -80,6 +81,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadSavedState();
     _loadPopularSymbols();
     unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
+    // Always refresh data on app open to ensure freshness
+    unawaited(_refreshIndicatorData());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh data when app comes to foreground to ensure fresh data
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshIndicatorData());
+    }
   }
 
   @override
@@ -129,6 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _appState?.removeListener(_onIndicatorChanged);
     _indicatorPeriodController.dispose();
     _lowerLevelController.dispose();
@@ -311,6 +324,19 @@ class _HomeScreenState extends State<HomeScreen> {
       text: value,
       selection: TextSelection.collapsed(offset: value.length),
     );
+  }
+
+  /// Refresh indicator data by clearing cache and loading fresh data
+  /// Used when app opens or comes to foreground to ensure data freshness
+  Future<void> _refreshIndicatorData() async {
+    if (!mounted) return;
+
+    // Clear cache for current symbol/timeframe to force fresh data fetch
+    final cacheKey = '${_selectedSymbol}:$_selectedTimeframe';
+    DataCache.clearCandles(cacheKey);
+
+    // Load fresh data
+    await _loadIndicatorData();
   }
 
   Future<void> _loadIndicatorData({String? symbol}) async {
@@ -612,8 +638,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context) => AlertsScreen(isar: widget.isar),
                 ),
               );
-              // Refresh alerts list after return
-              _loadAlerts();
+              // AlertsScreen will refresh itself when returning
             },
           ),
           IconButton(
@@ -1170,7 +1195,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         builder: (context) => AlertsScreen(isar: widget.isar),
                       ),
                     );
-                    // Refresh alerts list after return
+                    // AlertsScreen will refresh itself when returning via didUpdateWidget
                     _loadAlerts();
                   },
                   child: Text(loc.t('home_active_alerts_all')),

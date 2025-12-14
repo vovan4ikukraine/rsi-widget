@@ -152,6 +152,20 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+
+-- Candles cache table (replaces KV for candles cache - much cheaper)
+CREATE TABLE IF NOT EXISTS candles_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  candles_json TEXT NOT NULL,  -- JSON array of candles
+  cached_at INTEGER NOT NULL,  -- Unix timestamp in milliseconds
+  UNIQUE(symbol, timeframe)
+);
+
+CREATE INDEX IF NOT EXISTS idx_candles_cache_symbol_timeframe ON candles_cache(symbol, timeframe);
+CREATE INDEX IF NOT EXISTS idx_candles_cache_cached_at ON candles_cache(cached_at);
+
 -- Indexes for query optimization
 CREATE INDEX IF NOT EXISTS idx_device_user_id ON device(user_id);
 CREATE INDEX IF NOT EXISTS idx_device_fcm_token ON device(fcm_token);

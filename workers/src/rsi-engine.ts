@@ -46,8 +46,7 @@ export interface AlertTrigger {
 export class IndicatorEngine {
     constructor(
         private db: D1Database,
-        private yahooService: YahooService,
-        private kv?: KVNamespace
+        private yahooService: YahooService
     ) { }
 
     /**
@@ -97,15 +96,16 @@ export class IndicatorEngine {
         const triggers: AlertTrigger[] = [];
 
         try {
-            // Get candles - try cache first, then Yahoo
+            // Get candles - try D1 cache first (much cheaper than KV), then Yahoo
             let candles: any[] = [];
+            let lastCandleTimestamp: number | null = null;
 
-            if (this.kv) {
-                const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.kv);
-                if (cached && cached.length > 0) {
-                    candles = cached;
-                    console.log(`RSI Engine: Using cached candles for ${symbol} ${timeframe} (${candles.length} candles)`);
-                }
+            // Use D1 database for candles cache (much cheaper than KV)
+            const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.db);
+            if (cached && cached.length > 0) {
+                candles = cached;
+                lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+                console.log(`RSI Engine: Using cached candles from D1 for ${symbol} ${timeframe} (${candles.length} candles)`);
             }
 
             // If no cache or cache miss, fetch from Yahoo
@@ -115,10 +115,11 @@ export class IndicatorEngine {
                         limit: 1000
                     });
 
-                    // Save to cache for future use
-                    if (this.kv && candles.length > 0) {
-                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.kv);
-                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles for ${symbol} ${timeframe}`);
+                    // Save to D1 cache for future use (much cheaper than KV)
+                    if (candles.length > 0) {
+                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.db);
+                        lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles in D1 for ${symbol} ${timeframe}`);
                     }
                 } catch (error: any) {
                     // If rate limited (429), rethrow to trigger backoff in caller
@@ -132,6 +133,23 @@ export class IndicatorEngine {
             if (candles.length < 2) {
                 console.log(`Not enough candles for ${symbol} ${timeframe}`);
                 return triggers;
+            }
+
+            // Smart check: only process alerts if last candle timestamp has changed
+            // This avoids unnecessary calculations when data hasn't updated
+            const currentLastTimestamp = candles[candles.length - 1]?.timestamp;
+            if (currentLastTimestamp && lastCandleTimestamp !== null && currentLastTimestamp === lastCandleTimestamp) {
+                // Check if we already processed this candle by checking alert states
+                // If all rules already processed this candle, skip processing
+                const stateChecks = await Promise.all(rules.map(async (rule) => {
+                    const state = await this.getAlertState(rule.id);
+                    return state.last_bar_ts === currentLastTimestamp;
+                }));
+
+                if (stateChecks.every(r => r)) {
+                    console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
+                    return triggers;
+                }
             }
 
             // Check each rule

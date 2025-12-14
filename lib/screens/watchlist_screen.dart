@@ -7,11 +7,11 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
-import '../services/alert_sync_service.dart';
 import '../widgets/rsi_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
+import '../services/alert_sync_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 
@@ -1730,71 +1730,138 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final levels = [_massAlertLowerLevel, _massAlertUpperLevel];
       final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                    'Creating alerts for ${_watchlistItems.length} instrument(s)...'),
+              ],
+            ),
+            duration: const Duration(seconds: 30),
+          ),
+        );
+      }
+
       // Get existing watchlist alerts to avoid duplicates
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
-      final existingAlerts = allAlerts
+      final existingWatchlistAlerts = allAlerts
           .where((a) =>
               a.description != null &&
               a.description!.toUpperCase().contains('WATCHLIST:'))
           .toList();
-      final existingSymbols = existingAlerts.map((a) => a.symbol).toSet();
+      // Create a set of symbols that already have watchlist alerts
+      final existingWatchlistSymbols =
+          existingWatchlistAlerts.map((a) => a.symbol).toSet();
 
-      await widget.isar.writeTxn(() async {
-        for (final item in _watchlistItems) {
-          // Skip if alert already exists for this symbol
-          if (existingSymbols.contains(item.symbol)) {
-            continue;
-          }
+      // Check for existing custom alerts with same parameters to avoid duplicates
+      final existingCustomAlerts = allAlerts
+          .where((a) =>
+              a.description == null ||
+              !a.description!.toUpperCase().contains('WATCHLIST:'))
+          .toList();
 
-          // Get current indicator value to initialize alert state
-          // This prevents immediate notifications for instruments that already meet conditions
-          double? currentIndicatorValue;
-          String? lastSide;
-          try {
-            final candles = await _yahooService.fetchCandles(
-              item.symbol,
-              _massAlertTimeframe,
-              limit: _candlesLimitForTimeframe(_massAlertTimeframe),
+      // Create a set of symbols that already have custom alerts with same parameters
+      final symbolsWithMatchingCustomAlerts = <String>{};
+      for (final customAlert in existingCustomAlerts) {
+        // Check if custom alert matches Watchlist Alert parameters
+        if (customAlert.symbol.isNotEmpty &&
+            customAlert.timeframe == _massAlertTimeframe &&
+            customAlert.indicator == indicatorName &&
+            customAlert.period == _massAlertPeriod &&
+            _areLevelsEqual(customAlert.levels, levels) &&
+            _areIndicatorParamsEqual(
+                customAlert.indicatorParams, indicatorParams)) {
+          symbolsWithMatchingCustomAlerts.add(customAlert.symbol);
+        }
+      }
+
+      // Collect created alerts for syncing after transaction
+      final createdAlerts = <AlertRule>[];
+      final skippedSymbols = <String>[];
+
+      // First, get current indicator values for all symbols (outside transaction)
+      final symbolValues = <String, Map<String, dynamic>>{};
+      for (final item in _watchlistItems) {
+        // Skip if watchlist alert already exists for this symbol
+        if (existingWatchlistSymbols.contains(item.symbol)) {
+          continue;
+        }
+
+        // Skip if custom alert with same parameters already exists
+        if (symbolsWithMatchingCustomAlerts.contains(item.symbol)) {
+          skippedSymbols.add(item.symbol);
+          continue;
+        }
+
+        try {
+          final candles = await _yahooService.fetchCandles(
+            item.symbol,
+            _massAlertTimeframe,
+            limit: _candlesLimitForTimeframe(_massAlertTimeframe),
+          );
+
+          if (candles.isNotEmpty) {
+            final candlesList = candles
+                .map(
+                  (c) => {
+                    'open': c.open,
+                    'high': c.high,
+                    'low': c.low,
+                    'close': c.close,
+                    'timestamp': c.timestamp,
+                  },
+                )
+                .toList();
+
+            final indicatorResults = IndicatorService.calculateIndicatorHistory(
+              candlesList,
+              _massAlertIndicator,
+              _massAlertPeriod,
+              indicatorParams,
             );
 
-            if (candles.isNotEmpty) {
-              final candlesList = candles
-                  .map(
-                    (c) => {
-                      'open': c.open,
-                      'high': c.high,
-                      'low': c.low,
-                      'close': c.close,
-                      'timestamp': c.timestamp,
-                    },
-                  )
-                  .toList();
-
-              final indicatorResults =
-                  IndicatorService.calculateIndicatorHistory(
-                candlesList,
-                _massAlertIndicator,
-                _massAlertPeriod,
-                indicatorParams,
-              );
-
-              if (indicatorResults.isNotEmpty) {
-                currentIndicatorValue = indicatorResults.last.value;
-                // Determine initial side based on current value and levels
-                if (currentIndicatorValue < levels[0]) {
-                  lastSide = 'below';
-                } else if (currentIndicatorValue > levels[1]) {
-                  lastSide = 'above';
-                } else {
-                  lastSide = 'between';
-                }
+            if (indicatorResults.isNotEmpty) {
+              final currentIndicatorValue = indicatorResults.last.value;
+              String? lastSide;
+              // Determine initial side based on current value and levels
+              if (currentIndicatorValue < levels[0]) {
+                lastSide = 'below';
+              } else if (currentIndicatorValue > levels[1]) {
+                lastSide = 'above';
+              } else {
+                lastSide = 'between';
               }
+
+              symbolValues[item.symbol] = {
+                'value': currentIndicatorValue,
+                'side': lastSide,
+                'barTs': candles.last.timestamp,
+              };
             }
-          } catch (e) {
-            debugPrint(
-                'Error getting current indicator value for ${item.symbol}: $e');
-            // Continue without initializing state - will be initialized on first check
+          }
+        } catch (e) {
+          debugPrint(
+              'Error getting current indicator value for ${item.symbol}: $e');
+          // Continue without initializing state - will be initialized on first check
+        }
+      }
+
+      // Create alerts in transaction (without syncing)
+      await widget.isar.writeTxn(() async {
+        for (final item in _watchlistItems) {
+          // Skip if watchlist alert already exists for this symbol
+          if (existingWatchlistSymbols.contains(item.symbol)) {
+            continue;
           }
 
           final alert = AlertRule()
@@ -1813,28 +1880,44 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..createdAt = createdAt;
 
           await widget.isar.alertRules.put(alert);
+          createdAlerts.add(alert);
 
           // Initialize alert state with current indicator value to prevent immediate notifications
-          if (currentIndicatorValue != null) {
+          final symbolData = symbolValues[item.symbol];
+          if (symbolData != null) {
             final alertState = AlertState()
               ..ruleId = alert.id
-              ..lastIndicatorValue = currentIndicatorValue
-              ..lastSide = lastSide
-              ..lastBarTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              ..lastIndicatorValue = symbolData['value'] as double
+              ..lastSide = symbolData['side'] as String?
+              ..lastBarTs = symbolData['barTs'] as int;
             await widget.isar.alertStates.put(alertState);
           }
-
-          unawaited(AlertSyncService.syncAlert(widget.isar, alert));
         }
       });
 
-      final loc = context.loc;
+      // Sync all created alerts in parallel (outside transaction)
+      if (createdAlerts.isNotEmpty) {
+        unawaited(Future.wait(
+          createdAlerts
+              .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+        ));
+      }
+
+      // Update UI and show success message
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        String message =
+            'Watchlist Alert: ${createdAlerts.length} alert(s) created';
+        if (skippedSymbols.isNotEmpty) {
+          message +=
+              '\n${skippedSymbols.length} symbol(s) skipped (custom alerts exist with same parameters)';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              loc.t('watchlist_mass_alerts_created'),
-            ),
+            content: Text(message),
+            backgroundColor:
+                skippedSymbols.isNotEmpty ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -1865,8 +1948,50 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
   }
 
+  /// Check if two level lists are equal
+  bool _areLevelsEqual(List<double> levels1, List<double> levels2) {
+    if (levels1.length != levels2.length) return false;
+    for (int i = 0; i < levels1.length; i++) {
+      if ((levels1[i] - levels2[i]).abs() > 0.001) return false;
+    }
+    return true;
+  }
+
+  /// Check if two indicator params maps are equal
+  bool _areIndicatorParamsEqual(
+      Map<String, dynamic>? params1, Map<String, dynamic>? params2) {
+    if (params1 == null && params2 == null) return true;
+    if (params1 == null || params2 == null) return false;
+    if (params1.length != params2.length) return false;
+    for (final key in params1.keys) {
+      if (!params2.containsKey(key)) return false;
+      if (params1[key] != params2[key]) return false;
+    }
+    return true;
+  }
+
   Future<void> _deleteMassAlerts() async {
     try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 16),
+                const Text('Deleting Watchlist Alert...'),
+              ],
+            ),
+            duration: const Duration(seconds: 30),
+          ),
+        );
+      }
+
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final alerts = allAlerts
@@ -1875,42 +2000,86 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               a.description!.toUpperCase().contains('WATCHLIST:'))
           .toList();
 
+      if (alerts.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No Watchlist Alerts to delete'),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Collect alerts for syncing deletions after transaction
+      final alertsToDelete = <AlertRule>[];
+
       await widget.isar.writeTxn(() async {
         for (final alert in alerts) {
           // Skip if alert doesn't have a valid id
           if (alert.id <= 0) {
             continue;
           }
-          // Deactivate alerts instead of deleting to stop notifications immediately
-          alert.active = false;
-          await widget.isar.alertRules.put(alert);
-          // Also delete alert state to ensure clean state
+
+          // Delete alert state first (safely check for null)
           try {
             final alertState = await widget.isar.alertStates
                 .filter()
                 .ruleIdEqualTo(alert.id)
                 .findFirst();
-            if (alertState != null && alertState.id > 0) {
-              await widget.isar.alertStates.delete(alertState.id);
+            if (alertState != null) {
+              final stateId = alertState.id;
+              if (stateId > 0) {
+                await widget.isar.alertStates.delete(stateId);
+              }
             }
           } catch (e) {
             debugPrint('Error deleting alert state for alert ${alert.id}: $e');
+            // Continue with deletion even if state deletion fails
           }
+
+          // Delete alert events
           try {
-            await AlertSyncService.syncAlert(widget.isar, alert);
+            final events = await widget.isar.alertEvents
+                .filter()
+                .ruleIdEqualTo(alert.id)
+                .findAll();
+            for (final event in events) {
+              final eventId = event.id;
+              if (eventId > 0) {
+                await widget.isar.alertEvents.delete(eventId);
+              }
+            }
           } catch (e) {
-            debugPrint('Error syncing alert ${alert.id}: $e');
+            debugPrint('Error deleting alert events for alert ${alert.id}: $e');
+            // Continue with deletion even if events deletion fails
           }
+
+          // Delete alert from local database
+          await widget.isar.alertRules.delete(alert.id);
+          alertsToDelete.add(alert);
         }
       });
 
-      final loc = context.loc;
+      // Sync deletions in parallel (outside transaction)
+      if (alertsToDelete.isNotEmpty) {
+        unawaited(Future.wait(
+          alertsToDelete.map(
+              (alert) => AlertSyncService.deleteAlert(alert, hardDelete: true)),
+        ));
+      }
+
+      // Update UI and show success message
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t('watchlist_mass_alerts_deleted'),
+              'Watchlist Alert: ${alertsToDelete.length} alert(s) deleted',
             ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -1918,6 +2087,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       debugPrint('Error deleting mass alerts: $e');
       final loc = context.loc;
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1973,17 +2143,47 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             unawaited(AlertSyncService.syncAlert(widget.isar, alert));
           } else {
             // Remove alerts for symbols no longer in watchlist
-            await AlertSyncService.deleteAlert(alert, hardDelete: false);
+            // Delete alert state
+            try {
+              final alertState = await widget.isar.alertStates
+                  .filter()
+                  .ruleIdEqualTo(alert.id)
+                  .findFirst();
+              if (alertState != null && alertState.id > 0) {
+                await widget.isar.alertStates.delete(alertState.id);
+              }
+            } catch (e) {
+              debugPrint(
+                  'Error deleting alert state for alert ${alert.id}: $e');
+            }
+            // Delete alert events
+            try {
+              final events = await widget.isar.alertEvents
+                  .filter()
+                  .ruleIdEqualTo(alert.id)
+                  .findAll();
+              for (final event in events) {
+                await widget.isar.alertEvents.delete(event.id);
+              }
+            } catch (e) {
+              debugPrint(
+                  'Error deleting alert events for alert ${alert.id}: $e');
+            }
+            // Delete from remote server
+            await AlertSyncService.deleteAlert(alert, hardDelete: true);
+            // Delete from local database
             await widget.isar.alertRules.delete(alert.id);
           }
         }
 
-        // Create alerts for new symbols
-        final existingSymbols = existingAlerts.map((a) => a.symbol).toSet();
+        // Create alerts for new symbols (only if they don't already have watchlist alerts)
+        final existingWatchlistSymbols =
+            existingAlerts.map((a) => a.symbol).toSet();
         final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
         for (final item in _watchlistItems) {
-          if (!existingSymbols.contains(item.symbol)) {
+          // Only create if symbol doesn't already have a watchlist alert
+          if (!existingWatchlistSymbols.contains(item.symbol)) {
             final alert = AlertRule()
               ..symbol = item.symbol
               ..timeframe = _massAlertTimeframe

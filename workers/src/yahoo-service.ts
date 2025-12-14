@@ -1,3 +1,23 @@
+// D1Database type (from Cloudflare Workers)
+interface D1Database {
+    prepare(query: string): D1PreparedStatement;
+}
+
+interface D1PreparedStatement {
+    bind(...values: any[]): D1PreparedStatement;
+    first<T = any>(): Promise<T | null>;
+    run(): Promise<D1Result>;
+}
+
+interface D1Result {
+    success: boolean;
+    meta: {
+        changes: number;
+        last_row_id: number;
+        duration: number;
+    };
+}
+
 export interface CandleData {
     timestamp: number;
     open: number;
@@ -309,79 +329,66 @@ export class YahooService {
     }
 
     /**
-     * Data caching
+     * Get cached candles from D1 Database (much cheaper than KV)
+     * Cache TTL: 60 seconds maximum for trading app freshness
      */
     async getCachedCandles(
         symbol: string,
         timeframe: string,
-        kv: KVNamespace
+        db: D1Database
     ): Promise<CandleData[] | null> {
         try {
-            const key = `candles:${symbol}:${timeframe}`;
-            const cached = await kv.get(key);
+            const now = Date.now();
+            // Maximum cache age: 60 seconds for trading app (critical for timely alerts)
+            const maxCacheAge = 60 * 1000;
 
-            if (cached) {
-                const data = JSON.parse(cached);
-                const cacheTime = data.timestamp;
-                const now = Date.now();
+            const result = await db.prepare(`
+                SELECT candles_json, cached_at 
+                FROM candles_cache 
+                WHERE symbol = ? AND timeframe = ?
+            `).bind(symbol, timeframe).first<{ candles_json: string; cached_at: number }>();
 
-                // Cache duration depends on timeframe to balance freshness and KV usage
-                // Short timeframes need fresher data, long timeframes can use longer cache
-                let cacheDurationMs: number;
-                switch (timeframe) {
-                    case '1m':
-                        cacheDurationMs = 30 * 1000; // 30 seconds for 1m
-                        break;
-                    case '5m':
-                        cacheDurationMs = 60 * 1000; // 1 minute for 5m
-                        break;
-                    case '15m':
-                        cacheDurationMs = 90 * 1000; // 1.5 minutes for 15m
-                        break;
-                    case '1h':
-                        cacheDurationMs = 3 * 60 * 1000; // 3 minutes for 1h
-                        break;
-                    case '4h':
-                        cacheDurationMs = 5 * 60 * 1000; // 5 minutes for 4h
-                        break;
-                    case '1d':
-                        cacheDurationMs = 10 * 60 * 1000; // 10 minutes for 1d
-                        break;
-                    default:
-                        cacheDurationMs = 2 * 60 * 1000; // 2 minutes default
-                }
-
-                if (now - cacheTime < cacheDurationMs) {
-                    return data.candles;
-                }
+            if (result && (now - result.cached_at) < maxCacheAge) {
+                const candles = JSON.parse(result.candles_json) as CandleData[];
+                return candles;
             }
 
+            // Cache expired or not found
             return null;
         } catch (error) {
-            console.error('Error getting cached candles:', error);
+            console.error('Error getting cached candles from D1:', error);
             return null;
         }
     }
 
     /**
-     * Save data to cache
+     * Save data to D1 cache (much cheaper than KV)
      */
     async setCachedCandles(
         symbol: string,
         timeframe: string,
         candles: CandleData[],
-        kv: KVNamespace
+        db: D1Database
     ): Promise<void> {
         try {
-            const key = `candles:${symbol}:${timeframe}`;
-            const data = {
-                timestamp: Date.now(),
-                candles: candles,
-            };
+            const candlesJson = JSON.stringify(candles);
+            const cachedAt = Date.now();
 
-            await kv.put(key, JSON.stringify(data));
+            await db.prepare(`
+                INSERT INTO candles_cache (symbol, timeframe, candles_json, cached_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(symbol, timeframe) 
+                DO UPDATE SET candles_json = ?, cached_at = ?
+            `).bind(symbol, timeframe, candlesJson, cachedAt, candlesJson, cachedAt).run();
+
+            // Clean up old cache entries (older than 5 minutes) to prevent DB bloat
+            const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+            await db.prepare(`
+                DELETE FROM candles_cache 
+                WHERE cached_at < ?
+            `).bind(fiveMinutesAgo).run();
         } catch (error) {
-            console.error('Error caching candles:', error);
+            console.error('Error caching candles in D1:', error);
         }
     }
 }
