@@ -41,7 +41,7 @@ enum IndicatorType {
       case IndicatorType.rsi:
         return 14;
       case IndicatorType.stoch:
-        return 6; // %K period
+        return 6; // %K period (Yahoo Finance default: 6)
       case IndicatorType.macd:
         return 12; // Fast EMA period
       case IndicatorType.bollinger:
@@ -73,7 +73,11 @@ enum IndicatorType {
       case IndicatorType.rsi:
         return {};
       case IndicatorType.stoch:
-        return {'dPeriod': 3}; // %D smoothing period
+        return {
+          'slowPeriod': 3, // %K smoothing period (Slow Stochastic)
+          'dPeriod': 6, // %D period
+          'smoothPeriod': 3, // %D smoothing period
+        };
       case IndicatorType.macd:
         return {'slowPeriod': 26, 'signalPeriod': 9};
       case IndicatorType.bollinger:

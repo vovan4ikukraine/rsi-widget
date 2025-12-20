@@ -17,8 +17,18 @@ class IndicatorService {
       case IndicatorType.rsi:
         return _calculateRsiHistory(candles, period);
       case IndicatorType.stoch:
-        final dPeriod = params?['dPeriod'] as int? ?? 3;
-        return _calculateStochasticHistory(candles, period, dPeriod);
+        // Get default params for Stochastic
+        final defaultParams = IndicatorType.stoch.defaultParams;
+        final dPeriod = params?['dPeriod'] as int? ?? (defaultParams['dPeriod'] as int? ?? 6);
+        final slowPeriod = params?['slowPeriod'] as int? ?? (defaultParams['slowPeriod'] as int?);
+        final smoothPeriod = params?['smoothPeriod'] as int? ?? (defaultParams['smoothPeriod'] as int?);
+        return _calculateStochasticHistory(
+          candles,
+          period,
+          dPeriod,
+          slowPeriod: slowPeriod,
+          smoothPeriod: smoothPeriod,
+        );
       case IndicatorType.macd:
       case IndicatorType.bollinger:
       case IndicatorType.williams:
@@ -122,12 +132,16 @@ class IndicatorService {
   static List<IndicatorResult> _calculateStochasticHistory(
     List<Map<String, dynamic>> candles,
     int kPeriod,
-    int dPeriod,
-  ) {
+    int dPeriod, {
+    int? slowPeriod,
+    int? smoothPeriod,
+  }) {
     final stochasticResults = StochasticService.computeStochasticHistory(
       candles,
       kPeriod,
       dPeriod,
+      slowPeriod: slowPeriod,
+      smoothPeriod: smoothPeriod,
     );
 
     return stochasticResults.map((r) => r.toIndicatorResult()).toList();
