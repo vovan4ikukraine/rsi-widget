@@ -106,6 +106,25 @@ object WidgetDataService {
 
                 Log.d(TAG, "Total loaded ${widgetData.size} items out of ${limitedWatchlist.size} symbols")
 
+                // ALWAYS sort data by indicator value before saving (critical!)
+                // For RSI and STOCH: ascending (low to high) - smallest values first
+                // For WPR: descending (high to low) - since values are negative, -20 > -80, so higher (less negative) first
+                val indicatorLower = indicator.lowercase()
+                val shouldSortDescending = indicatorLower == "wpr" || indicatorLower == "williams"
+                widgetData.sortWith { a, b ->
+                    val valueA = a.indicatorValue
+                    val valueB = b.indicatorValue
+                    if (shouldSortDescending) {
+                        valueB.compareTo(valueA) // Descending for WPR: -20 before -80
+                    } else {
+                        valueA.compareTo(valueB) // Ascending for RSI/STOCH: 20 before 80
+                    }
+                }
+                Log.d(TAG, "SORTED ${widgetData.size} widget items: ${if (shouldSortDescending) "DESCENDING" else "ASCENDING"} for indicator '$indicator'")
+                if (widgetData.isNotEmpty()) {
+                    Log.d(TAG, "First item: ${widgetData.first().symbol}=${widgetData.first().indicatorValue}, Last item: ${widgetData.last().symbol}=${widgetData.last().indicatorValue}")
+                }
+
                 // Save updated data (use commit for synchronous save)
                 val jsonData = widgetDataToJson(widgetData)
                 val editor = prefs.edit()
@@ -191,31 +210,46 @@ object WidgetDataService {
 
                 Log.d(TAG, "Parsed ${candles.size} candles for $symbol")
 
-                // Calculate RSI
+                // Calculate indicator based on type
                 val closes = candles.map { it.close }
-                Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
-                val rsiValues = calculateRSI(closes, rsiPeriod)
+                val highs = candles.map { it.high }
+                val lows = candles.map { it.low }
+                
+                val indicatorValues = when (indicator.lowercase()) {
+                    "wpr", "williams" -> {
+                        Log.d(TAG, "Calculating Williams %R for $symbol: ${closes.size} candles, period=$rsiPeriod")
+                        calculateWilliams(highs, lows, closes, rsiPeriod)
+                    }
+                    "stoch" -> {
+                        Log.d(TAG, "Calculating Stochastic for $symbol: ${closes.size} candles, period=$rsiPeriod")
+                        calculateStochastic(highs, lows, closes, rsiPeriod)
+                    }
+                    else -> {
+                        Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
+                        calculateRSI(closes, rsiPeriod)
+                    }
+                }
 
-                if (rsiValues.isEmpty()) {
-                    Log.w(TAG, "RSI calculation returned empty for $symbol (need at least ${rsiPeriod + 1} closes)")
+                if (indicatorValues.isEmpty()) {
+                    Log.w(TAG, "$indicator calculation returned empty for $symbol (need at least ${rsiPeriod + 1} candles)")
                     return@withContext null
                 }
 
-                val currentRsi = rsiValues.last()
+                val currentValue = indicatorValues.last()
                 val currentPrice = closes.last()
                 // Take last 20 values for chart
-                val chartValues = if (rsiValues.size > 20) {
-                    rsiValues.subList(rsiValues.size - 20, rsiValues.size)
+                val chartValues = if (indicatorValues.size > 20) {
+                    indicatorValues.subList(indicatorValues.size - 20, indicatorValues.size)
                 } else {
-                    rsiValues
+                    indicatorValues
                 }
 
-                Log.d(TAG, "Calculated $indicator for $symbol: current=$currentRsi, chart values=${chartValues.size}, first=${chartValues.firstOrNull()}, last=${chartValues.lastOrNull()}")
+                Log.d(TAG, "Calculated $indicator for $symbol: current=$currentValue, chart values=${chartValues.size}, first=${chartValues.firstOrNull()}, last=${chartValues.lastOrNull()}")
 
                 return@withContext WidgetItem(
                     symbol = symbol,
-                    rsi = currentRsi,
-                    indicatorValue = currentRsi,
+                    rsi = currentValue, // Keep for backward compatibility
+                    indicatorValue = currentValue,
                     indicator = indicator,
                     price = currentPrice,
                     rsiValues = chartValues
@@ -261,6 +295,64 @@ object WidgetDataService {
             Log.e(TAG, "Error parsing candles: ${e.message}")
             emptyList()
         }
+    }
+
+    /**
+     * Calculates Stochastic Oscillator (%K)
+     */
+    private fun calculateStochastic(highs: List<Double>, lows: List<Double>, closes: List<Double>, period: Int): List<Double> {
+        if (closes.size < period) {
+            return emptyList()
+        }
+
+        val stochValues = mutableListOf<Double>()
+
+        for (i in (period - 1) until closes.size) {
+            val periodHighs = highs.subList(i - period + 1, i + 1)
+            val periodLows = lows.subList(i - period + 1, i + 1)
+            val close = closes[i]
+
+            val highestHigh = periodHighs.maxOrNull() ?: 0.0
+            val lowestLow = periodLows.minOrNull() ?: 0.0
+
+            val stoch = if (highestHigh == lowestLow) {
+                50.0 // Neutral value to avoid division by zero
+            } else {
+                ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0
+            }
+            stochValues.add(stoch.coerceIn(0.0, 100.0))
+        }
+
+        return stochValues
+    }
+
+    /**
+     * Calculates Williams %R
+     */
+    private fun calculateWilliams(highs: List<Double>, lows: List<Double>, closes: List<Double>, period: Int): List<Double> {
+        if (closes.size < period) {
+            return emptyList()
+        }
+
+        val williamsValues = mutableListOf<Double>()
+
+        for (i in (period - 1) until closes.size) {
+            val periodHighs = highs.subList(i - period + 1, i + 1)
+            val periodLows = lows.subList(i - period + 1, i + 1)
+            val close = closes[i]
+
+            val highestHigh = periodHighs.maxOrNull() ?: 0.0
+            val lowestLow = periodLows.minOrNull() ?: 0.0
+
+            val williams = if (highestHigh == lowestLow) {
+                -50.0 // Neutral value to avoid division by zero
+            } else {
+                ((highestHigh - close) / (highestHigh - lowestLow)) * -100.0
+            }
+            williamsValues.add(williams.coerceIn(-100.0, 0.0))
+        }
+
+        return williamsValues
     }
 
     /**

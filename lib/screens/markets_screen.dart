@@ -179,8 +179,8 @@ class _MarketsScreenState extends State<MarketsScreen>
       // Update previous indicator type AFTER loading new settings
       _previousIndicatorType = indicatorType;
 
-      // Don't save loaded settings here - they are already saved if they exist
-      // Only save if user explicitly changes them
+      // Save loaded settings so they persist for next time
+      await _saveState();
 
       // Clear cache and reload visible items when indicator changes
       _loadedSymbols.clear();

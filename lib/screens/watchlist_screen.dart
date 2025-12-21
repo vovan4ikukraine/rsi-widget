@@ -168,8 +168,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Update previous indicator type AFTER loading new settings
       _previousIndicatorType = indicatorType;
 
-      // Don't save loaded settings here - they are already saved if they exist
-      // Only save if user explicitly changes them
+      // Save loaded settings so widget can use them
+      await _saveState();
 
       // Update widget with new indicator
       final indicatorParams =

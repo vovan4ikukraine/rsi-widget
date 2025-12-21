@@ -173,8 +173,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Update previous indicator type AFTER loading new settings
       _previousIndicatorType = indicatorType;
 
-      // Don't save loaded settings here - they are already saved if they exist
-      // Only save if user explicitly changes them
+      // Save loaded settings so they persist for next time
+      await _saveState();
 
       // Reload data when indicator changes
       _loadIndicatorData();

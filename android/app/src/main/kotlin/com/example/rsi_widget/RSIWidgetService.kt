@@ -30,6 +30,11 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
     private val items = mutableListOf<WidgetItem>()
     private val TAG = "RSIWidgetViewsFactory"
     
+    /**
+     * Helper data class for indicator range and levels
+     */
+    private data class IndicatorRange(val minValue: Float, val maxValue: Float, val upperLevel: Float, val lowerLevel: Float)
+    
     data class WidgetItem(
         val symbol: String,
         val rsi: Double, // Keep for backward compatibility
@@ -85,6 +90,40 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
                 }
             }
             
+            // ALWAYS sort items by indicator value (critical for correct display)
+            // For RSI and STOCH: ascending (low to high) - smallest values first
+            // For WPR: descending (high to low) - since values are negative, -20 > -80, so higher (less negative) first
+            if (items.isNotEmpty()) {
+                // Determine sort direction based on indicator type
+                // Get indicator from first item, or try to get from prefs as fallback
+                val indicator = items.firstOrNull()?.indicator?.lowercase() 
+                    ?: try {
+                        val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+                        prefs.getString("widget_indicator", "rsi")?.lowercase() ?: "rsi"
+                    } catch (e: Exception) {
+                        "rsi"
+                    }
+                
+                val shouldSortDescending = indicator == "wpr" || indicator == "williams"
+                
+                // Sort items
+                items.sortWith { a, b ->
+                    val valueA = a.indicatorValue
+                    val valueB = b.indicatorValue
+                    if (shouldSortDescending) {
+                        valueB.compareTo(valueA) // Descending for WPR: -20 before -80
+                    } else {
+                        valueA.compareTo(valueB) // Ascending for RSI/STOCH: 20 before 80
+                    }
+                }
+                Log.d(TAG, "SORTED ${items.size} items: ${if (shouldSortDescending) "DESCENDING" else "ASCENDING"} for indicator '$indicator'")
+                if (items.size > 0) {
+                    Log.d(TAG, "First item: ${items.first().symbol}=${items.first().indicatorValue}, Last item: ${items.last().symbol}=${items.last().indicatorValue}")
+                }
+            } else {
+                Log.w(TAG, "No items to sort")
+            }
+            
             Log.d(TAG, "Successfully loaded ${items.size} items")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading widget data: ${e.message}", e)
@@ -112,6 +151,11 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             "stoch" -> when {
                 item.indicatorValue < 20 -> Color.parseColor("#66BB6A") // Green for oversold
                 item.indicatorValue > 80 -> Color.parseColor("#EF5350") // Red for overbought
+                else -> Color.parseColor("#42A5F5") // Blue for normal state
+            }
+            "wpr", "williams" -> when {
+                item.indicatorValue < -80 -> Color.parseColor("#66BB6A") // Green for oversold (WPR < -80)
+                item.indicatorValue > -20 -> Color.parseColor("#EF5350") // Red for overbought (WPR > -20)
                 else -> Color.parseColor("#42A5F5") // Blue for normal state
             }
             else -> when { // Default to RSI levels
@@ -163,23 +207,40 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             return Bitmap.createScaledBitmap(bitmap, width, height, true)
         }
         
-        // Use fixed 0-100 scale for indicators
+        // Determine scale and levels based on indicator type
+        val rangeData = when (indicator.lowercase()) {
+            "wpr", "williams" -> {
+                // WPR range: -100 to 0
+                IndicatorRange(-100f, 0f, -20f, -80f)
+            }
+            "stoch" -> {
+                // Stochastic range: 0 to 100
+                IndicatorRange(0f, 100f, 80f, 20f)
+            }
+            else -> {
+                // RSI range: 0 to 100 (default)
+                IndicatorRange(0f, 100f, 70f, 30f)
+            }
+        }
+        val minValue = rangeData.minValue
+        val maxValue = rangeData.maxValue
+        val upperLevel = rangeData.upperLevel
+        val lowerLevel = rangeData.lowerLevel
+        
         val padding = 8f * scale
         val chartWidth = scaledWidth - padding * 2
         val chartHeight = scaledHeight - padding * 2
+        val valueRange = maxValue - minValue
         
-        // Determine levels based on indicator type
-        val (upperLevel, lowerLevel) = when (indicator.lowercase()) {
-            "stoch" -> Pair(80f, 20f)
-            else -> Pair(70f, 30f) // Default to RSI levels
-        }
-        
+        // Draw zones based on indicator type
         // Overbought zone - dark red with transparency
         val overboughtPaint = Paint().apply {
             color = Color.parseColor("#33F44336") // Red with transparency
             style = Paint.Style.FILL
         }
-        val yUpper = padding + ((100 - upperLevel) / 100f) * chartHeight
+        // Calculate Y position for upper level based on indicator range
+        val normalizedUpperLevel = ((upperLevel - minValue) / valueRange).toFloat()
+        val yUpper = padding + (1f - normalizedUpperLevel) * chartHeight
         canvas.drawRect(padding, padding, scaledWidth - padding, yUpper, overboughtPaint)
         
         // Oversold zone - dark green with transparency
@@ -187,7 +248,9 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             color = Color.parseColor("#334CAF50") // Green with transparency
             style = Paint.Style.FILL
         }
-        val yLower = padding + ((100 - lowerLevel) / 100f) * chartHeight
+        // Calculate Y position for lower level based on indicator range
+        val normalizedLowerLevel = ((lowerLevel - minValue) / valueRange).toFloat()
+        val yLower = padding + (1f - normalizedLowerLevel) * chartHeight
         canvas.drawRect(padding, yLower, scaledWidth - padding, scaledHeight - padding, oversoldPaint)
         
         // Draw level lines (thin, more visible)
@@ -203,21 +266,31 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         // Lower level line (oversold)
         canvas.drawLine(padding, yLower, scaledWidth - padding, yLower, levelPaint)
         
-        // Line 50 (neutral zone)
-        val y50 = padding + ((100 - 50) / 100f) * chartHeight
+        // Middle line (neutral zone) - 50 for RSI/STOCH, -50 for WPR
+        val midValue = when (indicator.lowercase()) {
+            "wpr", "williams" -> -50f
+            else -> 50f
+        }
+        val normalizedMidValue = ((midValue - minValue) / valueRange).toFloat()
+        val yMid = padding + (1f - normalizedMidValue) * chartHeight
         val midLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#44FFFFFF")
             strokeWidth = 0.5f * scale
             style = Paint.Style.STROKE
             pathEffect = DashPathEffect(floatArrayOf(4f * scale, 4f * scale), 0f)
         }
-        canvas.drawLine(padding, y50, scaledWidth - padding, y50, midLinePaint)
+        canvas.drawLine(padding, yMid, scaledWidth - padding, yMid, midLinePaint)
         
         // Draw chart (thin, clear line, color depends on current indicator value)
         val lineColor = when (indicator.lowercase()) {
             "stoch" -> when {
                 currentValue < 20 -> Color.parseColor("#66BB6A") // Light green - oversold
                 currentValue > 80 -> Color.parseColor("#EF5350") // Light red - overbought
+                else -> Color.parseColor("#42A5F5") // Light blue - normal
+            }
+            "wpr", "williams" -> when {
+                currentValue < -80 -> Color.parseColor("#66BB6A") // Light green - oversold (WPR < -80)
+                currentValue > -20 -> Color.parseColor("#EF5350") // Light red - overbought (WPR > -20)
                 else -> Color.parseColor("#42A5F5") // Light blue - normal
             }
             else -> when { // Default to RSI levels
@@ -241,9 +314,13 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         
         rsiValues.forEachIndexed { index, value ->
             val x = padding + index * stepX
-            // RSI always in range 0-100
-            val clampedValue = value.coerceIn(0.0, 100.0)
-            val y = padding + ((100f - clampedValue.toFloat()) / 100f) * chartHeight
+            // Clamp value to indicator's range
+            val clampedValue = value.coerceIn(minValue.toDouble(), maxValue.toDouble())
+            // Convert value to Y coordinate (0 at top, height at bottom)
+            // For WPR: -100 at top (y=padding), 0 at bottom (y=padding+chartHeight)
+            // For RSI/STOCH: 0 at bottom (y=padding+chartHeight), 100 at top (y=padding)
+            val normalizedValue = ((clampedValue - minValue) / valueRange).toFloat()
+            val y = padding + (1f - normalizedValue) * chartHeight
             
             if (index == 0) {
                 path.moveTo(x, y)
@@ -260,29 +337,33 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
         }
         
         if (rsiValues.isNotEmpty()) {
-            val maxValue = rsiValues.maxOrNull() ?: 0.0
-            val minValue = rsiValues.minOrNull() ?: 0.0
-            val maxIndex = rsiValues.indexOf(maxValue)
-            val minIndex = rsiValues.indexOf(minValue)
+            val dataMaxValue = rsiValues.maxOrNull() ?: 0.0
+            val dataMinValue = rsiValues.minOrNull() ?: 0.0
+            val maxIndex = rsiValues.indexOf(dataMaxValue)
+            val minIndex = rsiValues.indexOf(dataMinValue)
             
-            // Determine levels based on indicator type
-            val (upperLevel, lowerLevel) = when (indicator.lowercase()) {
-                "stoch" -> Pair(80f, 20f)
-                else -> Pair(70f, 30f) // Default to RSI levels
+            // Maximum point (if above upper level for RSI/STOCH, or above upper level for WPR)
+            val shouldShowMax = when (indicator.lowercase()) {
+                "wpr", "williams" -> dataMaxValue > upperLevel // For WPR, upperLevel is -20
+                else -> dataMaxValue > upperLevel
             }
-            
-            // Maximum point (if above upper level)
-            if (maxValue > upperLevel) {
+            if (shouldShowMax) {
                 val maxX = padding + maxIndex * stepX
-                val maxY = padding + ((100f - maxValue.toFloat()) / 100f) * chartHeight
+                val normalizedMaxValue = ((dataMaxValue.coerceIn(minValue.toDouble(), maxValue.toDouble()) - minValue) / valueRange).toFloat()
+                val maxY = padding + (1f - normalizedMaxValue) * chartHeight
                 pointPaint.color = Color.parseColor("#EF5350")
                 canvas.drawCircle(maxX, maxY, 3f * scale, pointPaint)
             }
             
             // Minimum point (if below lower level)
-            if (minValue < lowerLevel) {
+            val shouldShowMin = when (indicator.lowercase()) {
+                "wpr", "williams" -> dataMinValue < lowerLevel // For WPR, lowerLevel is -80
+                else -> dataMinValue < lowerLevel
+            }
+            if (shouldShowMin) {
                 val minX = padding + minIndex * stepX
-                val minY = padding + ((100f - minValue.toFloat()) / 100f) * chartHeight
+                val normalizedMinValue = ((dataMinValue.coerceIn(minValue.toDouble(), maxValue.toDouble()) - minValue) / valueRange).toFloat()
+                val minY = padding + (1f - normalizedMinValue) * chartHeight
                 pointPaint.color = Color.parseColor("#66BB6A")
                 canvas.drawCircle(minX, minY, 3f * scale, pointPaint)
             }
@@ -290,7 +371,9 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             // Current point (last point) - slightly larger
             val lastIndex = rsiValues.size - 1
             val lastX = padding + lastIndex * stepX
-            val lastY = padding + ((100f - currentValue.coerceIn(0.0, 100.0).toFloat()) / 100f) * chartHeight
+            val clampedCurrentValue = currentValue.coerceIn(minValue.toDouble(), maxValue.toDouble())
+            val normalizedCurrentValue = ((clampedCurrentValue - minValue) / valueRange).toFloat()
+            val lastY = padding + (1f - normalizedCurrentValue) * chartHeight
             pointPaint.color = lineColor
             // Draw outline for better visibility
             pointPaint.style = Paint.Style.FILL
