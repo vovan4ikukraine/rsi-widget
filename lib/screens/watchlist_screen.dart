@@ -7,7 +7,7 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
-import '../widgets/rsi_chart.dart';
+import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
@@ -47,6 +47,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   int _indicatorPeriod = 14;
   double _lowerLevel = 30.0;
   double _upperLevel = 70.0;
+  IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
 
   // Mass alert settings for all watchlist instruments (independent from view settings)
@@ -95,24 +96,60 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _appState = AppStateScope.of(context);
+    _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
   }
 
-  void _onIndicatorChanged() {
+  void _onIndicatorChanged() async {
     if (_appState != null) {
+      final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
+      
+      // Save current settings for the PREVIOUS indicator before switching
+      if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
+        await prefs.setInt(
+          'watchlist_${_previousIndicatorType!.toJson()}_period',
+          _indicatorPeriod,
+        );
+        await prefs.setDouble(
+          'watchlist_${_previousIndicatorType!.toJson()}_lower_level',
+          _lowerLevel,
+        );
+        await prefs.setDouble(
+          'watchlist_${_previousIndicatorType!.toJson()}_upper_level',
+          _upperLevel,
+        );
+        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+          await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
+        }
+      }
 
-      // Update settings to match the new indicator
+      // Load saved settings for the new indicator, or use defaults
+      // IMPORTANT: Always use defaults if no saved settings exist, don't use current values
+      final savedPeriod = prefs.getInt('watchlist_${indicatorType.toJson()}_period');
+      final savedLowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
       setState(() {
-        _indicatorPeriod = indicatorType.defaultPeriod;
-        _lowerLevel = indicatorType.defaultLevels.first;
-        _upperLevel = indicatorType.defaultLevels.length > 1
-            ? indicatorType.defaultLevels[1]
-            : 100.0;
+        // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
+        _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
 
-        // For Stochastic, set default %D period
+        // For Stochastic, load saved %D period or use default
         if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = 3;
+          _stochDPeriod = prefs.getInt('watchlist_stoch_d_period') ?? 3;
         } else {
           _stochDPeriod = null;
         }
@@ -128,8 +165,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       });
 
-      // Save updated settings
-      _saveState();
+      // Update previous indicator type AFTER loading new settings
+      _previousIndicatorType = indicatorType;
+
+      // Don't save loaded settings here - they are already saved if they exist
+      // Only save if user explicitly changes them
 
       // Update widget with new indicator
       final indicatorParams =
@@ -307,8 +347,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       _indicatorPeriod =
           widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
-      _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
-      _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
+      _lowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level') ??
+          indicatorType.defaultLevels.first;
+      _upperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level') ??
+          (indicatorType.defaultLevels.length > 1
+              ? indicatorType.defaultLevels[1]
+              : 100.0);
       // Load saved sort order, fallback to widget sort order if available
       final savedSortOrder = prefs.getString(_sortOrderPrefKey);
       final widgetSortDescending = prefs.getBool('rsi_widget_sort_descending');
@@ -383,8 +427,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     await prefs.setInt(
         'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
-    await prefs.setDouble('watchlist_lower_level', _lowerLevel);
-    await prefs.setDouble('watchlist_upper_level', _upperLevel);
+    await prefs.setDouble('watchlist_${indicatorType.toJson()}_lower_level', _lowerLevel);
+    await prefs.setDouble('watchlist_${indicatorType.toJson()}_upper_level', _upperLevel);
+    if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+      await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
+    }
     // Also save to widget settings to keep them in sync
     await prefs.setInt('rsi_widget_period', _indicatorPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
@@ -645,6 +692,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               currentIndicatorValue: 0.0,
               indicatorValues: [],
               timestamps: [],
+              indicatorResults: [],
             );
           });
           return;
@@ -678,6 +726,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               currentIndicatorValue: 0.0,
               indicatorValues: [],
               timestamps: [],
+              indicatorResults: [],
             );
           });
           return;
@@ -697,6 +746,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               currentIndicatorValue: 0.0,
               indicatorValues: [],
               timestamps: [],
+              indicatorResults: [],
             );
           });
           return;
@@ -714,6 +764,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         final chartIndicatorTimestamps = indicatorTimestamps.length > 50
             ? indicatorTimestamps.sublist(indicatorTimestamps.length - 50)
             : indicatorTimestamps;
+        final chartIndicatorResults = indicatorResults.length > 50
+            ? indicatorResults.sublist(indicatorResults.length - 50)
+            : indicatorResults;
 
         setState(() {
           _indicatorDataMap[symbol] = _SymbolIndicatorData(
@@ -721,6 +774,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 indicatorValues.isNotEmpty ? indicatorValues.last : 0.0,
             indicatorValues: chartIndicatorValues,
             timestamps: chartIndicatorTimestamps,
+            indicatorResults: chartIndicatorResults,
           );
         });
         return; // Success, exit retry loop
@@ -738,6 +792,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               currentIndicatorValue: 0.0,
               indicatorValues: [],
               timestamps: [],
+              indicatorResults: [],
             );
           });
         } else {
@@ -804,9 +859,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _saveState();
       }
 
+      // Validate levels based on indicator type
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      // For Williams %R, allow -100 to 0; for others, allow 0 to 100
+      final minAllowed = indicatorType == IndicatorType.williams ? -100.0 : 0.0;
+      final maxAllowed = indicatorType == IndicatorType.williams ? 0.0 : 100.0;
+
       if (lower != null &&
-          lower >= 0 &&
-          lower <= 100 &&
+          lower >= minAllowed &&
+          lower <= maxAllowed &&
           lower < _upperLevel &&
           lower != _lowerLevel) {
         _lowerLevel = lower;
@@ -815,8 +876,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
 
       if (upper != null &&
-          upper >= 0 &&
-          upper <= 100 &&
+          upper >= minAllowed &&
+          upper <= maxAllowed &&
           upper > _lowerLevel &&
           upper != _upperLevel) {
         _upperLevel = upper;
@@ -872,9 +933,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     try {
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       setState(() {
         _timeframe = '15m';
-        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
         _indicatorPeriod = indicatorType.defaultPeriod;
         _lowerLevel = indicatorType.defaultLevels.first;
         _upperLevel = indicatorType.defaultLevels.length > 1
@@ -885,6 +946,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         } else {
           _stochDPeriod = null;
         }
+        // Update controllers to show reset values
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+        _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
       });
       _saveState();
       // Save period for widget
@@ -893,7 +963,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _updateControllerHints();
       _loadAllIndicatorData();
       // Update widget
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       final indicatorParams =
           indicatorType == IndicatorType.stoch && _stochDPeriod != null
               ? {'dPeriod': _stochDPeriod}
@@ -1266,6 +1335,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                                 currentIndicatorValue: 0.0,
                                                 indicatorValues: [],
                                                 timestamps: [],
+                                                indicatorResults: [],
                                               );
 
                                       return _buildWatchlistItem(
@@ -1352,9 +1422,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               if (indicatorData.indicatorValues.isNotEmpty)
                 SizedBox(
                   height: 53, // Increased from 50 to 53 (approximately 5%)
-                  child: RsiChart(
-                    rsiValues: indicatorData.indicatorValues,
+                  child: IndicatorChart(
+                    indicatorResults: indicatorData.indicatorResults,
                     timestamps: indicatorData.timestamps,
+                    indicatorType: indicatorType,
                     symbol: item.symbol,
                     timeframe: _timeframe,
                     levels: [_lowerLevel, _upperLevel],
@@ -2214,10 +2285,12 @@ class _SymbolIndicatorData {
   final double currentIndicatorValue;
   final List<double> indicatorValues;
   final List<int> timestamps;
+  final List<IndicatorResult> indicatorResults; // Full results for chart
 
   _SymbolIndicatorData({
     required this.currentIndicatorValue,
     required this.indicatorValues,
     required this.timestamps,
+    required this.indicatorResults,
   });
 }

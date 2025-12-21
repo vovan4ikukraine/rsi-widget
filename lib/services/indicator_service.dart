@@ -3,6 +3,7 @@ import '../models.dart';
 import '../models/indicator_type.dart';
 import 'rsi_service.dart';
 import 'stochastic_service.dart';
+import 'williams_service.dart';
 
 /// Universal service for calculating and managing technical indicators
 class IndicatorService {
@@ -29,11 +30,8 @@ class IndicatorService {
           slowPeriod: slowPeriod,
           smoothPeriod: smoothPeriod,
         );
-      case IndicatorType.macd:
-      case IndicatorType.bollinger:
       case IndicatorType.williams:
-        // TODO: Implement other indicators
-        return [];
+        return _calculateWilliamsHistory(candles, period);
     }
   }
 
@@ -60,11 +58,10 @@ class IndicatorService {
         // Stochastic requires full history, cannot be calculated incrementally
         throw UnsupportedError(
             'Stochastic cannot be calculated incrementally. Use calculateIndicatorHistory instead.');
-      case IndicatorType.macd:
-      case IndicatorType.bollinger:
       case IndicatorType.williams:
-        throw UnimplementedError(
-            '${indicatorType.name} calculation not yet implemented');
+        // Williams %R requires full history, cannot be calculated incrementally
+        throw UnsupportedError(
+            'Williams %R cannot be calculated incrementally. Use calculateIndicatorHistory instead.');
     }
   }
 
@@ -147,6 +144,19 @@ class IndicatorService {
     return stochasticResults.map((r) => r.toIndicatorResult()).toList();
   }
 
+  /// Calculate Williams %R history
+  static List<IndicatorResult> _calculateWilliamsHistory(
+    List<Map<String, dynamic>> candles,
+    int period,
+  ) {
+    final williamsResults = WilliamsService.computeWilliamsHistory(
+      candles,
+      period,
+    );
+
+    return williamsResults.map((r) => r.toIndicatorResult()).toList();
+  }
+
   /// Determine indicator zone
   static IndicatorZone getIndicatorZone(
     double value,
@@ -158,16 +168,8 @@ class IndicatorService {
         return RsiService.getRsiZone(value, levels);
       case IndicatorType.stoch:
         return StochasticService.getStochasticZone(value, levels);
-      case IndicatorType.macd:
-      case IndicatorType.bollinger:
       case IndicatorType.williams:
-        // Default zone logic for other indicators
-        if (levels.isEmpty) return IndicatorZone.between;
-        final lowerLevel = levels.first;
-        final upperLevel = levels.length > 1 ? levels[1] : 100.0;
-        if (value < lowerLevel) return IndicatorZone.below;
-        if (value > upperLevel) return IndicatorZone.above;
-        return IndicatorZone.between;
+        return WilliamsService.getWilliamsZone(value, levels);
     }
   }
 

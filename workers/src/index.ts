@@ -451,7 +451,7 @@ app.post('/alerts/create', async (c) => {
 
         // Validate indicator (default to 'rsi')
         const alertIndicator = indicator || 'rsi';
-        const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+        const validIndicators = ['rsi', 'stoch', 'williams'];
         if (!validIndicators.includes(alertIndicator)) {
             return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
         }
@@ -589,7 +589,7 @@ app.put('/alerts/:ruleId', async (c) => {
         }
 
         if (updates.indicator !== undefined) {
-            const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+            const validIndicators = ['rsi', 'stoch', 'williams'];
             if (!validIndicators.includes(updates.indicator)) {
                 return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
             }

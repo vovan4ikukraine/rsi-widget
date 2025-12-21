@@ -260,10 +260,6 @@ export class IndicatorEngine {
                 return this.calculateRsi(candles, period).map(v => ({ value: v }));
             case 'stoch':
                 return this.calculateStochastic(candles, period, indicatorParams);
-            case 'macd':
-                return this.calculateMacd(candles, period, indicatorParams);
-            case 'bollinger':
-                return this.calculateBollinger(candles, period, indicatorParams);
             case 'williams':
                 return this.calculateWilliams(candles, period).map(v => ({ value: v }));
             default:
@@ -370,30 +366,43 @@ export class IndicatorEngine {
     }
 
     /**
-     * Calculate MACD (placeholder - to be implemented)
+     * Calculate Williams %R (Williams Percent Range)
+     * Formula: %R = ((Highest High - Close) / (Highest High - Lowest Low)) × -100
+     * Values range from -100 to 0
      */
-    calculateMacd(_candles: any[], _fastPeriod: number, _params?: any): Array<{ value: number, state?: any }> {
-        // TODO: Implement MACD calculation
-        // For now, return empty array
-        return [];
-    }
+    calculateWilliams(candles: any[], period: number): number[] {
+        if (candles.length < period) {
+            return [];
+        }
 
-    /**
-     * Calculate Bollinger Bands (placeholder - to be implemented)
-     */
-    calculateBollinger(_candles: any[], _period: number, _params?: any): Array<{ value: number, state?: any }> {
-        // TODO: Implement Bollinger Bands calculation
-        // For now, return empty array
-        return [];
-    }
+        const highs = candles.map(c => c.high);
+        const lows = candles.map(c => c.low);
+        const closes = candles.map(c => c.close);
+        const williamsValues: number[] = [];
 
-    /**
-     * Calculate Williams %R (placeholder - to be implemented)
-     */
-    calculateWilliams(_candles: any[], _period: number): number[] {
-        // TODO: Implement Williams %R calculation
-        // For now, return empty array
-        return [];
+        // Calculate Williams %R starting from index period - 1
+        for (let i = period - 1; i < candles.length; i++) {
+            // Get high and low values for the period
+            const periodHighs = highs.slice(i - period + 1, i + 1);
+            const periodLows = lows.slice(i - period + 1, i + 1);
+            const close = closes[i];
+
+            const highestHigh = Math.max(...periodHighs);
+            const lowestLow = Math.min(...periodLows);
+
+            let williams: number;
+            if (highestHigh === lowestLow) {
+                // Avoid division by zero - use -50 as neutral value
+                williams = -50.0;
+            } else {
+                williams = ((highestHigh - close) / (highestHigh - lowestLow)) * -100.0;
+                williams = Math.max(-100.0, Math.min(0.0, williams));
+            }
+
+            williamsValues.push(williams);
+        }
+
+        return williamsValues;
     }
 
     /**

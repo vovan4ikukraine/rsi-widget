@@ -1,8 +1,6 @@
 enum IndicatorType {
   rsi,
   stoch,
-  macd,
-  bollinger,
   williams;
 
   String get name {
@@ -11,10 +9,6 @@ enum IndicatorType {
         return 'RSI';
       case IndicatorType.stoch:
         return 'STOCH';
-      case IndicatorType.macd:
-        return 'MACD';
-      case IndicatorType.bollinger:
-        return 'BOLL';
       case IndicatorType.williams:
         return 'WPR';
     }
@@ -26,10 +20,6 @@ enum IndicatorType {
         return 'RSI (Relative Strength Index)';
       case IndicatorType.stoch:
         return 'Stochastic Oscillator';
-      case IndicatorType.macd:
-        return 'MACD (Moving Average Convergence Divergence)';
-      case IndicatorType.bollinger:
-        return 'Bollinger Bands';
       case IndicatorType.williams:
         return 'Williams %R';
     }
@@ -42,10 +32,6 @@ enum IndicatorType {
         return 14;
       case IndicatorType.stoch:
         return 6; // %K period (Yahoo Finance default: 6)
-      case IndicatorType.macd:
-        return 12; // Fast EMA period
-      case IndicatorType.bollinger:
-        return 20; // SMA period
       case IndicatorType.williams:
         return 14;
     }
@@ -58,10 +44,6 @@ enum IndicatorType {
         return [30, 70];
       case IndicatorType.stoch:
         return [20, 80];
-      case IndicatorType.macd:
-        return [0]; // Signal line crossover
-      case IndicatorType.bollinger:
-        return [0]; // Band touch
       case IndicatorType.williams:
         return [-80, -20];
     }
@@ -78,10 +60,6 @@ enum IndicatorType {
           'dPeriod': 6, // %D period
           'smoothPeriod': 3, // %D smoothing period
         };
-      case IndicatorType.macd:
-        return {'slowPeriod': 26, 'signalPeriod': 9};
-      case IndicatorType.bollinger:
-        return {'stdDev': 2.0};
       case IndicatorType.williams:
         return {};
     }
@@ -97,11 +75,6 @@ enum IndicatorType {
         return IndicatorType.rsi;
       case 'stoch':
         return IndicatorType.stoch;
-      case 'macd':
-        return IndicatorType.macd;
-      case 'bollinger':
-      case 'boll':
-        return IndicatorType.bollinger;
       case 'williams':
       case 'wpr':
         return IndicatorType.williams;
