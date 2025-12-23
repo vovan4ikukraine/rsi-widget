@@ -1441,9 +1441,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: TextField(
                           controller: _indicatorPeriodController,
                           decoration: InputDecoration(
-                            labelText: indicatorType == IndicatorType.stoch
-                                ? '%K Period'
-                                : loc.t('home_rsi_period_label'),
+                            labelText: () {
+                              switch (indicatorType) {
+                                case IndicatorType.stoch:
+                                  return '%K Period';
+                                case IndicatorType.williams:
+                                  return 'WPR Period';
+                                case IndicatorType.rsi:
+                                  return loc.t('home_rsi_period_label');
+                              }
+                            }(),
                             border: const OutlineInputBorder(),
                             isDense: true,
                           ),

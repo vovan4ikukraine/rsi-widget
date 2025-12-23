@@ -356,6 +356,7 @@ class AlertSyncService {
     final uri = Uri.parse('$_baseUrl/alerts/${alert.remoteId}');
 
     final payload = {
+      'userId': userId, // Server expects 'userId', not 'user_id'
       'symbol': alert.symbol,
       'timeframe': alert.timeframe,
       'indicator': alert.indicator,
@@ -364,11 +365,10 @@ class AlertSyncService {
           ? jsonEncode(alert.indicatorParams)
           : null,
       'rsi_period': alert.period, // Keep for backward compatibility
-      'levels': jsonEncode(alert.levels),
+      'levels': alert.levels, // Server expects array, not JSON string (it will stringify on server side)
       'mode': alert.mode,
       'cooldown_sec': alert.cooldownSec,
       'active': alert.active ? 1 : 0,
-      'user_id': userId,
     };
 
     final response = await http.put(
