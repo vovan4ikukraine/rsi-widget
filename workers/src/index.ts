@@ -451,7 +451,7 @@ app.post('/alerts/create', async (c) => {
 
         // Validate indicator (default to 'rsi')
         const alertIndicator = indicator || 'rsi';
-        const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+        const validIndicators = ['rsi', 'stoch', 'williams'];
         if (!validIndicators.includes(alertIndicator)) {
             return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
         }
@@ -471,13 +471,22 @@ app.post('/alerts/create', async (c) => {
             indicatorParamsJson = JSON.stringify(indicatorParams);
         }
 
-        // Validate levels (array of numbers between 0-100)
+        // Validate levels
+        // For Williams %R: -100 to 0, for others: 0 to 100
         if (!Array.isArray(levels) || levels.length === 0 || levels.length > 10) {
             return c.json({ error: 'Invalid levels: must be array of 1-10 numbers' }, 400);
         }
+        const isWilliams = alertIndicator === 'williams';
+        const minLevel = isWilliams ? -100 : 0;
+        const maxLevel = isWilliams ? 0 : 100;
         for (const level of levels) {
-            if (typeof level !== 'number' || level < 0 || level > 100 || !isFinite(level)) {
-                return c.json({ error: 'Invalid level: must be number between 0 and 100' }, 400);
+            if (typeof level !== 'number' || !isFinite(level)) {
+                return c.json({ error: `Invalid level: must be a finite number` }, 400);
+            }
+            if (level < minLevel || level > maxLevel) {
+                return c.json({ 
+                    error: `Invalid level: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''}` 
+                }, 400);
             }
         }
 
@@ -559,8 +568,8 @@ app.put('/alerts/:ruleId', async (c) => {
 
         // Verify that the alert belongs to the user
         const existing = await db.prepare(`
-            SELECT user_id FROM alert_rule WHERE id = ?
-        `).bind(ruleId).first<{ user_id: string }>();
+            SELECT user_id, indicator FROM alert_rule WHERE id = ?
+        `).bind(ruleId).first<{ user_id: string; indicator: string }>();
 
         if (!existing) {
             return c.json({ error: 'Alert not found' }, 404);
@@ -589,7 +598,7 @@ app.put('/alerts/:ruleId', async (c) => {
         }
 
         if (updates.indicator !== undefined) {
-            const validIndicators = ['rsi', 'stoch', 'macd', 'bollinger', 'williams'];
+            const validIndicators = ['rsi', 'stoch', 'williams'];
             if (!validIndicators.includes(updates.indicator)) {
                 return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
             }
@@ -622,9 +631,19 @@ app.put('/alerts/:ruleId', async (c) => {
             if (!Array.isArray(updates.levels) || updates.levels.length === 0 || updates.levels.length > 10) {
                 return c.json({ error: 'Invalid levels: must be array of 1-10 numbers' }, 400);
             }
+            // Determine indicator type for validation (use updates.indicator if provided, otherwise check existing alert)
+            const updateIndicator = updates.indicator || existing.indicator || 'rsi';
+            const isWilliams = updateIndicator === 'williams';
+            const minLevel = isWilliams ? -100 : 0;
+            const maxLevel = isWilliams ? 0 : 100;
             for (const level of updates.levels) {
-                if (typeof level !== 'number' || level < 0 || level > 100 || !isFinite(level)) {
-                    return c.json({ error: 'Invalid level: must be number between 0 and 100' }, 400);
+                if (typeof level !== 'number' || !isFinite(level)) {
+                    return c.json({ error: `Invalid level: must be a finite number` }, 400);
+                }
+                if (level < minLevel || level > maxLevel) {
+                    return c.json({ 
+                        error: `Invalid level: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''}` 
+                    }, 400);
                 }
             }
             updates.levels = JSON.stringify(updates.levels);
@@ -967,15 +986,16 @@ const worker: ExportedHandler<Env> = {
             }
 
             // Validate levels if provided
+            // Allow -100 to 100 to support all indicators (RSI/STOCH: 0-100, WPR: -100-0)
             if (lower_level !== undefined && lower_level !== null) {
-                if (typeof lower_level !== 'number' || lower_level < 0 || lower_level > 100 || !isFinite(lower_level)) {
-                    return c.json({ error: 'Invalid lower_level: must be number between 0 and 100' }, 400);
+                if (typeof lower_level !== 'number' || lower_level < -100 || lower_level > 100 || !isFinite(lower_level)) {
+                    return c.json({ error: 'Invalid lower_level: must be number between -100 and 100' }, 400);
                 }
             }
 
             if (upper_level !== undefined && upper_level !== null) {
-                if (typeof upper_level !== 'number' || upper_level < 0 || upper_level > 100 || !isFinite(upper_level)) {
-                    return c.json({ error: 'Invalid upper_level: must be number between 0 and 100' }, 400);
+                if (typeof upper_level !== 'number' || upper_level < -100 || upper_level > 100 || !isFinite(upper_level)) {
+                    return c.json({ error: 'Invalid upper_level: must be number between -100 and 100' }, 400);
                 }
             }
 

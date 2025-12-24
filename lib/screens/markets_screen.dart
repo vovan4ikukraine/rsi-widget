@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/indicator_type.dart';
+import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/indicator_service.dart';
-import '../widgets/rsi_chart.dart';
+import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
 import '../data/popular_symbols.dart';
 import '../state/app_state.dart';
@@ -33,6 +34,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   int _indicatorPeriod = 14;
   double _lowerLevel = 30.0;
   double _upperLevel = 70.0;
+  IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   int? _stochDPeriod;
   bool _settingsExpanded = false;
 
@@ -84,6 +86,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _appState = AppStateScope.of(context);
+    _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
     // Update controllers if app state is available and we haven't loaded yet
     if (_appState != null && _indicatorPeriodController.text.isEmpty) {
@@ -108,20 +111,60 @@ class _MarketsScreenState extends State<MarketsScreen>
     }
   }
 
-  void _onIndicatorChanged() {
+  void _onIndicatorChanged() async {
     if (_appState != null) {
+      final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
+      
+      // Save current settings for the PREVIOUS indicator before switching
+      if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
+        await prefs.setInt(
+          'markets_${_previousIndicatorType!.toJson()}_period',
+          _indicatorPeriod,
+        );
+        await prefs.setDouble(
+          'markets_${_previousIndicatorType!.toJson()}_lower_level',
+          _lowerLevel,
+        );
+        await prefs.setDouble(
+          'markets_${_previousIndicatorType!.toJson()}_upper_level',
+          _upperLevel,
+        );
+        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+          await prefs.setInt('markets_stoch_d_period', _stochDPeriod!);
+        }
+      }
+
+      // Load saved settings for the new indicator, or use defaults
+      // IMPORTANT: Always use defaults if no saved settings exist, don't use current values
+      final savedPeriod = prefs.getInt('markets_${indicatorType.toJson()}_period');
+      final savedLowerLevel = prefs.getDouble('markets_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = prefs.getDouble('markets_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
       setState(() {
-        _indicatorPeriod = indicatorType.defaultPeriod;
-        _lowerLevel = indicatorType.defaultLevels.first;
-        _upperLevel = indicatorType.defaultLevels.length > 1
-            ? indicatorType.defaultLevels[1]
-            : 100.0;
+        // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
+        _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
+
+        // For Stochastic, load saved %D period or use default
         if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = 3;
+          _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
         } else {
           _stochDPeriod = null;
         }
+
         // Update controllers
         _indicatorPeriodController.text = _indicatorPeriod.toString();
         _lowerLevelController.text = _lowerLevel.toStringAsFixed(1);
@@ -132,7 +175,13 @@ class _MarketsScreenState extends State<MarketsScreen>
           _stochDPeriodController.clear();
         }
       });
-      _saveState();
+
+      // Update previous indicator type AFTER loading new settings
+      _previousIndicatorType = indicatorType;
+
+      // Save loaded settings so they persist for next time
+      await _saveState();
+
       // Clear cache and reload visible items when indicator changes
       _loadedSymbols.clear();
       _indicatorDataMap.clear();
@@ -328,12 +377,14 @@ class _MarketsScreenState extends State<MarketsScreen>
       _indicatorPeriod =
           prefs.getInt('markets_${indicatorType.toJson()}_period') ??
               indicatorType.defaultPeriod;
-      _lowerLevel = prefs.getDouble('markets_lower_level') ??
-          indicatorType.defaultLevels.first;
-      _upperLevel = prefs.getDouble('markets_upper_level') ??
-          (indicatorType.defaultLevels.length > 1
-              ? indicatorType.defaultLevels[1]
-              : 100.0);
+      _lowerLevel =
+          prefs.getDouble('markets_${indicatorType.toJson()}_lower_level') ??
+              indicatorType.defaultLevels.first;
+      _upperLevel =
+          prefs.getDouble('markets_${indicatorType.toJson()}_upper_level') ??
+              (indicatorType.defaultLevels.length > 1
+                  ? indicatorType.defaultLevels[1]
+                  : 100.0);
       if (indicatorType == IndicatorType.stoch) {
         _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
       }
@@ -355,8 +406,8 @@ class _MarketsScreenState extends State<MarketsScreen>
       'markets_${indicatorType.toJson()}_period',
       _indicatorPeriod,
     );
-    await prefs.setDouble('markets_lower_level', _lowerLevel);
-    await prefs.setDouble('markets_upper_level', _upperLevel);
+    await prefs.setDouble('markets_${indicatorType.toJson()}_lower_level', _lowerLevel);
+    await prefs.setDouble('markets_${indicatorType.toJson()}_upper_level', _upperLevel);
     if (_stochDPeriod != null) {
       await prefs.setInt('markets_stoch_d_period', _stochDPeriod!);
     }
@@ -536,6 +587,9 @@ class _MarketsScreenState extends State<MarketsScreen>
         final chartIndicatorTimestamps = indicatorTimestamps.length > 50
             ? indicatorTimestamps.sublist(indicatorTimestamps.length - 50)
             : indicatorTimestamps;
+        final chartIndicatorResults = result.length > 50
+            ? result.sublist(result.length - 50)
+            : result;
 
         if (mounted) {
           setState(() {
@@ -544,6 +598,7 @@ class _MarketsScreenState extends State<MarketsScreen>
               previousValue: previousResult?.value,
               history: chartIndicatorValues,
               timestamps: chartIndicatorTimestamps,
+              indicatorResults: chartIndicatorResults,
             );
             _loadedSymbols.add(symbol);
           });
@@ -600,6 +655,9 @@ class _MarketsScreenState extends State<MarketsScreen>
       ),
       body: Column(
         children: [
+          // Indicator selector (always at top)
+          if (_appState != null) IndicatorSelector(appState: _appState!),
+          
           // Timeframe selector
           Card(
             margin: EdgeInsets.zero,
@@ -648,8 +706,6 @@ class _MarketsScreenState extends State<MarketsScreen>
               ),
             ),
           ),
-          // Indicator selector
-          if (_appState != null) IndicatorSelector(appState: _appState!),
 
           // Indicator settings
           Card(
@@ -693,10 +749,17 @@ class _MarketsScreenState extends State<MarketsScreen>
                               child: TextField(
                                 controller: _indicatorPeriodController,
                                 decoration: InputDecoration(
-                                  labelText: _appState?.selectedIndicator ==
-                                          IndicatorType.stoch
-                                      ? '%K Period'
-                                      : loc.t('home_rsi_period_label'),
+                                  labelText: () {
+                                    final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+                                    switch (indicator) {
+                                      case IndicatorType.stoch:
+                                        return '%K Period';
+                                      case IndicatorType.williams:
+                                        return 'WPR Period';
+                                      case IndicatorType.rsi:
+                                        return loc.t('home_rsi_period_label');
+                                    }
+                                  }(),
                                   border: const OutlineInputBorder(),
                                   isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -931,15 +994,16 @@ class _MarketsScreenState extends State<MarketsScreen>
               ),
           ],
         ),
-        subtitle: history.isNotEmpty && timestamps.isNotEmpty
+        subtitle: history.isNotEmpty && timestamps.isNotEmpty && indicatorData != null
             ? SizedBox(
                 height: 60,
-                child: RsiChart(
-                  rsiValues: history,
+                child: IndicatorChart(
+                  indicatorResults: indicatorData.indicatorResults,
                   timestamps: timestamps,
-                  levels: [_lowerLevel, _upperLevel],
+                  indicatorType: _appState!.selectedIndicator,
                   symbol: symbol.symbol,
                   timeframe: _timeframe,
+                  levels: [_lowerLevel, _upperLevel],
                   showGrid: false,
                   showLabels: false,
                   isInteractive: false,
@@ -965,11 +1029,13 @@ class _SymbolIndicatorData {
   final double? previousValue;
   final List<double> history;
   final List<int> timestamps;
+  final List<IndicatorResult> indicatorResults; // Full results for chart
 
   _SymbolIndicatorData({
     required this.currentValue,
     this.previousValue,
     required this.history,
     required this.timestamps,
+    required this.indicatorResults,
   });
 }

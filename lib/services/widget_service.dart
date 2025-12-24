@@ -134,12 +134,16 @@ class WidgetService {
         }
       }
 
-      // Sort data
+      // Sort data: always sort by indicator value
+      // For RSI and STOCH: ascending (low to high)
+      // For WPR: descending (high to low, since values are negative)
+      final shouldSortDescending = finalIndicator == IndicatorType.williams;
+      
       double resolveValue(Map<String, dynamic> item) {
         final value = (item['indicatorValue'] as num?)?.toDouble() ??
             (item['rsi'] as num?)?.toDouble();
         if (value == null) {
-          return finalSortDescending
+          return shouldSortDescending
               ? double.negativeInfinity
               : double.infinity;
         }
@@ -149,7 +153,7 @@ class WidgetService {
       widgetData.sort((a, b) {
         final valueA = resolveValue(a);
         final valueB = resolveValue(b);
-        return finalSortDescending
+        return shouldSortDescending
             ? valueB.compareTo(valueA)
             : valueA.compareTo(valueB);
       });

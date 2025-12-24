@@ -13,17 +13,42 @@ class IndicatorSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // Adaptive colors based on theme
+    final backgroundColor = isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50];
+    final borderColor = isDark ? Colors.blue[400] : Colors.blue[300];
+    final textColor = isDark ? Colors.blue[100] : Colors.blue[900];
+    final iconColor = isDark ? Colors.blue[200] : Colors.blue[900];
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(
+          bottom: BorderSide(color: borderColor!, width: 2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            const Icon(Icons.trending_up, size: 20),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.trending_up, size: 22, color: iconColor),
+            const SizedBox(width: 10),
+            Text(
               'Indicator:',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: textColor,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -31,10 +56,23 @@ class IndicatorSelector extends StatelessWidget {
                 value: appState.selectedIndicator,
                 isExpanded: true,
                 underline: Container(),
+                dropdownColor: isDark ? Colors.grey[900] : Colors.white,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: textColor,
+                ),
+                icon: Icon(Icons.arrow_drop_down, color: iconColor),
                 items: IndicatorType.values.map((indicator) {
                   return DropdownMenuItem<IndicatorType>(
                     value: indicator,
-                    child: Text(indicator.name),
+                    child: Text(
+                      indicator.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
                   );
                 }).toList(),
                 onChanged: (IndicatorType? newIndicator) {

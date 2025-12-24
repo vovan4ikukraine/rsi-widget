@@ -7,7 +7,7 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
-import '../widgets/rsi_chart.dart';
+import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
@@ -47,13 +47,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   int _indicatorPeriod = 14;
   double _lowerLevel = 30.0;
   double _upperLevel = 70.0;
+  IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
 
   // Mass alert settings for all watchlist instruments (independent from view settings)
-  bool _massAlertEnabled = false;
+  // Store enabled state separately for each indicator
+  final Map<IndicatorType, bool> _massAlertEnabledByIndicator = {
+    IndicatorType.rsi: false,
+    IndicatorType.stoch: false,
+    IndicatorType.williams: false,
+  };
   String _massAlertTimeframe = '15m'; // Independent timeframe for alerts
-  IndicatorType _massAlertIndicator =
-      IndicatorType.rsi; // Independent indicator for alerts
+  // Mass alerts use the indicator selected in the main interface (via AppState)
+  // No separate indicator selector needed
   int _massAlertPeriod = 14; // Independent period for alerts
   int? _massAlertStochDPeriod; // Independent %D period for Stochastic alerts
   String _massAlertMode = 'cross'; // cross|enter|exit
@@ -61,6 +67,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   double _massAlertUpperLevel = 70.0;
   int _massAlertCooldownSec = 600;
   bool _massAlertRepeatable = true;
+  
+  // Helper getter for current indicator (from AppState)
+  IndicatorType get _massAlertIndicator => _appState?.selectedIndicator ?? IndicatorType.rsi;
+  
+  // Helper getter for current indicator's enabled state
+  bool get _massAlertEnabled => _massAlertEnabledByIndicator[_massAlertIndicator] ?? false;
+  
+  // Helper setter for current indicator's enabled state
+  set _massAlertEnabled(bool value) {
+    _massAlertEnabledByIndicator[_massAlertIndicator] = value;
+  }
 
   // Controllers for settings input fields
   final TextEditingController _indicatorPeriodController =
@@ -95,41 +112,124 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _appState = AppStateScope.of(context);
+    _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
   }
 
-  void _onIndicatorChanged() {
+  void _onIndicatorChanged() async {
     if (_appState != null) {
+      final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
-
-      // Update settings to match the new indicator
-      setState(() {
-        _indicatorPeriod = indicatorType.defaultPeriod;
-        _lowerLevel = indicatorType.defaultLevels.first;
-        _upperLevel = indicatorType.defaultLevels.length > 1
-            ? indicatorType.defaultLevels[1]
-            : 100.0;
-
-        // For Stochastic, set default %D period
-        if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = 3;
-        } else {
-          _stochDPeriod = null;
+      
+      // Save current settings for the PREVIOUS indicator before switching
+      if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
+        // Save view settings
+        await prefs.setInt(
+          'watchlist_${_previousIndicatorType!.toJson()}_period',
+          _indicatorPeriod,
+        );
+        await prefs.setDouble(
+          'watchlist_${_previousIndicatorType!.toJson()}_lower_level',
+          _lowerLevel,
+        );
+        await prefs.setDouble(
+          'watchlist_${_previousIndicatorType!.toJson()}_upper_level',
+          _upperLevel,
+        );
+        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+          await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
         }
+        
+        // Save mass alert settings for the previous indicator
+        final previousIndicatorKey = _previousIndicatorType!.toJson();
+        await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', _massAlertPeriod);
+        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', _massAlertLowerLevel);
+        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', _massAlertUpperLevel);
+      }
 
-        // Update controllers
-        _indicatorPeriodController.text = _indicatorPeriod.toString();
-        _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
-        _upperLevelController.text = _upperLevel.toStringAsFixed(0);
-        if (_stochDPeriod != null) {
-          _stochDPeriodController.text = _stochDPeriod.toString();
-        } else {
-          _stochDPeriodController.clear();
-        }
-      });
+      // Load saved view settings for the new indicator, or use defaults
+      // IMPORTANT: Always use defaults if no saved settings exist, don't use current values
+      final savedPeriod = prefs.getInt('watchlist_${indicatorType.toJson()}_period');
+      final savedLowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level');
+      
+      // Load saved mass alert settings for the new indicator, or use defaults
+      final savedMassAlertPeriod = prefs.getInt('watchlist_mass_alert_${indicatorType.toJson()}_period');
+      final savedMassAlertLowerLevel = prefs.getDouble('watchlist_mass_alert_${indicatorType.toJson()}_lower_level');
+      final savedMassAlertUpperLevel = prefs.getDouble('watchlist_mass_alert_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
+      if (mounted) {
+        setState(() {
+          // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
+          _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
+          _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+          _upperLevel = savedUpperValid ? savedUpperLevel :
+              (indicatorType.defaultLevels.length > 1
+                  ? indicatorType.defaultLevels[1]
+                  : 100.0);
 
-      // Save updated settings
-      _saveState();
+          // For Stochastic, load saved %D period or use default
+          if (indicatorType == IndicatorType.stoch) {
+            _stochDPeriod = prefs.getInt('watchlist_stoch_d_period') ?? 3;
+          } else {
+            _stochDPeriod = null;
+          }
+          
+          // Load mass alert settings for the new indicator
+          _massAlertPeriod = savedMassAlertPeriod ?? indicatorType.defaultPeriod;
+          // Validate mass alert levels
+          final massAlertLowerValid = savedMassAlertLowerLevel != null &&
+              ((indicatorType == IndicatorType.williams && savedMassAlertLowerLevel >= -100.0 && savedMassAlertLowerLevel <= 0.0) ||
+               (indicatorType != IndicatorType.williams && savedMassAlertLowerLevel >= 0.0 && savedMassAlertLowerLevel <= 100.0));
+          final massAlertUpperValid = savedMassAlertUpperLevel != null &&
+              ((indicatorType == IndicatorType.williams && savedMassAlertUpperLevel >= -100.0 && savedMassAlertUpperLevel <= 0.0) ||
+               (indicatorType != IndicatorType.williams && savedMassAlertUpperLevel >= 0.0 && savedMassAlertUpperLevel <= 100.0));
+          _massAlertLowerLevel = massAlertLowerValid ? savedMassAlertLowerLevel : indicatorType.defaultLevels.first;
+          _massAlertUpperLevel = massAlertUpperValid ? savedMassAlertUpperLevel :
+              (indicatorType.defaultLevels.length > 1
+                  ? indicatorType.defaultLevels[1]
+                  : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
+          if (indicatorType == IndicatorType.stoch) {
+            _massAlertStochDPeriod = prefs.getInt('watchlist_mass_alert_stoch_d_period') ?? 3;
+          } else {
+            _massAlertStochDPeriod = null;
+          }
+
+          // Update controllers
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          if (_stochDPeriod != null) {
+            _stochDPeriodController.text = _stochDPeriod.toString();
+          } else {
+            _stochDPeriodController.clear();
+          }
+          
+          // Update mass alert controllers
+          _massAlertPeriodController.text = _massAlertPeriod.toString();
+          if (_massAlertStochDPeriod != null) {
+            _massAlertStochDPeriodController.text = _massAlertStochDPeriod.toString();
+          } else {
+            _massAlertStochDPeriodController.clear();
+          }
+          _massAlertLowerLevelController.text = _massAlertLowerLevel.toStringAsFixed(0);
+          _massAlertUpperLevelController.text = _massAlertUpperLevel.toStringAsFixed(0);
+        });
+      }
+
+      // Update previous indicator type AFTER loading new settings
+      _previousIndicatorType = indicatorType;
+
+      // Save loaded settings so widget can use them
+      await _saveState();
 
       // Update widget with new indicator
       final indicatorParams =
@@ -145,9 +245,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       ));
 
       // Clear data and reload when indicator changes
-      setState(() {
-        _indicatorDataMap.clear();
-      });
+      if (mounted) {
+        setState(() {
+          _indicatorDataMap.clear();
+        });
+      }
       _loadAllIndicatorData();
     }
   }
@@ -301,69 +403,86 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
     final watchlistTimeframe = prefs.getString('watchlist_timeframe');
 
-    setState(() {
-      // Use widget settings if available, otherwise use watchlist settings
-      _timeframe = widgetTimeframe ?? watchlistTimeframe ?? '15m';
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-      _indicatorPeriod =
-          widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
-      _lowerLevel = prefs.getDouble('watchlist_lower_level') ?? 30.0;
-      _upperLevel = prefs.getDouble('watchlist_upper_level') ?? 70.0;
-      // Load saved sort order, fallback to widget sort order if available
-      final savedSortOrder = prefs.getString(_sortOrderPrefKey);
-      final widgetSortDescending = prefs.getBool('rsi_widget_sort_descending');
-      if (savedSortOrder != null) {
-        _currentSortOrder = _sortOrderFromString(savedSortOrder);
-      } else if (widgetSortDescending != null) {
-        _currentSortOrder = widgetSortDescending
-            ? _RsiSortOrder.descending
-            : _RsiSortOrder.ascending;
-      } else {
-        _currentSortOrder = _RsiSortOrder.none;
-      }
+    if (mounted) {
+      setState(() {
+        // Use widget settings if available, otherwise use watchlist settings
+        _timeframe = widgetTimeframe ?? watchlistTimeframe ?? '15m';
+        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+        _indicatorPeriod =
+            widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
+        _lowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level') ??
+            indicatorType.defaultLevels.first;
+        _upperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level') ??
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
+        // Load saved sort order, fallback to widget sort order if available
+        final savedSortOrder = prefs.getString(_sortOrderPrefKey);
+        final widgetSortDescending = prefs.getBool('rsi_widget_sort_descending');
+        if (savedSortOrder != null) {
+          _currentSortOrder = _sortOrderFromString(savedSortOrder);
+        } else if (widgetSortDescending != null) {
+          _currentSortOrder = widgetSortDescending
+              ? _RsiSortOrder.descending
+              : _RsiSortOrder.ascending;
+        } else {
+          _currentSortOrder = _RsiSortOrder.none;
+        }
 
-      // Load mass alert settings (independent from view settings)
-      _massAlertEnabled =
-          prefs.getBool('watchlist_mass_alert_enabled') ?? false;
-      _massAlertTimeframe =
-          prefs.getString('watchlist_mass_alert_timeframe') ?? _timeframe;
-      final massAlertIndicatorName =
-          prefs.getString('watchlist_mass_alert_indicator') ??
-              indicatorType.toJson();
-      _massAlertIndicator = IndicatorType.fromJson(massAlertIndicatorName);
-      _massAlertPeriod = prefs.getInt('watchlist_mass_alert_period') ??
-          _massAlertIndicator.defaultPeriod;
-      _massAlertStochDPeriod =
-          prefs.getInt('watchlist_mass_alert_stoch_d_period');
-      if (_massAlertIndicator == IndicatorType.stoch &&
-          _massAlertStochDPeriod == null) {
-        _massAlertStochDPeriod = 3;
-      }
-      _massAlertMode = prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
-      _massAlertLowerLevel =
-          prefs.getDouble('watchlist_mass_alert_lower_level') ??
-              _massAlertIndicator.defaultLevels.first;
-      _massAlertUpperLevel =
-          prefs.getDouble('watchlist_mass_alert_upper_level') ??
-              (_massAlertIndicator.defaultLevels.length > 1
-                  ? _massAlertIndicator.defaultLevels[1]
-                  : 100.0);
-      _massAlertCooldownSec =
-          prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? 600;
-      _massAlertRepeatable =
-          prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
+        // Load mass alert settings (independent from view settings)
+        // Load enabled state for each indicator separately
+        _massAlertEnabledByIndicator[IndicatorType.rsi] =
+            prefs.getBool('watchlist_mass_alert_rsi_enabled') ?? false;
+        _massAlertEnabledByIndicator[IndicatorType.stoch] =
+            prefs.getBool('watchlist_mass_alert_stoch_enabled') ?? false;
+        _massAlertEnabledByIndicator[IndicatorType.williams] =
+            prefs.getBool('watchlist_mass_alert_williams_enabled') ?? false;
+        
+        _massAlertTimeframe =
+            prefs.getString('watchlist_mass_alert_timeframe') ?? _timeframe;
+        // Mass alerts use the indicator from AppState (main interface)
+        // Load settings for the current indicator from AppState
+        final indicatorKey = indicatorType.toJson();
+        _massAlertPeriod = prefs.getInt('watchlist_mass_alert_${indicatorKey}_period') ??
+            indicatorType.defaultPeriod;
+        _massAlertStochDPeriod =
+            prefs.getInt('watchlist_mass_alert_stoch_d_period');
+        if (indicatorType == IndicatorType.stoch &&
+            _massAlertStochDPeriod == null) {
+          _massAlertStochDPeriod = 3;
+        }
+        _massAlertMode = prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
+        final savedMassAlertLower = prefs.getDouble('watchlist_mass_alert_${indicatorKey}_lower_level');
+        final savedMassAlertUpper = prefs.getDouble('watchlist_mass_alert_${indicatorKey}_upper_level');
+        // Validate mass alert levels
+        final massAlertLowerValid = savedMassAlertLower != null &&
+            ((indicatorType == IndicatorType.williams && savedMassAlertLower >= -100.0 && savedMassAlertLower <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedMassAlertLower >= 0.0 && savedMassAlertLower <= 100.0));
+        final massAlertUpperValid = savedMassAlertUpper != null &&
+            ((indicatorType == IndicatorType.williams && savedMassAlertUpper >= -100.0 && savedMassAlertUpper <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedMassAlertUpper >= 0.0 && savedMassAlertUpper <= 100.0));
+        _massAlertLowerLevel = massAlertLowerValid ? savedMassAlertLower : indicatorType.defaultLevels.first;
+        _massAlertUpperLevel = massAlertUpperValid ? savedMassAlertUpper :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
+        _massAlertCooldownSec =
+            prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? 600;
+        _massAlertRepeatable =
+            prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
 
-      // Initialize mass alert controllers
-      _massAlertPeriodController.text = _massAlertPeriod.toString();
-      if (_massAlertStochDPeriod != null) {
-        _massAlertStochDPeriodController.text =
-            _massAlertStochDPeriod.toString();
-      }
-      _massAlertLowerLevelController.text =
-          _massAlertLowerLevel.toStringAsFixed(0);
-      _massAlertUpperLevelController.text =
-          _massAlertUpperLevel.toStringAsFixed(0);
-    });
+        // Initialize mass alert controllers
+        _massAlertPeriodController.text = _massAlertPeriod.toString();
+        if (_massAlertStochDPeriod != null) {
+          _massAlertStochDPeriodController.text =
+              _massAlertStochDPeriod.toString();
+        }
+        _massAlertLowerLevelController.text =
+            _massAlertLowerLevel.toStringAsFixed(0);
+        _massAlertUpperLevelController.text =
+            _massAlertUpperLevel.toStringAsFixed(0);
+      });
+    }
 
     // Save period and timeframe for widget to ensure consistency
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
@@ -383,19 +502,27 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     await prefs.setInt(
         'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
-    await prefs.setDouble('watchlist_lower_level', _lowerLevel);
-    await prefs.setDouble('watchlist_upper_level', _upperLevel);
+    await prefs.setDouble('watchlist_${indicatorType.toJson()}_lower_level', _lowerLevel);
+    await prefs.setDouble('watchlist_${indicatorType.toJson()}_upper_level', _upperLevel);
+    if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+      await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
+    }
     // Also save to widget settings to keep them in sync
     await prefs.setInt('rsi_widget_period', _indicatorPeriod);
     await prefs.setString('rsi_widget_timeframe', _timeframe);
 
     // Save mass alert settings (independent from view settings)
-    await prefs.setBool('watchlist_mass_alert_enabled', _massAlertEnabled);
+    // Save enabled state for each indicator separately
+    await prefs.setBool('watchlist_mass_alert_rsi_enabled', _massAlertEnabledByIndicator[IndicatorType.rsi] ?? false);
+    await prefs.setBool('watchlist_mass_alert_stoch_enabled', _massAlertEnabledByIndicator[IndicatorType.stoch] ?? false);
+    await prefs.setBool('watchlist_mass_alert_williams_enabled', _massAlertEnabledByIndicator[IndicatorType.williams] ?? false);
+    
     await prefs.setString(
         'watchlist_mass_alert_timeframe', _massAlertTimeframe);
-    await prefs.setString(
-        'watchlist_mass_alert_indicator', _massAlertIndicator.toJson());
-    await prefs.setInt('watchlist_mass_alert_period', _massAlertPeriod);
+    // Mass alerts use the indicator from AppState (main interface)
+    // Save settings for the current indicator from AppState
+    final indicatorKey = indicatorType.toJson();
+    await prefs.setInt('watchlist_mass_alert_${indicatorKey}_period', _massAlertPeriod);
     if (_massAlertStochDPeriod != null) {
       await prefs.setInt(
           'watchlist_mass_alert_stoch_d_period', _massAlertStochDPeriod!);
@@ -404,9 +531,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
     await prefs.setString('watchlist_mass_alert_mode', _massAlertMode);
     await prefs.setDouble(
-        'watchlist_mass_alert_lower_level', _massAlertLowerLevel);
+        'watchlist_mass_alert_${indicatorKey}_lower_level', _massAlertLowerLevel);
     await prefs.setDouble(
-        'watchlist_mass_alert_upper_level', _massAlertUpperLevel);
+        'watchlist_mass_alert_${indicatorKey}_upper_level', _massAlertUpperLevel);
     await prefs.setInt(
         'watchlist_mass_alert_cooldown_sec', _massAlertCooldownSec);
     await prefs.setBool(
@@ -536,11 +663,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Load indicator data for all symbols
       await _loadAllIndicatorData();
 
-      // Update mass alerts if enabled (in case watchlist changed)
-      if (_massAlertEnabled) {
-        unawaited(_updateMassAlerts());
-      }
-
       // Update widget after loading watchlist (use current watchlist settings)
       final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       final indicatorParams =
@@ -599,9 +721,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           notifyWidget: false,
         );
       }
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       // Update widget after loading data (use current watchlist settings)
       final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       final indicatorParams =
@@ -640,13 +764,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         );
 
         if (candles.isEmpty) {
-          setState(() {
-            _indicatorDataMap[symbol] = _SymbolIndicatorData(
-              currentIndicatorValue: 0.0,
-              indicatorValues: [],
-              timestamps: [],
-            );
-          });
+          if (mounted) {
+            setState(() {
+              _indicatorDataMap[symbol] = _SymbolIndicatorData(
+                currentIndicatorValue: 0.0,
+                indicatorValues: [],
+                timestamps: [],
+                indicatorResults: [],
+              );
+            });
+          }
           return;
         }
 
@@ -673,13 +800,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             : _indicatorPeriod + 1;
 
         if (candles.length < minDataRequired) {
-          setState(() {
-            _indicatorDataMap[symbol] = _SymbolIndicatorData(
-              currentIndicatorValue: 0.0,
-              indicatorValues: [],
-              timestamps: [],
-            );
-          });
+          if (mounted) {
+            setState(() {
+              _indicatorDataMap[symbol] = _SymbolIndicatorData(
+                currentIndicatorValue: 0.0,
+                indicatorValues: [],
+                timestamps: [],
+                indicatorResults: [],
+              );
+            });
+          }
           return;
         }
 
@@ -692,13 +822,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         );
 
         if (indicatorResults.isEmpty) {
-          setState(() {
-            _indicatorDataMap[symbol] = _SymbolIndicatorData(
-              currentIndicatorValue: 0.0,
-              indicatorValues: [],
-              timestamps: [],
-            );
-          });
+          if (mounted) {
+            setState(() {
+              _indicatorDataMap[symbol] = _SymbolIndicatorData(
+                currentIndicatorValue: 0.0,
+                indicatorValues: [],
+                timestamps: [],
+                indicatorResults: [],
+              );
+            });
+          }
           return;
         }
 
@@ -714,15 +847,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         final chartIndicatorTimestamps = indicatorTimestamps.length > 50
             ? indicatorTimestamps.sublist(indicatorTimestamps.length - 50)
             : indicatorTimestamps;
+        final chartIndicatorResults = indicatorResults.length > 50
+            ? indicatorResults.sublist(indicatorResults.length - 50)
+            : indicatorResults;
 
-        setState(() {
-          _indicatorDataMap[symbol] = _SymbolIndicatorData(
-            currentIndicatorValue:
-                indicatorValues.isNotEmpty ? indicatorValues.last : 0.0,
-            indicatorValues: chartIndicatorValues,
-            timestamps: chartIndicatorTimestamps,
-          );
-        });
+        if (mounted) {
+          setState(() {
+            _indicatorDataMap[symbol] = _SymbolIndicatorData(
+              currentIndicatorValue:
+                  indicatorValues.isNotEmpty ? indicatorValues.last : 0.0,
+              indicatorValues: chartIndicatorValues,
+              timestamps: chartIndicatorTimestamps,
+              indicatorResults: chartIndicatorResults,
+            );
+          });
+        }
         return; // Success, exit retry loop
       } catch (e) {
         attempt++;
@@ -733,13 +872,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           // All retries failed, set empty data
           debugPrint(
               'Failed to load indicator for $symbol after $maxRetries attempts');
-          setState(() {
-            _indicatorDataMap[symbol] = _SymbolIndicatorData(
-              currentIndicatorValue: 0.0,
-              indicatorValues: [],
-              timestamps: [],
-            );
-          });
+          if (mounted) {
+            setState(() {
+              _indicatorDataMap[symbol] = _SymbolIndicatorData(
+                currentIndicatorValue: 0.0,
+                indicatorValues: [],
+                timestamps: [],
+                indicatorResults: [],
+              );
+            });
+          }
         } else {
           // Wait before retry with exponential backoff (1s, 2s, 4s)
           final delayMs = 1000 * (1 << (attempt - 1));
@@ -753,10 +895,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await widget.isar.writeTxn(() {
       return widget.isar.watchlistItems.delete(item.id);
     });
-    setState(() {
-      _watchlistItems.remove(item);
-      _indicatorDataMap.remove(item.symbol);
-    });
+    if (mounted) {
+      setState(() {
+        _watchlistItems.remove(item);
+        _indicatorDataMap.remove(item.symbol);
+      });
+    }
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
       unawaited(DataSyncService.syncWatchlist(widget.isar));
@@ -804,9 +948,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _saveState();
       }
 
+      // Validate levels based on indicator type
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      // For Williams %R, allow -100 to 0; for others, allow 0 to 100
+      final minAllowed = indicatorType == IndicatorType.williams ? -100.0 : 0.0;
+      final maxAllowed = indicatorType == IndicatorType.williams ? 0.0 : 100.0;
+
       if (lower != null &&
-          lower >= 0 &&
-          lower <= 100 &&
+          lower >= minAllowed &&
+          lower <= maxAllowed &&
           lower < _upperLevel &&
           lower != _lowerLevel) {
         _lowerLevel = lower;
@@ -815,8 +965,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
 
       if (upper != null &&
-          upper >= 0 &&
-          upper <= 100 &&
+          upper >= minAllowed &&
+          upper <= maxAllowed &&
           upper > _lowerLevel &&
           upper != _upperLevel) {
         _upperLevel = upper;
@@ -872,9 +1022,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     try {
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       setState(() {
         _timeframe = '15m';
-        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
         _indicatorPeriod = indicatorType.defaultPeriod;
         _lowerLevel = indicatorType.defaultLevels.first;
         _upperLevel = indicatorType.defaultLevels.length > 1
@@ -885,6 +1035,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         } else {
           _stochDPeriod = null;
         }
+        // Update controllers to show reset values
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+        _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
       });
       _saveState();
       // Save period for widget
@@ -893,7 +1052,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _updateControllerHints();
       _loadAllIndicatorData();
       // Update widget
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       final indicatorParams =
           indicatorType == IndicatorType.stoch && _stochDPeriod != null
               ? {'dPeriod': _stochDPeriod}
@@ -927,6 +1085,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       ),
       body: Column(
         children: [
+          // Indicator selector (always at top)
+          if (_appState != null) IndicatorSelector(appState: _appState!),
+          
           // Collapsible settings bar
           Card(
             margin: EdgeInsets.zero,
@@ -1046,10 +1207,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               child: TextField(
                                 controller: _indicatorPeriodController,
                                 decoration: InputDecoration(
-                                  labelText: _appState?.selectedIndicator ==
-                                          IndicatorType.stoch
-                                      ? '%K Period'
-                                      : loc.t('home_rsi_period_label'),
+                                  labelText: () {
+                                    final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+                                    switch (indicator) {
+                                      case IndicatorType.stoch:
+                                        return '%K Period';
+                                      case IndicatorType.williams:
+                                        return 'WPR Period';
+                                      case IndicatorType.rsi:
+                                        return loc.t('home_rsi_period_label');
+                                    }
+                                  }(),
                                   border: const OutlineInputBorder(),
                                   isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -1203,10 +1371,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ],
             ),
           ),
+          
           // Mass alerts section
           if (_settingsExpanded) _buildMassAlertsSection(context),
-          // Indicator selector
-          if (_appState != null) IndicatorSelector(appState: _appState!),
 
           // Instruments list
           Expanded(
@@ -1266,6 +1433,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                                 currentIndicatorValue: 0.0,
                                                 indicatorValues: [],
                                                 timestamps: [],
+                                                indicatorResults: [],
                                               );
 
                                       return _buildWatchlistItem(
@@ -1352,9 +1520,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               if (indicatorData.indicatorValues.isNotEmpty)
                 SizedBox(
                   height: 53, // Increased from 50 to 53 (approximately 5%)
-                  child: RsiChart(
-                    rsiValues: indicatorData.indicatorValues,
+                  child: IndicatorChart(
+                    indicatorResults: indicatorData.indicatorResults,
                     timestamps: indicatorData.timestamps,
+                    indicatorType: indicatorType,
                     symbol: item.symbol,
                     timeframe: _timeframe,
                     levels: [_lowerLevel, _upperLevel],
@@ -1402,7 +1571,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         ),
         subtitle: _massAlertEnabled
             ? Text(
-                '${_watchlistItems.length} instruments',
+                '${_watchlistItems.length} instruments (${_massAlertIndicator.name.toUpperCase()})',
                 style: const TextStyle(
                   fontSize: 12,
                   color: Colors.green,
@@ -1413,13 +1582,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           value: _massAlertEnabled,
           onChanged: (value) async {
             setState(() {
-              _massAlertEnabled = value;
+              _massAlertEnabled = value; // Uses the setter which updates the map
             });
             await _saveState();
             if (value) {
               await _createMassAlerts();
             } else {
-              // Deactivate all mass alerts immediately to stop notifications
+              // Deactivate mass alerts for THIS INDICATOR only
               await _deleteMassAlerts();
             }
           },
@@ -1450,74 +1619,23 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     DropdownMenuItem(value: '4h', child: Text('4h')),
                     DropdownMenuItem(value: '1d', child: Text('1d')),
                   ],
-                  onChanged: (value) {
-                    if (value != null) {
+                  onChanged: (value) async {
+                    if (value != null && value != _massAlertTimeframe) {
+                      debugPrint('Mass alert timeframe changed from $_massAlertTimeframe to $value, enabled: $_massAlertEnabled');
                       setState(() {
                         _massAlertTimeframe = value;
                       });
-                      _saveState();
+                      await _saveState();
                       if (_massAlertEnabled) {
-                        unawaited(_updateMassAlerts());
+                        debugPrint('Calling _updateMassAlerts after timeframe change');
+                        await _updateMassAlerts();
+                      } else {
+                        debugPrint('Mass alert not enabled, skipping update');
                       }
                     }
                   },
                 ),
-                const SizedBox(height: 16),
-                // Indicator selector for alerts
-                DropdownButtonFormField<IndicatorType>(
-                  value: _massAlertIndicator,
-                  decoration: InputDecoration(
-                    labelText: 'Indicator',
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                  items: IndicatorType.values.map((indicator) {
-                    return DropdownMenuItem<IndicatorType>(
-                      value: indicator,
-                      child: Text(indicator.name),
-                    );
-                  }).toList(),
-                  onChanged: (indicatorType) {
-                    if (indicatorType != null) {
-                      setState(() {
-                        _massAlertIndicator = indicatorType;
-                        _massAlertPeriod = indicatorType.defaultPeriod;
-                        _massAlertLowerLevel =
-                            indicatorType.defaultLevels.first;
-                        _massAlertUpperLevel =
-                            indicatorType.defaultLevels.length > 1
-                                ? indicatorType.defaultLevels[1]
-                                : 100.0;
-                        if (indicatorType == IndicatorType.stoch) {
-                          _massAlertStochDPeriod = 3;
-                        } else {
-                          _massAlertStochDPeriod = null;
-                        }
-                        // Update controllers
-                        _massAlertPeriodController.text =
-                            _massAlertPeriod.toString();
-                        if (_massAlertStochDPeriod != null) {
-                          _massAlertStochDPeriodController.text =
-                              _massAlertStochDPeriod.toString();
-                        } else {
-                          _massAlertStochDPeriodController.clear();
-                        }
-                        _massAlertLowerLevelController.text =
-                            _massAlertLowerLevel.toStringAsFixed(0);
-                        _massAlertUpperLevelController.text =
-                            _massAlertUpperLevel.toStringAsFixed(0);
-                      });
-                      _saveState();
-                      if (_massAlertEnabled) {
-                        unawaited(_updateMassAlerts());
-                      }
-                    }
-                  },
-                ),
+                // Note: Mass alerts use the indicator selected in the main interface (via IndicatorSelector above)
                 const SizedBox(height: 16),
                 // Period for alerts
                 Row(
@@ -1526,9 +1644,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       child: TextField(
                         controller: _massAlertPeriodController,
                         decoration: InputDecoration(
-                          labelText: _massAlertIndicator == IndicatorType.stoch
-                              ? '%K Period'
-                              : loc.t('home_rsi_period_label'),
+                          labelText: () {
+                            final indicator = _massAlertIndicator;
+                            switch (indicator) {
+                              case IndicatorType.stoch:
+                                return '%K Period';
+                              case IndicatorType.williams:
+                                return 'WPR Period';
+                              case IndicatorType.rsi:
+                                return loc.t('home_rsi_period_label');
+                            }
+                          }(),
                           border: const OutlineInputBorder(),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(
@@ -1539,7 +1665,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                         keyboardType: TextInputType.number,
                         onChanged: (value) {
                           final period = int.tryParse(value);
-                          if (period != null && period >= 1 && period <= 100) {
+                          if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
                             setState(() {
                               _massAlertPeriod = period;
                             });
@@ -1570,7 +1696,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             final dPeriod = int.tryParse(value);
                             if (dPeriod != null &&
                                 dPeriod >= 1 &&
-                                dPeriod <= 100) {
+                                dPeriod <= 100 &&
+                                dPeriod != _massAlertStochDPeriod) {
                               setState(() {
                                 _massAlertStochDPeriod = dPeriod;
                               });
@@ -1613,7 +1740,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                   ],
                   onChanged: (value) {
-                    if (value != null) {
+                    if (value != null && value != _massAlertMode) {
                       setState(() {
                         _massAlertMode = value;
                       });
@@ -1641,7 +1768,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       child: TextField(
                         controller: _massAlertLowerLevelController,
                         decoration: InputDecoration(
-                          labelText: loc.t('create_alert_lower_level'),
+                          labelText: () {
+                            final indicator = _massAlertIndicator;
+                            switch (indicator) {
+                              case IndicatorType.williams:
+                                return 'WPR Lower Level';
+                              case IndicatorType.stoch:
+                                return 'STOCH Lower Level';
+                              case IndicatorType.rsi:
+                                return loc.t('create_alert_lower_level');
+                            }
+                          }(),
                           border: const OutlineInputBorder(),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(
@@ -1653,9 +1790,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             decimal: true),
                         onChanged: (value) {
                           final lower = double.tryParse(value);
-                          if (lower != null && lower >= 0 && lower <= 100) {
+                          bool isValid = false;
+                          if (_massAlertIndicator == IndicatorType.williams) {
+                            // WPR: -100 to 0
+                            isValid = lower != null && lower >= -100 && lower <= 0;
+                          } else {
+                            // RSI/STOCH: 0 to 100
+                            isValid = lower != null && lower >= 0 && lower <= 100;
+                          }
+                          if (isValid && lower != _massAlertLowerLevel) {
                             setState(() {
-                              _massAlertLowerLevel = lower;
+                              _massAlertLowerLevel = lower!;
                             });
                             _saveState();
                             if (_massAlertEnabled) {
@@ -1670,7 +1815,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       child: TextField(
                         controller: _massAlertUpperLevelController,
                         decoration: InputDecoration(
-                          labelText: loc.t('create_alert_upper_level'),
+                          labelText: () {
+                            final indicator = _massAlertIndicator;
+                            switch (indicator) {
+                              case IndicatorType.williams:
+                                return 'WPR Upper Level';
+                              case IndicatorType.stoch:
+                                return 'STOCH Upper Level';
+                              case IndicatorType.rsi:
+                                return loc.t('create_alert_upper_level');
+                            }
+                          }(),
                           border: const OutlineInputBorder(),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(
@@ -1682,9 +1837,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             decimal: true),
                         onChanged: (value) {
                           final upper = double.tryParse(value);
-                          if (upper != null && upper >= 0 && upper <= 100) {
+                          bool isValid = false;
+                          if (_massAlertIndicator == IndicatorType.williams) {
+                            // WPR: -100 to 0, and upper must be greater than lower
+                            isValid = upper != null && upper >= -100 && upper <= 0 && upper > _massAlertLowerLevel;
+                          } else {
+                            // RSI/STOCH: 0 to 100, and upper must be greater than lower
+                            isValid = upper != null && upper >= 0 && upper <= 100 && upper > _massAlertLowerLevel;
+                          }
+                          if (isValid && upper != _massAlertUpperLevel) {
                             setState(() {
-                              _massAlertUpperLevel = upper;
+                              _massAlertUpperLevel = upper!;
                             });
                             _saveState();
                             if (_massAlertEnabled) {
@@ -1751,23 +1914,46 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         );
       }
 
-      // Get existing watchlist alerts to avoid duplicates
+      // Get existing watchlist alerts for THIS INDICATOR to avoid duplicates
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
+      final indicatorType = _massAlertIndicator;
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      
+      // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
+      // Use fromJson to normalize indicator values when comparing
       final existingWatchlistAlerts = allAlerts
-          .where((a) =>
-              a.description != null &&
-              a.description!.toUpperCase().contains('WATCHLIST:'))
+          .where((a) {
+            if (a.description == null) return false;
+            // Check if description matches
+            if (a.description != watchlistAlertDescription) {
+              // Also check alternative description format for WPR (if server returned 'williams')
+              if (indicatorType == IndicatorType.williams) {
+                final altDescription = 'WATCHLIST: Mass alert for williams';
+                if (a.description != altDescription) return false;
+              } else {
+                return false;
+              }
+            }
+            // Check if indicator matches (normalize using fromJson to handle both 'wpr' and 'williams')
+            try {
+              final alertIndicatorType = IndicatorType.fromJson(a.indicator);
+              return alertIndicatorType == indicatorType;
+            } catch (e) {
+              return false;
+            }
+          })
           .toList();
-      // Create a set of symbols that already have watchlist alerts
+      // Create a set of symbols that already have watchlist alerts for this indicator
       final existingWatchlistSymbols =
           existingWatchlistAlerts.map((a) => a.symbol).toSet();
 
       // Check for existing custom alerts with same parameters to avoid duplicates
+      // Exclude watchlist alerts (both old format and new format)
       final existingCustomAlerts = allAlerts
           .where((a) =>
-              a.description == null ||
-              !a.description!.toUpperCase().contains('WATCHLIST:'))
+              (a.description == null ||
+              (!a.description!.toUpperCase().contains('WATCHLIST:'))))
           .toList();
 
       // Create a set of symbols that already have custom alerts with same parameters
@@ -1876,20 +2062,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..active = true
             ..repeatable = _massAlertRepeatable
             ..soundEnabled = true
-            ..description = 'WATCHLIST: Mass alert for all instruments'
+            ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
             ..createdAt = createdAt;
 
           await widget.isar.alertRules.put(alert);
           createdAlerts.add(alert);
 
           // Initialize alert state with current indicator value to prevent immediate notifications
+          // Set lastFireTs to current time to activate cooldown and prevent spam notifications
           final symbolData = symbolValues[item.symbol];
           if (symbolData != null) {
             final alertState = AlertState()
               ..ruleId = alert.id
               ..lastIndicatorValue = symbolData['value'] as double
               ..lastSide = symbolData['side'] as String?
-              ..lastBarTs = symbolData['barTs'] as int;
+              ..lastBarTs = symbolData['barTs'] as int
+              ..lastFireTs = DateTime.now().millisecondsSinceEpoch ~/ 1000; // Set to activate cooldown
             await widget.isar.alertStates.put(alertState);
           }
         }
@@ -1972,37 +2160,39 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _deleteMassAlerts() async {
     try {
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 16),
-                const Text('Deleting Watchlist Alert...'),
-              ],
-            ),
-            duration: const Duration(seconds: 30),
-          ),
-        );
-      }
-
-      // Filter in memory since Isar doesn't support description filtering directly
+      // Filter in memory - delete only alerts for the CURRENT indicator
       final allAlerts = await widget.isar.alertRules.where().findAll();
+      final indicatorType = _massAlertIndicator;
+      final indicatorName = indicatorType.toJson();
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      
+      // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
+      // Use fromJson to normalize indicator values when comparing
       final alerts = allAlerts
-          .where((a) =>
-              a.description != null &&
-              a.description!.toUpperCase().contains('WATCHLIST:'))
+          .where((a) {
+            if (a.description == null) return false;
+            // Check if description matches
+            if (a.description != watchlistAlertDescription) {
+              // Also check alternative description format for WPR (if server returned 'williams')
+              if (indicatorType == IndicatorType.williams) {
+                final altDescription = 'WATCHLIST: Mass alert for williams';
+                if (a.description != altDescription) return false;
+              } else {
+                return false;
+              }
+            }
+            // Check if indicator matches (normalize using fromJson to handle both 'wpr' and 'williams')
+            try {
+              final alertIndicatorType = IndicatorType.fromJson(a.indicator);
+              return alertIndicatorType == indicatorType;
+            } catch (e) {
+              return false;
+            }
+          })
           .toList();
 
       if (alerts.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('No Watchlist Alerts to delete'),
@@ -2012,76 +2202,75 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         return;
       }
 
+      debugPrint('_deleteMassAlerts: Found ${alerts.length} alerts to delete');
+
       // Collect alerts for syncing deletions after transaction
       final alertsToDelete = <AlertRule>[];
 
+      // Delete all alerts in one transaction
       await widget.isar.writeTxn(() async {
         for (final alert in alerts) {
           // Skip if alert doesn't have a valid id
-          if (alert.id <= 0) {
+          final alertId = alert.id;
+          if (alertId <= 0) {
             continue;
           }
 
-          // Delete alert state first (safely check for null)
+          // Delete alert state first
           try {
             final alertState = await widget.isar.alertStates
                 .filter()
-                .ruleIdEqualTo(alert.id)
+                .ruleIdEqualTo(alertId)
                 .findFirst();
-            if (alertState != null) {
-              final stateId = alertState.id;
-              if (stateId > 0) {
-                await widget.isar.alertStates.delete(stateId);
-              }
+            if (alertState != null && alertState.id > 0) {
+              await widget.isar.alertStates.delete(alertState.id);
             }
           } catch (e) {
-            debugPrint('Error deleting alert state for alert ${alert.id}: $e');
-            // Continue with deletion even if state deletion fails
+            // Ignore errors - state may not exist
           }
 
           // Delete alert events
           try {
             final events = await widget.isar.alertEvents
                 .filter()
-                .ruleIdEqualTo(alert.id)
+                .ruleIdEqualTo(alertId)
                 .findAll();
             for (final event in events) {
-              final eventId = event.id;
-              if (eventId > 0) {
-                await widget.isar.alertEvents.delete(eventId);
+              if (event.id > 0) {
+                await widget.isar.alertEvents.delete(event.id);
               }
             }
           } catch (e) {
-            debugPrint('Error deleting alert events for alert ${alert.id}: $e');
-            // Continue with deletion even if events deletion fails
+            // Ignore errors - events may not exist
           }
 
           // Delete alert from local database
-          await widget.isar.alertRules.delete(alert.id);
+          await widget.isar.alertRules.delete(alertId);
           alertsToDelete.add(alert);
         }
       });
 
-      // Sync deletions in parallel (outside transaction)
-      if (alertsToDelete.isNotEmpty) {
-        unawaited(Future.wait(
-          alertsToDelete.map(
-              (alert) => AlertSyncService.deleteAlert(alert, hardDelete: true)),
-        ));
-      }
+      debugPrint('_deleteMassAlerts: Deleted ${alertsToDelete.length} alerts from local database');
 
-      // Update UI and show success message
+      // Update UI immediately (don't wait for server sync)
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               'Watchlist Alert: ${alertsToDelete.length} alert(s) deleted',
             ),
             backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 2),
           ),
         );
+      }
+
+      // Sync deletions in parallel (non-blocking, after UI update)
+      if (alertsToDelete.isNotEmpty) {
+        unawaited(Future.wait(
+          alertsToDelete.map(
+              (alert) => AlertSyncService.deleteAlert(alert, hardDelete: true)),
+        ));
       }
     } catch (e) {
       debugPrint('Error deleting mass alerts: $e');
@@ -2101,11 +2290,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _updateMassAlerts() async {
-    if (!_massAlertEnabled || _watchlistItems.isEmpty) return;
+    if (!_massAlertEnabled || _watchlistItems.isEmpty) {
+      debugPrint('_updateMassAlerts: Skipped - enabled: $_massAlertEnabled, items: ${_watchlistItems.length}');
+      return;
+    }
 
     try {
       // Use mass alert settings (independent from view settings)
       final indicatorName = _massAlertIndicator.toJson();
+      debugPrint('_updateMassAlerts: Starting update for indicator=$indicatorName, timeframe=$_massAlertTimeframe');
 
       Map<String, dynamic>? indicatorParams;
       if (_massAlertIndicator == IndicatorType.stoch &&
@@ -2117,19 +2310,48 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final watchlistSymbols =
           _watchlistItems.map((item) => item.symbol).toSet();
 
-      // Get existing watchlist alerts
+      // Get existing watchlist alerts for THIS INDICATOR
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
+      final indicatorType = _massAlertIndicator;
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      
+      // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
+      // Use fromJson to normalize indicator values when comparing
       final existingAlerts = allAlerts
-          .where((a) =>
-              a.description != null &&
-              a.description!.toUpperCase().contains('WATCHLIST:'))
+          .where((a) {
+            if (a.description == null) return false;
+            // Check if description matches
+            if (a.description != watchlistAlertDescription) {
+              // Also check alternative description format for WPR (if server returned 'williams')
+              if (indicatorType == IndicatorType.williams) {
+                final altDescription = 'WATCHLIST: Mass alert for williams';
+                if (a.description != altDescription) return false;
+              } else {
+                return false;
+              }
+            }
+            // Check if indicator matches (normalize using fromJson to handle both 'wpr' and 'williams')
+            try {
+              final alertIndicatorType = IndicatorType.fromJson(a.indicator);
+              return alertIndicatorType == indicatorType;
+            } catch (e) {
+              return false;
+            }
+          })
           .toList();
+      
+      debugPrint('_updateMassAlerts: Found ${existingAlerts.length} existing alerts for $indicatorName');
 
+      final alertsToSync = <AlertRule>[];
       await widget.isar.writeTxn(() async {
         // Update existing alerts
         for (final alert in existingAlerts) {
           if (watchlistSymbols.contains(alert.symbol)) {
+            // Check if timeframe actually changed - if so, delete alert state
+            final timeframeChanged = alert.timeframe != _massAlertTimeframe;
+            debugPrint('_updateMassAlerts: Updating alert for ${alert.symbol}, old timeframe=${alert.timeframe}, new timeframe=$_massAlertTimeframe, changed=$timeframeChanged');
+            
             alert.timeframe = _massAlertTimeframe;
             alert.indicator = indicatorName;
             alert.period = _massAlertPeriod;
@@ -2140,7 +2362,23 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             alert.repeatable = _massAlertRepeatable;
 
             await widget.isar.alertRules.put(alert);
-            unawaited(AlertSyncService.syncAlert(widget.isar, alert));
+            alertsToSync.add(alert);
+            
+            // If timeframe changed, delete alert state to reset it
+            if (timeframeChanged) {
+              try {
+                final alertState = await widget.isar.alertStates
+                    .filter()
+                    .ruleIdEqualTo(alert.id)
+                    .findFirst();
+                if (alertState != null && alertState.id > 0) {
+                  await widget.isar.alertStates.delete(alertState.id);
+                  debugPrint('_updateMassAlerts: Deleted alert state for ${alert.symbol} due to timeframe change');
+                }
+              } catch (e) {
+                // Ignore errors - state may not exist
+              }
+            }
           } else {
             // Remove alerts for symbols no longer in watchlist
             // Delete alert state
@@ -2153,8 +2391,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 await widget.isar.alertStates.delete(alertState.id);
               }
             } catch (e) {
-              debugPrint(
-                  'Error deleting alert state for alert ${alert.id}: $e');
+              // Ignore errors - state may not exist
             }
             // Delete alert events
             try {
@@ -2194,18 +2431,29 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ..mode = _massAlertMode
               ..cooldownSec = _massAlertCooldownSec
               ..active = true
-              ..repeatable = _massAlertRepeatable
-              ..soundEnabled = true
-              ..description = 'WATCHLIST: Mass alert for all instruments'
-              ..createdAt = createdAt;
+            ..repeatable = _massAlertRepeatable
+            ..soundEnabled = true
+            ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
+            ..createdAt = createdAt;
 
             await widget.isar.alertRules.put(alert);
             unawaited(AlertSyncService.syncAlert(widget.isar, alert));
           }
         }
       });
+      
+      // Sync all updated alerts after transaction completes
+      if (alertsToSync.isNotEmpty) {
+        debugPrint('_updateMassAlerts: Syncing ${alertsToSync.length} updated alerts');
+        for (final alert in alertsToSync) {
+          unawaited(AlertSyncService.syncAlert(widget.isar, alert));
+        }
+      } else {
+        debugPrint('_updateMassAlerts: No alerts to sync');
+      }
     } catch (e) {
       debugPrint('Error updating mass alerts: $e');
+      debugPrint(e.toString());
     }
   }
 }
@@ -2214,10 +2462,12 @@ class _SymbolIndicatorData {
   final double currentIndicatorValue;
   final List<double> indicatorValues;
   final List<int> timestamps;
+  final List<IndicatorResult> indicatorResults; // Full results for chart
 
   _SymbolIndicatorData({
     required this.currentIndicatorValue,
     required this.indicatorValues,
     required this.timestamps,
+    required this.indicatorResults,
   });
 }

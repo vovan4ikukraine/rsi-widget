@@ -121,16 +121,24 @@ class AlertState {
   double? get lastAu => indicatorState?['au'] as double?;
   @Deprecated('Use indicatorState instead')
   set lastAu(double? value) {
-    indicatorState ??= {};
-    indicatorState!['au'] = value;
+    final currentState = indicatorState;
+    if (currentState == null) {
+      indicatorState = {'au': value};
+    } else {
+      indicatorState = {...currentState, 'au': value};
+    }
   }
 
   @Deprecated('Use indicatorState instead')
   double? get lastAd => indicatorState?['ad'] as double?;
   @Deprecated('Use indicatorState instead')
   set lastAd(double? value) {
-    indicatorState ??= {};
-    indicatorState!['ad'] = value;
+    final currentState = indicatorState;
+    if (currentState == null) {
+      indicatorState = {'ad': value};
+    } else {
+      indicatorState = {...currentState, 'ad': value};
+    }
   }
 }
 

@@ -1,8 +1,6 @@
 enum IndicatorType {
   rsi,
   stoch,
-  macd,
-  bollinger,
   williams;
 
   String get name {
@@ -11,10 +9,6 @@ enum IndicatorType {
         return 'RSI';
       case IndicatorType.stoch:
         return 'STOCH';
-      case IndicatorType.macd:
-        return 'MACD';
-      case IndicatorType.bollinger:
-        return 'BOLL';
       case IndicatorType.williams:
         return 'WPR';
     }
@@ -26,10 +20,6 @@ enum IndicatorType {
         return 'RSI (Relative Strength Index)';
       case IndicatorType.stoch:
         return 'Stochastic Oscillator';
-      case IndicatorType.macd:
-        return 'MACD (Moving Average Convergence Divergence)';
-      case IndicatorType.bollinger:
-        return 'Bollinger Bands';
       case IndicatorType.williams:
         return 'Williams %R';
     }
@@ -41,11 +31,7 @@ enum IndicatorType {
       case IndicatorType.rsi:
         return 14;
       case IndicatorType.stoch:
-        return 6; // %K period
-      case IndicatorType.macd:
-        return 12; // Fast EMA period
-      case IndicatorType.bollinger:
-        return 20; // SMA period
+        return 6; // %K period (Yahoo Finance default: 6)
       case IndicatorType.williams:
         return 14;
     }
@@ -58,10 +44,6 @@ enum IndicatorType {
         return [30, 70];
       case IndicatorType.stoch:
         return [20, 80];
-      case IndicatorType.macd:
-        return [0]; // Signal line crossover
-      case IndicatorType.bollinger:
-        return [0]; // Band touch
       case IndicatorType.williams:
         return [-80, -20];
     }
@@ -73,11 +55,11 @@ enum IndicatorType {
       case IndicatorType.rsi:
         return {};
       case IndicatorType.stoch:
-        return {'dPeriod': 3}; // %D smoothing period
-      case IndicatorType.macd:
-        return {'slowPeriod': 26, 'signalPeriod': 9};
-      case IndicatorType.bollinger:
-        return {'stdDev': 2.0};
+        return {
+          'slowPeriod': 3, // %K smoothing period (Slow Stochastic)
+          'dPeriod': 6, // %D period
+          'smoothPeriod': 3, // %D smoothing period
+        };
       case IndicatorType.williams:
         return {};
     }
@@ -86,6 +68,18 @@ enum IndicatorType {
   /// Convert to string for storage
   String toJson() => name.toLowerCase();
 
+  /// Convert to server API format (different from toJson for some indicators)
+  String toServerJson() {
+    switch (this) {
+      case IndicatorType.rsi:
+        return 'rsi';
+      case IndicatorType.stoch:
+        return 'stoch';
+      case IndicatorType.williams:
+        return 'williams'; // Server expects 'williams', not 'wpr'
+    }
+  }
+
   /// Create from string
   static IndicatorType fromJson(String value) {
     switch (value.toLowerCase()) {
@@ -93,11 +87,6 @@ enum IndicatorType {
         return IndicatorType.rsi;
       case 'stoch':
         return IndicatorType.stoch;
-      case 'macd':
-        return IndicatorType.macd;
-      case 'bollinger':
-      case 'boll':
-        return IndicatorType.bollinger;
       case 'williams':
       case 'wpr':
         return IndicatorType.williams;

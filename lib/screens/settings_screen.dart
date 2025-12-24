@@ -8,6 +8,8 @@ import '../services/yahoo_proto.dart';
 import '../services/auth_service.dart';
 import '../services/alert_sync_service.dart';
 import '../services/data_sync_service.dart';
+import '../services/widget_service.dart';
+import '../models/indicator_type.dart';
 import '../state/app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,13 +27,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
   String _theme = 'dark';
   String _language = 'ru';
+  IndicatorType _widgetIndicator = IndicatorType.rsi;
   StreamSubscription? _authSubscription;
   bool _isSignedIn = false;
+  WidgetService? _widgetService;
 
   @override
   void initState() {
     super.initState();
     _isSignedIn = AuthService.isSignedIn;
+    if (widget.isar != null) {
+      _widgetService = WidgetService(
+        isar: widget.isar!,
+        yahooService: YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev'),
+      );
+    }
     _loadSettings();
 
     // Listen to auth state changes
@@ -52,12 +62,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedWidgetIndicator = prefs.getString('rsi_widget_indicator');
     setState(() {
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _soundEnabled = prefs.getBool('sound_enabled') ?? true;
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _theme = prefs.getString('theme') ?? 'dark';
       _language = prefs.getString('language') ?? 'ru';
+      _widgetIndicator = savedWidgetIndicator != null
+          ? IndicatorType.fromJson(savedWidgetIndicator)
+          : IndicatorType.rsi;
     });
   }
 
@@ -68,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
     await prefs.setString('language', _language);
+    await prefs.setString('rsi_widget_indicator', _widgetIndicator.toJson());
   }
 
   @override
@@ -148,6 +163,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     : loc.t('settings_language_english')),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _showLanguageDialog(appState),
+              ),
+            ],
+          ),
+
+          // Widget
+          _buildSectionCard(
+            title: 'Widget Settings',
+            icon: Icons.widgets,
+            children: [
+              ListTile(
+                title: const Text('Widget Indicator'),
+                subtitle: Text(_widgetIndicator.displayName),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: widget.isar != null ? () => _showWidgetIndicatorDialog(loc) : null,
               ),
             ],
           ),
@@ -469,6 +498,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(loc.t('settings_ok')),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showWidgetIndicatorDialog(AppLocalizations loc) async {
+    if (widget.isar == null) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    final savedTimeframe = prefs.getString('rsi_widget_timeframe') ?? '15m';
+    final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? true;
+    final savedStochDPeriod = prefs.getInt('watchlist_stoch_d_period') ?? 3;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Widget Indicator'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: IndicatorType.values.map((indicator) {
+            return ListTile(
+              title: Text(indicator.displayName),
+              leading: Radio<IndicatorType>(
+                value: indicator,
+                groupValue: _widgetIndicator,
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() {
+                    _widgetIndicator = value;
+                  });
+                  await _saveSettings();
+                  Navigator.pop(context);
+                  
+                  // Update widget with new indicator
+                  if (_widgetService != null) {
+                    // Get period for the selected indicator
+                    final indicatorPeriod = prefs.getInt('watchlist_${value.toJson()}_period') ?? 
+                                           prefs.getInt('home_${value.toJson()}_period') ?? 
+                                           value.defaultPeriod;
+                    final indicatorParams = value == IndicatorType.stoch
+                        ? {'dPeriod': savedStochDPeriod}
+                        : null;
+                    await _widgetService!.updateWidget(
+                      timeframe: savedTimeframe,
+                      rsiPeriod: indicatorPeriod,
+                      sortDescending: savedSortDescending,
+                      indicator: value,
+                      indicatorParams: indicatorParams,
+                    );
+                  }
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Widget indicator updated'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

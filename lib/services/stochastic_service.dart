@@ -7,37 +7,45 @@ class StochasticService {
     List<double> highs,
     List<double> lows,
     List<double> closes,
-    int period,
+    int kPeriod,
   ) {
     if (highs.length != lows.length || highs.length != closes.length) {
       return [];
     }
-    if (highs.length < period) {
+    if (highs.length < kPeriod) {
       return [];
     }
 
     final kValues = <double>[];
 
-    for (int i = period - 1; i < highs.length; i++) {
-      final periodHighs = highs.sublist(i - period + 1, i + 1);
-      final periodLows = lows.sublist(i - period + 1, i + 1);
+    // Calculate %K starting from index kPeriod - 1
+    // %K[i] = ((Close[i] - Lowest Low) / (Highest High - Lowest Low)) × 100
+    // where Highest High and Lowest Low are taken from period [i - kPeriod + 1, i]
+    for (int i = kPeriod - 1; i < highs.length; i++) {
+      // Get high and low values for the period
+      final periodHighs = highs.sublist(i - kPeriod + 1, i + 1);
+      final periodLows = lows.sublist(i - kPeriod + 1, i + 1);
       final close = closes[i];
 
       final highestHigh = periodHighs.reduce((a, b) => a > b ? a : b);
       final lowestLow = periodLows.reduce((a, b) => a < b ? a : b);
 
+      double k;
       if (highestHigh == lowestLow) {
-        kValues.add(50.0);
+        // Avoid division by zero - use 50 as neutral value
+        k = 50.0;
       } else {
-        final k = ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0;
-        kValues.add(k.clamp(0, 100));
+        k = ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0;
+        k = k.clamp(0, 100);
       }
+
+      kValues.add(k);
     }
 
     return kValues;
   }
 
-  /// Calculate Stochastic %D (smoothed %K)
+  /// Calculate Stochastic %D (simple moving average of %K)
   static List<double> computeD(List<double> kValues, int dPeriod) {
     if (kValues.length < dPeriod) {
       return [];
@@ -45,6 +53,8 @@ class StochasticService {
 
     final dValues = <double>[];
 
+    // Calculate %D as SMA of %K
+    // %D[i] = SMA(%K[i - dPeriod + 1..i], dPeriod)
     for (int i = dPeriod - 1; i < kValues.length; i++) {
       final periodValues = kValues.sublist(i - dPeriod + 1, i + 1);
       final d = periodValues.reduce((a, b) => a + b) / dPeriod;
@@ -86,43 +96,142 @@ class StochasticService {
   }
 
   /// Calculate Stochastic history for a list of candles
+  /// Returns results aligned with input candles (like RSI does)
+  /// Supports Slow Stochastic with parameters: kPeriod, slowPeriod, dPeriod, smoothPeriod
   static List<StochasticResult> computeStochasticHistory(
     List<Map<String, dynamic>> candles,
     int kPeriod,
-    int dPeriod,
-  ) {
-    if (candles.length < kPeriod + dPeriod - 1) {
+    int dPeriod, {
+    int? slowPeriod,
+    int? smoothPeriod,
+  }) {
+    // Use Slow Stochastic if slowPeriod is provided
+    final useSlowStochastic = slowPeriod != null && slowPeriod > 1;
+    final slowPeriodValue = slowPeriod ?? 1;
+    final minDataRequired = useSlowStochastic
+        ? kPeriod + slowPeriodValue + dPeriod - 2
+        : kPeriod + dPeriod - 1;
+    
+    if (candles.length < minDataRequired) {
       return [];
     }
 
-    final highs = candles.map((c) => c['high'] as double).toList();
-    final lows = candles.map((c) => c['low'] as double).toList();
-    final closes = candles.map((c) => c['close'] as double).toList();
-    final timestamps = candles.map((c) => c['timestamp'] as int).toList();
+    // Extract and validate data
+    final highs = <double>[];
+    final lows = <double>[];
+    final closes = <double>[];
+    final timestamps = <int>[];
 
-    final kValues = computeK(highs, lows, closes, kPeriod);
+    for (final candle in candles) {
+      final high = (candle['high'] as num?)?.toDouble();
+      final low = (candle['low'] as num?)?.toDouble();
+      final close = (candle['close'] as num?)?.toDouble();
+      final timestamp = (candle['timestamp'] as num?)?.toInt();
+
+      // Skip invalid candles
+      if (high == null ||
+          low == null ||
+          close == null ||
+          timestamp == null ||
+          high < low ||
+          high <= 0 ||
+          low <= 0) {
+        continue;
+      }
+
+      highs.add(high);
+      lows.add(low);
+      closes.add(close);
+      timestamps.add(timestamp);
+    }
+
+    // Check if we have enough valid data
+    if (highs.length < minDataRequired) {
+      return [];
+    }
+
+    // Step 1: Calculate raw %K values (Fast Stochastic %K)
+    // rawKValues[i] corresponds to candle at index (kPeriod - 1 + i)
+    final rawKValues = computeK(highs, lows, closes, kPeriod);
+    if (rawKValues.isEmpty) {
+      return [];
+    }
+
+    // Step 2: Apply Slow Stochastic smoothing if needed
+    // Smooth %K with SMA(slowPeriod) to get Slow Stochastic %K
+    final kValues = useSlowStochastic
+        ? computeD(rawKValues, slowPeriodValue)
+        : rawKValues;
+
     if (kValues.isEmpty) {
       return [];
     }
 
-    final dValues = computeD(kValues, dPeriod);
+    // Step 3: Calculate %D values as SMA of (smoothed) %K
+    // dValues[i] = SMA(kValues[i - dPeriod + 1..i]) for i >= dPeriod - 1
+    var dValues = computeD(kValues, dPeriod);
     if (dValues.isEmpty) {
       return [];
     }
 
+    // Step 4: Apply additional smoothing to %D if smoothPeriod is provided
+    if (smoothPeriod != null && smoothPeriod > 1) {
+      dValues = computeD(dValues, smoothPeriod);
+      if (dValues.isEmpty) {
+        return [];
+      }
+    }
+
+    // Build results aligned with filtered candles
+    // For Slow Stochastic with smoothPeriod:
+    // - rawKValues[i] corresponds to candle at index (kPeriod - 1 + i)
+    // - kValues[i] (smoothed %K) = SMA(rawKValues[i - slowPeriod + 1..i])
+    //   kValues[i] corresponds to rawKValues[slowPeriod - 1 + i], which corresponds to candle at index (kPeriod - 1 + slowPeriod - 1 + i) = (kPeriod + slowPeriod - 2 + i)
+    // - dValues[i] (before smoothing) = SMA(kValues[i - dPeriod + 1..i])
+    //   dValues[i] corresponds to kValues[dPeriod - 1 + i], which corresponds to candle at index (kPeriod + slowPeriod - 2 + dPeriod - 1 + i) = (kPeriod + slowPeriod + dPeriod - 3 + i)
+    // - dValues[i] (after smoothing) = SMA(dValues[i - smoothPeriod + 1..i])
+    //   final dValues[i] corresponds to dValues[smoothPeriod - 1 + i], which corresponds to candle at index (kPeriod + slowPeriod + dPeriod - 3 + smoothPeriod - 1 + i) = (kPeriod + slowPeriod + dPeriod + smoothPeriod - 4 + i)
+    
+    // For Fast Stochastic:
+    // - kValues[i] corresponds to candle at index (kPeriod - 1 + i)
+    // - dValues[i] corresponds to kValues[dPeriod - 1 + i], which corresponds to candle at index (kPeriod - 1 + dPeriod - 1 + i) = (kPeriod + dPeriod - 2 + i)
+    
     final results = <StochasticResult>[];
-    final offset = kPeriod + dPeriod - 2; // Index offset for aligned data
+    
+    // Calculate offsets
+    final slowOffset = useSlowStochastic ? (slowPeriodValue - 1) : 0;
+    final smoothOffset = (smoothPeriod != null && smoothPeriod > 1) ? (smoothPeriod - 1) : 0;
+    
+    // First candle index that has both %K and %D
+    // For Slow Stochastic: kPeriod + slowOffset + dPeriod - 1 + smoothOffset
+    // For Fast Stochastic: kPeriod + dPeriod - 1
+    final firstCandleIndex = kPeriod + slowOffset + dPeriod - 1 + smoothOffset;
 
     for (int i = 0; i < dValues.length; i++) {
-      final idx = offset + i;
-      if (idx < candles.length) {
-        results.add(StochasticResult(
-          k: kValues[i + dPeriod - 1],
-          d: dValues[i],
-          timestamp: timestamps[idx],
-          close: closes[idx],
-        ));
-      }
+      final candleIndex = firstCandleIndex + i;
+      if (candleIndex >= highs.length) break;
+
+      // The %K value that corresponds to this %D value
+      // dValues[i] (after all smoothing) corresponds to:
+      // - For Slow Stochastic: kValues[dPeriod - 1 + smoothOffset + i]
+      // - For Fast Stochastic: kValues[dPeriod - 1 + smoothOffset + i]
+      final kIndexInSmoothed = dPeriod - 1 + smoothOffset + i;
+      if (kIndexInSmoothed >= kValues.length) break;
+
+      // For display, use smoothed %K for Slow Stochastic (which is what Yahoo Finance shows)
+      // For Fast Stochastic, use raw %K
+      final displayK = useSlowStochastic 
+          ? kValues[kIndexInSmoothed]  // Use smoothed %K for Slow Stochastic
+          : (kIndexInSmoothed < rawKValues.length 
+              ? rawKValues[kIndexInSmoothed] 
+              : kValues[kIndexInSmoothed]);
+
+      results.add(StochasticResult(
+        k: displayK,
+        d: dValues[i],
+        timestamp: timestamps[candleIndex],
+        close: closes[candleIndex],
+      ));
     }
 
     return results;
@@ -160,9 +269,10 @@ class StochasticResult {
   });
 
   /// Convert to IndicatorResult format
+  /// Yahoo Finance typically shows %K as the main line
   IndicatorResult toIndicatorResult() {
     return IndicatorResult(
-      value: k, // Use %K as main value
+      value: k, // Use %K as main value (Yahoo Finance shows %K)
       state: IndicatorState({'k': k, 'd': d}),
       timestamp: timestamp,
       close: close,

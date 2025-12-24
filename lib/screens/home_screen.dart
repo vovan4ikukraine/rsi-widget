@@ -10,7 +10,8 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
-import '../widgets/rsi_chart.dart';
+import '../widgets/indicator_chart.dart';
+import '../widgets/indicator_zone_indicator.dart';
 import '../localization/app_localizations.dart';
 import '../services/symbol_search_service.dart';
 import '../services/alert_sync_service.dart';
@@ -48,7 +49,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _indicatorPeriod = 14; // Indicator period (universal)
   double _lowerLevel = 30.0; // Lower zone
   double _upperLevel = 70.0; // Upper zone
+  IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   List<double> _indicatorValues = []; // Universal indicator values
+  List<IndicatorResult> _indicatorResults = []; // Full indicator results for chart
   List<int> _indicatorTimestamps = []; // Timestamps for each indicator point
   double _currentIndicatorValue = 0.0;
   bool _isLoading = false;
@@ -98,24 +101,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _appState = AppStateScope.of(context);
+    _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
   }
 
-  void _onIndicatorChanged() {
+  void _onIndicatorChanged() async {
     if (_appState != null) {
+      final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
+      
+      // Save current settings for the PREVIOUS indicator before switching
+      if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
+        await prefs.setInt(
+          'home_${_previousIndicatorType!.toJson()}_period',
+          _indicatorPeriod,
+        );
+        await prefs.setDouble(
+          'home_${_previousIndicatorType!.toJson()}_lower_level',
+          _lowerLevel,
+        );
+        await prefs.setDouble(
+          'home_${_previousIndicatorType!.toJson()}_upper_level',
+          _upperLevel,
+        );
+        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+          await prefs.setInt('home_stoch_d_period', _stochDPeriod!);
+        }
+      }
 
-      // Update settings to match the new indicator
+      // Load saved settings for the new indicator, or use defaults
+      // IMPORTANT: Always use defaults if no saved settings exist, don't use current values
+      final savedPeriod = prefs.getInt('home_${indicatorType.toJson()}_period');
+      final savedLowerLevel = prefs.getDouble('home_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = prefs.getDouble('home_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
       setState(() {
-        _indicatorPeriod = indicatorType.defaultPeriod;
-        _lowerLevel = indicatorType.defaultLevels.first;
-        _upperLevel = indicatorType.defaultLevels.length > 1
-            ? indicatorType.defaultLevels[1]
-            : 100.0;
+        // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
+        _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
 
-        // For Stochastic, set default %D period
+        // For Stochastic, load saved %D period or use default
         if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = 3;
+          _stochDPeriod = prefs.getInt('home_stoch_d_period') ?? 3;
         } else {
           _stochDPeriod = null;
         }
@@ -131,8 +170,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       });
 
-      // Save updated settings
-      _saveState();
+      // Update previous indicator type AFTER loading new settings
+      _previousIndicatorType = indicatorType;
+
+      // Save loaded settings so they persist for next time
+      await _saveState();
 
       // Reload data when indicator changes
       _loadIndicatorData();
@@ -209,12 +251,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _indicatorPeriod = prefsData['rsiPeriod'] as int? ??
             prefs.getInt('home_${indicatorType.toJson()}_period') ??
             indicatorType.defaultPeriod;
-        _lowerLevel = prefsData['lowerLevel'] as double? ??
-            prefs.getDouble('home_lower_level') ??
-            30.0;
-        _upperLevel = prefsData['upperLevel'] as double? ??
-            prefs.getDouble('home_upper_level') ??
-            70.0;
+        
+        // Validate levels from server - must be in valid range for current indicator
+        final serverLowerLevel = prefsData['lowerLevel'] as double?;
+        final serverUpperLevel = prefsData['upperLevel'] as double?;
+        final savedLowerLevel = serverLowerLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_lower_level');
+        final savedUpperLevel = serverUpperLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_upper_level');
+        
+        // Check if saved values are in valid range for this indicator
+        final savedLowerValid = savedLowerLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+        final savedUpperValid = savedUpperLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+        
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
       } else {
         // Fallback to local preferences
         _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
@@ -224,8 +280,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _indicatorPeriod =
             prefs.getInt('home_${indicatorType.toJson()}_period') ??
                 indicatorType.defaultPeriod;
-        _lowerLevel = prefs.getDouble('home_lower_level') ?? 30.0;
-        _upperLevel = prefs.getDouble('home_upper_level') ?? 70.0;
+        _lowerLevel =
+            prefs.getDouble('home_${indicatorType.toJson()}_lower_level') ??
+                indicatorType.defaultLevels.first;
+        _upperLevel =
+            prefs.getDouble('home_${indicatorType.toJson()}_upper_level') ??
+                (indicatorType.defaultLevels.length > 1
+                    ? indicatorType.defaultLevels[1]
+                    : 100.0);
       }
     } else {
       // Anonymous mode: load from cache
@@ -240,12 +302,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _indicatorPeriod = cacheData['rsiPeriod'] as int? ??
           prefs.getInt('home_${indicatorType.toJson()}_period') ??
           indicatorType.defaultPeriod;
-      _lowerLevel = cacheData['lowerLevel'] as double? ??
-          prefs.getDouble('home_lower_level') ??
-          30.0;
-      _upperLevel = cacheData['upperLevel'] as double? ??
-          prefs.getDouble('home_upper_level') ??
-          70.0;
+      
+      // Validate levels from cache - must be in valid range for current indicator
+      final cacheLowerLevel = cacheData['lowerLevel'] as double?;
+      final cacheUpperLevel = cacheData['upperLevel'] as double?;
+      final savedLowerLevel = cacheLowerLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = cacheUpperLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
+      _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+      _upperLevel = savedUpperValid ? savedUpperLevel :
+          (indicatorType.defaultLevels.length > 1
+              ? indicatorType.defaultLevels[1]
+              : 100.0);
     }
 
     // Initialize symbol controller
@@ -459,11 +535,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   indicatorTimestamps.length - maxChartPoints,
                 )
               : indicatorTimestamps;
+      final chartIndicatorResults = indicatorResults.length > maxChartPoints
+          ? indicatorResults.sublist(
+              indicatorResults.length - maxChartPoints,
+            )
+          : indicatorResults;
 
       setState(() {
         _selectedSymbol = requestedSymbol;
         _indicatorValues = chartIndicatorValues;
         _indicatorTimestamps = chartIndicatorTimestamps;
+        _indicatorResults = chartIndicatorResults;
         _currentIndicatorValue =
             indicatorValues.isNotEmpty ? indicatorValues.last : 0.0;
         _dataSource = dataSource;
@@ -655,53 +737,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadIndicatorData,
-              child: GestureDetector(
-                onTap: () {
-                  // Remove focus when tapping on screen
-                  FocusScope.of(context).unfocus();
-                },
-                behavior: HitTestBehavior.opaque,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 14,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Symbol and timeframe selection
-                      _buildSymbolSelector(),
-                      const SizedBox(height: 10),
+          : Column(
+              children: [
+                // Indicator selector (always at top, fixed)
+                if (_appState != null)
+                  IndicatorSelector(appState: _appState!),
+                
+                // Scrollable content
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadIndicatorData,
+                    child: GestureDetector(
+                      onTap: () {
+                        // Remove focus when tapping on screen
+                        FocusScope.of(context).unfocus();
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 14,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Symbol and timeframe selection
+                            _buildSymbolSelector(),
+                            const SizedBox(height: 10),
 
-                      // RSI settings
-                      _buildIndicatorSettingsCard(),
-                      const SizedBox(height: 10),
+                            // Indicator settings
+                            _buildIndicatorSettingsCard(),
+                            const SizedBox(height: 10),
 
-                      // Current RSI
-                      // Indicator selector
-                      if (_appState != null)
-                        IndicatorSelector(appState: _appState!),
+                            // Current indicator value
+                            _buildCurrentIndicatorCard(),
+                            const SizedBox(height: 10),
 
-                      _buildCurrentIndicatorCard(),
-                      const SizedBox(height: 10),
+                            // Indicator chart
+                            _buildIndicatorChart(),
+                            const SizedBox(height: 10),
 
-                      // Indicator chart
-                      _buildIndicatorChart(),
-                      const SizedBox(height: 10),
+                            // Active alerts
+                            _buildActiveAlerts(),
+                            const SizedBox(height: 10),
 
-                      // Active alerts
-                      _buildActiveAlerts(),
-                      const SizedBox(height: 10),
-
-                      // Quick actions
-                      _buildQuickActions(),
-                    ],
+                            // Quick actions
+                            _buildQuickActions(),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
       floatingActionButton: FloatingActionButton(
         tooltip: loc.t('home_create_alert'),
@@ -1096,8 +1185,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 children: [
                   Text(
                     loc.t(
-                      'home_current_rsi_title',
-                      params: {'symbol': _selectedSymbol},
+                      'home_current_indicator_title',
+                      params: {
+                        'indicator': indicatorType.name,
+                        'symbol': _selectedSymbol,
+                      },
                     ),
                     style: const TextStyle(
                       fontSize: 16,
@@ -1116,10 +1208,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            RsiZoneIndicator(
+            IndicatorZoneIndicator(
               value: _currentIndicatorValue,
               symbol: _selectedSymbol,
               levels: [_lowerLevel, _upperLevel],
+              indicatorType: indicatorType,
             ),
           ],
         ),
@@ -1156,9 +1249,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 8),
-            RsiChart(
-              rsiValues: _indicatorValues,
+            IndicatorChart(
+              indicatorResults: _indicatorResults,
               timestamps: _indicatorTimestamps,
+              indicatorType: indicatorType,
               symbol: _selectedSymbol,
               timeframe: _selectedTimeframe,
               levels: [_lowerLevel, _upperLevel],
@@ -1264,9 +1358,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _saveState();
     }
 
+    // Validate levels based on indicator type
+    // For Williams %R, allow -100 to 0; for others, allow 0 to 100
+    final minAllowed = indicatorType == IndicatorType.williams ? -100.0 : 0.0;
+    final maxAllowed = indicatorType == IndicatorType.williams ? 0.0 : 100.0;
+
     if (lower != null &&
-        lower >= 0 &&
-        lower <= 100 &&
+        lower >= minAllowed &&
+        lower <= maxAllowed &&
         lower < _upperLevel &&
         lower != _lowerLevel) {
       _lowerLevel = lower;
@@ -1275,8 +1374,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (upper != null &&
-        upper >= 0 &&
-        upper <= 100 &&
+        upper >= minAllowed &&
+        upper <= maxAllowed &&
         upper > _lowerLevel &&
         upper != _upperLevel) {
       _upperLevel = upper;
@@ -1305,10 +1404,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           : 100.0;
       if (indicatorType == IndicatorType.stoch) {
         _stochDPeriod = 3;
+      } else {
+        _stochDPeriod = null;
+      }
+      // Update controllers to show reset values
+      _indicatorPeriodController.text = _indicatorPeriod.toString();
+      _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+      _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+      if (_stochDPeriod != null) {
+        _stochDPeriodController.text = _stochDPeriod.toString();
+      } else {
+        _stochDPeriodController.clear();
       }
     });
     _saveState();
-    _clearControllers();
     _loadIndicatorData();
   }
 
@@ -1366,9 +1475,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: TextField(
                           controller: _indicatorPeriodController,
                           decoration: InputDecoration(
-                            labelText: indicatorType == IndicatorType.stoch
-                                ? '%K Period'
-                                : loc.t('home_rsi_period_label'),
+                            labelText: () {
+                              switch (indicatorType) {
+                                case IndicatorType.stoch:
+                                  return '%K Period';
+                                case IndicatorType.williams:
+                                  return 'WPR Period';
+                                case IndicatorType.rsi:
+                                  return loc.t('home_rsi_period_label');
+                              }
+                            }(),
                             border: const OutlineInputBorder(),
                             isDense: true,
                           ),
