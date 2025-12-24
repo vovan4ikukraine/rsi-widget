@@ -478,7 +478,7 @@ app.post('/alerts/create', async (c) => {
         }
         const isWilliams = alertIndicator === 'williams';
         const minLevel = isWilliams ? -100 : 0;
-        const maxLevel = 100;
+        const maxLevel = isWilliams ? 0 : 100;
         for (const level of levels) {
             if (typeof level !== 'number' || !isFinite(level)) {
                 return c.json({ error: `Invalid level: must be a finite number` }, 400);
@@ -635,7 +635,7 @@ app.put('/alerts/:ruleId', async (c) => {
             const updateIndicator = updates.indicator || existing.indicator || 'rsi';
             const isWilliams = updateIndicator === 'williams';
             const minLevel = isWilliams ? -100 : 0;
-            const maxLevel = 100;
+            const maxLevel = isWilliams ? 0 : 100;
             for (const level of updates.levels) {
                 if (typeof level !== 'number' || !isFinite(level)) {
                     return c.json({ error: `Invalid level: must be a finite number` }, 400);
@@ -986,15 +986,16 @@ const worker: ExportedHandler<Env> = {
             }
 
             // Validate levels if provided
+            // Allow -100 to 100 to support all indicators (RSI/STOCH: 0-100, WPR: -100-0)
             if (lower_level !== undefined && lower_level !== null) {
-                if (typeof lower_level !== 'number' || lower_level < 0 || lower_level > 100 || !isFinite(lower_level)) {
-                    return c.json({ error: 'Invalid lower_level: must be number between 0 and 100' }, 400);
+                if (typeof lower_level !== 'number' || lower_level < -100 || lower_level > 100 || !isFinite(lower_level)) {
+                    return c.json({ error: 'Invalid lower_level: must be number between -100 and 100' }, 400);
                 }
             }
 
             if (upper_level !== undefined && upper_level !== null) {
-                if (typeof upper_level !== 'number' || upper_level < 0 || upper_level > 100 || !isFinite(upper_level)) {
-                    return c.json({ error: 'Invalid upper_level: must be number between 0 and 100' }, 400);
+                if (typeof upper_level !== 'number' || upper_level < -100 || upper_level > 100 || !isFinite(upper_level)) {
+                    return c.json({ error: 'Invalid upper_level: must be number between -100 and 100' }, 400);
                 }
             }
 

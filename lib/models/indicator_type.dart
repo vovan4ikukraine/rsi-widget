@@ -68,6 +68,18 @@ enum IndicatorType {
   /// Convert to string for storage
   String toJson() => name.toLowerCase();
 
+  /// Convert to server API format (different from toJson for some indicators)
+  String toServerJson() {
+    switch (this) {
+      case IndicatorType.rsi:
+        return 'rsi';
+      case IndicatorType.stoch:
+        return 'stoch';
+      case IndicatorType.williams:
+        return 'williams'; // Server expects 'williams', not 'wpr'
+    }
+  }
+
   /// Create from string
   static IndicatorType fromJson(String value) {
     switch (value.toLowerCase()) {

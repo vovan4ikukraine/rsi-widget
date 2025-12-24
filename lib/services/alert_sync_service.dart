@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
 
 import '../models.dart';
+import '../models/indicator_type.dart';
 import 'user_service.dart';
 import 'firebase_service.dart';
 import 'auth_service.dart';
@@ -303,18 +304,27 @@ class AlertSyncService {
     String userId,
   ) async {
     final uri = Uri.parse('$_baseUrl/alerts/create');
+    // Convert indicator to server format (williams -> williams, not wpr)
+    final indicatorType = IndicatorType.fromJson(alert.indicator);
+    final serverIndicator = indicatorType.toServerJson();
+    
     final payload = {
       'userId': userId,
       'deviceId': await FirebaseService.getDeviceId(),
       'symbol': alert.symbol,
       'timeframe': alert.timeframe,
-      'indicator': alert.indicator,
+      'indicator': serverIndicator,
       'period': alert.period,
       'indicatorParams': alert.indicatorParams,
       'levels': alert.levels,
       'mode': alert.mode,
       'cooldownSec': alert.cooldownSec,
     };
+
+    if (kDebugMode) {
+      debugPrint('AlertSyncService: Creating alert ${alert.id} with indicator=${alert.indicator} -> serverIndicator=$serverIndicator, levels=${alert.levels}');
+      debugPrint('AlertSyncService: Payload indicator=${payload['indicator']}, levels=${payload['levels']}');
+    }
 
     final response = await http.post(
       uri,
@@ -355,11 +365,15 @@ class AlertSyncService {
   static Future<void> _updateRemoteAlert(AlertRule alert, String userId) async {
     final uri = Uri.parse('$_baseUrl/alerts/${alert.remoteId}');
 
+    // Convert indicator to server format (williams -> williams, not wpr)
+    final indicatorType = IndicatorType.fromJson(alert.indicator);
+    final serverIndicator = indicatorType.toServerJson();
+
     final payload = {
       'userId': userId, // Server expects 'userId', not 'user_id'
       'symbol': alert.symbol,
       'timeframe': alert.timeframe,
-      'indicator': alert.indicator,
+      'indicator': serverIndicator,
       'period': alert.period,
       'indicator_params': alert.indicatorParams != null
           ? jsonEncode(alert.indicatorParams)

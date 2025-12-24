@@ -655,6 +655,9 @@ class _MarketsScreenState extends State<MarketsScreen>
       ),
       body: Column(
         children: [
+          // Indicator selector (always at top)
+          if (_appState != null) IndicatorSelector(appState: _appState!),
+          
           // Timeframe selector
           Card(
             margin: EdgeInsets.zero,
@@ -703,8 +706,6 @@ class _MarketsScreenState extends State<MarketsScreen>
               ),
             ),
           ),
-          // Indicator selector
-          if (_appState != null) IndicatorSelector(appState: _appState!),
 
           // Indicator settings
           Card(

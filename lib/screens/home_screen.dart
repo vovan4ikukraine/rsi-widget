@@ -251,11 +251,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _indicatorPeriod = prefsData['rsiPeriod'] as int? ??
             prefs.getInt('home_${indicatorType.toJson()}_period') ??
             indicatorType.defaultPeriod;
-        _lowerLevel = prefsData['lowerLevel'] as double? ??
-            prefs.getDouble('home_${indicatorType.toJson()}_lower_level') ??
-            indicatorType.defaultLevels.first;
-        _upperLevel = prefsData['upperLevel'] as double? ??
-            prefs.getDouble('home_${indicatorType.toJson()}_upper_level') ??
+        
+        // Validate levels from server - must be in valid range for current indicator
+        final serverLowerLevel = prefsData['lowerLevel'] as double?;
+        final serverUpperLevel = prefsData['upperLevel'] as double?;
+        final savedLowerLevel = serverLowerLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_lower_level');
+        final savedUpperLevel = serverUpperLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_upper_level');
+        
+        // Check if saved values are in valid range for this indicator
+        final savedLowerValid = savedLowerLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+        final savedUpperValid = savedUpperLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+        
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
             (indicatorType.defaultLevels.length > 1
                 ? indicatorType.defaultLevels[1]
                 : 100.0);
@@ -290,14 +302,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _indicatorPeriod = cacheData['rsiPeriod'] as int? ??
           prefs.getInt('home_${indicatorType.toJson()}_period') ??
           indicatorType.defaultPeriod;
-        _lowerLevel = cacheData['lowerLevel'] as double? ??
-            prefs.getDouble('home_${indicatorType.toJson()}_lower_level') ??
-            indicatorType.defaultLevels.first;
-        _upperLevel = cacheData['upperLevel'] as double? ??
-            prefs.getDouble('home_${indicatorType.toJson()}_upper_level') ??
-            (indicatorType.defaultLevels.length > 1
-                ? indicatorType.defaultLevels[1]
-                : 100.0);
+      
+      // Validate levels from cache - must be in valid range for current indicator
+      final cacheLowerLevel = cacheData['lowerLevel'] as double?;
+      final cacheUpperLevel = cacheData['upperLevel'] as double?;
+      final savedLowerLevel = cacheLowerLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_lower_level');
+      final savedUpperLevel = cacheUpperLevel ?? prefs.getDouble('home_${indicatorType.toJson()}_upper_level');
+      
+      // Check if saved values are in valid range for this indicator
+      final savedLowerValid = savedLowerLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+      final savedUpperValid = savedUpperLevel != null &&
+          ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+           (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+      
+      _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+      _upperLevel = savedUpperValid ? savedUpperLevel :
+          (indicatorType.defaultLevels.length > 1
+              ? indicatorType.defaultLevels[1]
+              : 100.0);
     }
 
     // Initialize symbol controller
@@ -713,53 +737,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadIndicatorData,
-              child: GestureDetector(
-                onTap: () {
-                  // Remove focus when tapping on screen
-                  FocusScope.of(context).unfocus();
-                },
-                behavior: HitTestBehavior.opaque,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 14,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Symbol and timeframe selection
-                      _buildSymbolSelector(),
-                      const SizedBox(height: 10),
+          : Column(
+              children: [
+                // Indicator selector (always at top, fixed)
+                if (_appState != null)
+                  IndicatorSelector(appState: _appState!),
+                
+                // Scrollable content
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _loadIndicatorData,
+                    child: GestureDetector(
+                      onTap: () {
+                        // Remove focus when tapping on screen
+                        FocusScope.of(context).unfocus();
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 14,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Symbol and timeframe selection
+                            _buildSymbolSelector(),
+                            const SizedBox(height: 10),
 
-                      // RSI settings
-                      _buildIndicatorSettingsCard(),
-                      const SizedBox(height: 10),
+                            // Indicator settings
+                            _buildIndicatorSettingsCard(),
+                            const SizedBox(height: 10),
 
-                      // Current RSI
-                      // Indicator selector
-                      if (_appState != null)
-                        IndicatorSelector(appState: _appState!),
+                            // Current indicator value
+                            _buildCurrentIndicatorCard(),
+                            const SizedBox(height: 10),
 
-                      _buildCurrentIndicatorCard(),
-                      const SizedBox(height: 10),
+                            // Indicator chart
+                            _buildIndicatorChart(),
+                            const SizedBox(height: 10),
 
-                      // Indicator chart
-                      _buildIndicatorChart(),
-                      const SizedBox(height: 10),
+                            // Active alerts
+                            _buildActiveAlerts(),
+                            const SizedBox(height: 10),
 
-                      // Active alerts
-                      _buildActiveAlerts(),
-                      const SizedBox(height: 10),
-
-                      // Quick actions
-                      _buildQuickActions(),
-                    ],
+                            // Quick actions
+                            _buildQuickActions(),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
       floatingActionButton: FloatingActionButton(
         tooltip: loc.t('home_create_alert'),
@@ -1154,8 +1185,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 children: [
                   Text(
                     loc.t(
-                      'home_current_rsi_title',
-                      params: {'symbol': _selectedSymbol},
+                      'home_current_indicator_title',
+                      params: {
+                        'indicator': indicatorType.name,
+                        'symbol': _selectedSymbol,
+                      },
                     ),
                     style: const TextStyle(
                       fontSize: 16,

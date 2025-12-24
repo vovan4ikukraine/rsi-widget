@@ -192,19 +192,23 @@ export class IndicatorEngine {
             }
 
             const currentValue = indicatorData[indicatorData.length - 1].value;
+            const isFirstCheck = state.last_indicator_value === undefined && state.last_rsi === undefined;
             const previousValue = state.last_indicator_value ?? state.last_rsi ?? indicatorData[indicatorData.length - 2].value;
-            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) ${indicator.toUpperCase()}=${currentValue.toFixed(2)}, previous=${previousValue.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}`);
+            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) ${indicator.toUpperCase()}=${currentValue.toFixed(2)}, previous=${previousValue.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}, firstCheck=${isFirstCheck}`);
 
-            // Check crossings
-            const ruleTriggers = this.checkCrossings(
+            // On first check, don't send notifications - just initialize the state
+            // This prevents spam notifications when alerts are first created
+            const ruleTriggers = isFirstCheck ? [] : this.checkCrossings(
                 rule,
                 currentValue,
                 previousValue,
                 Date.now(),
                 indicator
             );
-            if (ruleTriggers.length === 0) {
+            if (ruleTriggers.length === 0 && !isFirstCheck) {
                 console.log(`Rule ${rule.id}: no trigger this run`);
+            } else if (isFirstCheck) {
+                console.log(`Rule ${rule.id}: first check, skipping triggers to prevent spam`);
             }
 
             // Always update indicator state to prevent duplicate triggers

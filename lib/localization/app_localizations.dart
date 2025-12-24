@@ -108,7 +108,7 @@ class AppLocalizations {
       'common_close': 'Close',
 
       // Home
-      'home_title': 'RSI Widget',
+      'home_title': 'Overview',
       'home_watchlist_tooltip': 'Watchlist',
       'home_alerts_tooltip': 'Alerts',
       'home_settings_tooltip': 'Settings',
@@ -123,7 +123,7 @@ class AppLocalizations {
       'home_upper_zone_label': 'Upper Zone',
       'home_reset_defaults_tooltip': 'Reset to default values',
       'home_apply_changes_tooltip': 'Apply changes',
-      'home_current_rsi_title': 'RSI ({{symbol}})',
+      'home_current_indicator_title': '{{indicator}} ({{symbol}})',
       'home_rsi_chart_title': 'RSI Chart',
       'home_active_alerts_title': 'Active Alerts',
       'home_active_alerts_all': 'All',
@@ -337,7 +337,7 @@ class AppLocalizations {
       'common_close': 'Закрыть',
 
       // Home
-      'home_title': 'RSI Виджет',
+      'home_title': 'Обзор',
       'home_watchlist_tooltip': 'Список наблюдения',
       'home_alerts_tooltip': 'Алерты',
       'home_settings_tooltip': 'Настройки',
@@ -352,7 +352,7 @@ class AppLocalizations {
       'home_upper_zone_label': 'Верхняя зона',
       'home_reset_defaults_tooltip': 'Сбросить на значения по умолчанию',
       'home_apply_changes_tooltip': 'Применить изменения',
-      'home_current_rsi_title': 'RSI ({{symbol}})',
+      'home_current_indicator_title': '{{indicator}} ({{symbol}})',
       'home_rsi_chart_title': 'График RSI',
       'home_active_alerts_title': 'Активные алерты',
       'home_active_alerts_all': 'Все',
