@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/popular_symbols.dart';
+import 'user_service.dart';
 
 final yahooService =
     YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
@@ -53,6 +54,9 @@ class YahooProtoSource {
         }
       }
 
+      // Get userId for activity tracking (optional - doesn't break if null)
+      final userId = UserService.currentUserId;
+      
       final uri = Uri.parse('$endpoint/yf/candles').replace(
         queryParameters: {
           'symbol': symbol,
@@ -60,6 +64,7 @@ class YahooProtoSource {
           if (since != null) 'since': since.toString(),
           'limit': limit.toString(),
           if (debug) 'debug': 'true',
+          if (userId != null) 'userId': userId, // Track user activity when fetching candles
         },
       );
 

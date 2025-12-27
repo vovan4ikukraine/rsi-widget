@@ -4,6 +4,9 @@ import { IndicatorEngine } from './rsi-engine';
 import { FcmService } from './fcm-service';
 import { YahooService } from './yahoo-service';
 import { Logger } from './logger';
+import { adminAuthMiddleware } from './admin/auth';
+import { getAdminStats, getUsers } from './admin/stats';
+import { getProviders, updateProviders } from './admin/providers';
 
 export interface Env {
     KV: KVNamespace;
@@ -26,6 +29,15 @@ async function ensureTables(db: D1Database, env?: any) {
         created_at INTEGER NOT NULL
       )
     `).run();
+
+    // Migration: Add last_seen column if it doesn't exist
+    try {
+        await db.prepare(`ALTER TABLE device ADD COLUMN last_seen INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_seen column may already exist', env);
+        }
+    }
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS alert_rule (
@@ -214,10 +226,28 @@ async function ensureTables(db: D1Database, env?: any) {
     }
 }
 
+/**
+ * Обновить активность устройств пользователя (отметить как активные)
+ * Вызывается при пользовательских действиях (не фоновых)
+ */
+async function updateDeviceActivity(db: D1Database, userId: string) {
+    try {
+        const now = Math.floor(Date.now() / 1000);
+        await db.prepare(`
+            UPDATE device 
+            SET last_seen = ? 
+            WHERE user_id = ?
+        `).bind(now, userId).run();
+    } catch (error) {
+        // Ignore errors - this is non-critical
+        Logger.warn('Failed to update device activity', undefined);
+    }
+}
+
 // CORS middleware
 app.use('*', cors({
     origin: '*',
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-API-Key'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
 
@@ -251,7 +281,7 @@ app.get('/', (c) => {
 // Proxy for Yahoo Finance
 app.get('/yf/candles', async (c) => {
     try {
-        const { symbol, tf, since, limit } = c.req.query();
+        const { symbol, tf, since, limit, userId } = c.req.query();
 
         if (!symbol || !tf) {
             return c.json({ error: 'Missing symbol or timeframe' }, 400);
@@ -259,6 +289,15 @@ app.get('/yf/candles', async (c) => {
 
         const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
         const db = c.env?.DB as D1Database;
+
+        // Update device activity if userId is provided (user opening app/refreshing data)
+        // Use fire-and-forget to not block the response
+        if (userId && db) {
+            // Don't await - this is non-critical and shouldn't slow down the request
+            updateDeviceActivity(db, userId).catch(() => {
+                // Silently ignore errors - activity tracking is not critical
+            });
+        }
 
         // Try to get from D1 cache first (much cheaper than KV)
         if (db) {
@@ -403,10 +442,12 @@ app.post('/device/register', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
+        const nowMs = Date.now();
+        const nowSec = Math.floor(nowMs / 1000);
         const result = await db.prepare(`
-      INSERT OR REPLACE INTO device (id, user_id, fcm_token, platform, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(deviceId, userId, fcmToken, platform, Date.now()).run();
+      INSERT OR REPLACE INTO device (id, user_id, fcm_token, platform, created_at, last_seen)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(deviceId, userId, fcmToken, platform, nowMs, nowSec).run();
 
         return c.json({ success: true, id: result.meta.last_row_id });
     } catch (error) {
@@ -527,6 +568,9 @@ app.post('/alerts/create', async (c) => {
             cooldown, Date.now()
         ).run();
 
+        // Update device activity (user action)
+        await updateDeviceActivity(db, userId);
+
         return c.json({ success: true, id: result.meta.last_row_id });
     } catch (error) {
         Logger.error('Error creating alert rule:', error, c.env);
@@ -545,6 +589,9 @@ app.get('/alerts/:userId', async (c) => {
         const result = await db.prepare(`
       SELECT * FROM alert_rule WHERE user_id = ? AND active = 1
     `).bind(userId).all();
+
+        // Update device activity (user action)
+        await updateDeviceActivity(db, userId);
 
         return c.json({ rules: result.results });
     } catch (error) {
@@ -681,6 +728,9 @@ app.put('/alerts/:ruleId', async (c) => {
       UPDATE alert_rule SET ${fields} WHERE id = ?
     `).bind(...values).run();
 
+        // Update device activity (user action)
+        await updateDeviceActivity(db, userId);
+
         return c.json({ success: true });
     } catch (error) {
         Logger.error('Error updating alert rule:', error, c.env);
@@ -725,6 +775,9 @@ app.delete('/alerts/:ruleId', async (c) => {
         UPDATE alert_rule SET active = 0 WHERE id = ?
       `).bind(ruleId).run();
         }
+
+        // Update device activity (user action)
+        await updateDeviceActivity(db, userId);
 
         return c.json({ success: true });
     } catch (error) {
@@ -923,6 +976,9 @@ const worker: ExportedHandler<Env> = {
                 }
             }
 
+            // Update device activity (user action)
+            await updateDeviceActivity(db, userId);
+
             return c.json({ success: true, count: validSymbols.length });
         } catch (error) {
             Logger.error('Error syncing watchlist:', error, c.env);
@@ -940,6 +996,9 @@ const worker: ExportedHandler<Env> = {
             const result = await db.prepare(`
       SELECT symbol FROM user_watchlist WHERE user_id = ? ORDER BY created_at
     `).bind(userId).all();
+
+            // Update device activity (user action)
+            await updateDeviceActivity(db, userId);
 
             return c.json({ symbols: result.results.map((r: any) => r.symbol) });
         } catch (error) {
@@ -1044,6 +1103,9 @@ const worker: ExportedHandler<Env> = {
                 ).run();
             }
 
+            // Update device activity (user action)
+            await updateDeviceActivity(db, userId);
+
             return c.json({ success: true });
         } catch (error) {
             Logger.error('Error syncing preferences:', error, c.env);
@@ -1066,6 +1128,9 @@ const worker: ExportedHandler<Env> = {
                 return c.json({});
             }
 
+            // Update device activity (user action)
+            await updateDeviceActivity(db, userId);
+
             return c.json({
                 selected_symbol: result.selected_symbol,
                 selected_timeframe: result.selected_timeframe,
@@ -1078,5 +1143,31 @@ const worker: ExportedHandler<Env> = {
             return c.json({ error: 'Failed to fetch preferences' }, 500);
         }
     });
+
+    // Admin endpoints
+    const adminRoutes = new Hono<{ Bindings: Env }>();
+    
+    // Apply auth middleware to all admin routes
+    adminRoutes.use('*', adminAuthMiddleware);
+    
+    // Ensure tables exist before handling admin requests
+    adminRoutes.use('*', async (c, next) => {
+        const db = c.env?.DB as D1Database;
+        if (db) {
+            await ensureTables(db, c.env);
+        }
+        await next();
+    });
+    
+    // Stats endpoints
+    adminRoutes.get('/stats', getAdminStats);
+    adminRoutes.get('/users', getUsers);
+    
+    // Provider endpoints
+    adminRoutes.get('/providers', getProviders);
+    adminRoutes.put('/providers', updateProviders);
+    
+    // Mount admin routes
+    app.route('/admin', adminRoutes);
 
     export default worker;

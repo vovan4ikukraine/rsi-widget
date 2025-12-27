@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSI Widget - Providers</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>RSI Widget Admin Dashboard</h1>
+            <div class="header-actions">
+                <span id="apiKeyStatus" class="status-indicator"></span>
+                <input type="password" id="apiKeyInput" placeholder="Enter Admin API Key" class="api-key-input">
+                <button id="connectBtn" class="btn btn-primary">Connect</button>
+            </div>
+        </header>
+
+        <nav class="nav">
+            <a href="index.html" class="nav-link" data-page="dashboard">Dashboard</a>
+            <a href="providers.html" class="nav-link active" data-page="providers">Providers</a>
+        </nav>
+
+        <main id="mainContent" class="main-content">
+            <div id="loading" class="loading">Loading...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            <div id="providersContent" style="display: none;">
+                <div class="providers-section">
+                    <h2>Data Provider Configuration</h2>
+                    <p class="info-text">Configure data providers for different asset types. This is a stub interface - changes are not yet implemented.</p>
+                    
+                    <div class="provider-config">
+                        <div class="provider-card">
+                            <h3>Stocks</h3>
+                            <div class="provider-form">
+                                <div class="form-group">
+                                    <label for="stocks-primary">Primary Provider:</label>
+                                    <select id="stocks-primary" class="form-select">
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="TWELVE">Twelve Data</option>
+                                        <option value="ALPHA_VANTAGE">Alpha Vantage</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="stocks-fallback">Fallback Provider:</label>
+                                    <select id="stocks-fallback" class="form-select">
+                                        <option value="">None</option>
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="TWELVE">Twelve Data</option>
+                                        <option value="ALPHA_VANTAGE">Alpha Vantage</option>
+                                    </select>
+                                </div>
+                                <div class="provider-status">
+                                    <span class="status-label">Status:</span>
+                                    <span id="stocks-status" class="status-badge status-online">Online</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <h3>Crypto</h3>
+                            <div class="provider-form">
+                                <div class="form-group">
+                                    <label for="crypto-primary">Primary Provider:</label>
+                                    <select id="crypto-primary" class="form-select">
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="BINANCE">Binance</option>
+                                        <option value="KRAKEN">Kraken</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="crypto-fallback">Fallback Provider:</label>
+                                    <select id="crypto-fallback" class="form-select">
+                                        <option value="">None</option>
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="BINANCE">Binance</option>
+                                        <option value="KRAKEN">Kraken</option>
+                                    </select>
+                                </div>
+                                <div class="provider-status">
+                                    <span class="status-label">Status:</span>
+                                    <span id="crypto-status" class="status-badge status-online">Online</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <h3>Forex</h3>
+                            <div class="provider-form">
+                                <div class="form-group">
+                                    <label for="forex-primary">Primary Provider:</label>
+                                    <select id="forex-primary" class="form-select">
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="TWELVE">Twelve Data</option>
+                                        <option value="ALPHA_VANTAGE">Alpha Vantage</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="forex-fallback">Fallback Provider:</label>
+                                    <select id="forex-fallback" class="form-select">
+                                        <option value="">None</option>
+                                        <option value="YF_PROTO">Yahoo Finance (YF_PROTO)</option>
+                                        <option value="TWELVE">Twelve Data</option>
+                                        <option value="ALPHA_VANTAGE">Alpha Vantage</option>
+                                    </select>
+                                </div>
+                                <div class="provider-status">
+                                    <span class="status-label">Status:</span>
+                                    <span id="forex-status" class="status-badge status-online">Online</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button id="saveProvidersBtn" class="btn btn-primary">Save Configuration</button>
+                        <button id="resetProvidersBtn" class="btn btn-secondary">Reset</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/providers.js"></script>
+</body>
+</html>
+
+
+
+

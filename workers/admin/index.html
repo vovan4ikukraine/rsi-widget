@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSI Widget - Admin Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>RSI Widget Admin Dashboard</h1>
+            <div class="header-actions">
+                <span id="apiKeyStatus" class="status-indicator"></span>
+                <input type="password" id="apiKeyInput" placeholder="Enter Admin API Key" class="api-key-input">
+                <button id="connectBtn" class="btn btn-primary">Connect</button>
+            </div>
+        </header>
+
+        <nav class="nav">
+            <a href="index.html" class="nav-link active" data-page="dashboard">Dashboard</a>
+            <a href="providers.html" class="nav-link" data-page="providers">Providers</a>
+        </nav>
+
+        <main id="mainContent" class="main-content">
+            <!-- Dashboard content will be loaded here -->
+            <div id="loading" class="loading">Loading...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            <div id="dashboardContent" style="display: none;">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Users</h3>
+                        <div class="stat-value" id="totalUsers">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active (24h)</h3>
+                        <div class="stat-value" id="active24h">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active (7d)</h3>
+                        <div class="stat-value" id="active7d">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Devices</h3>
+                        <div class="stat-value" id="totalDevices">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Devices</h3>
+                        <div class="stat-value" id="activeDevices">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Alerts</h3>
+                        <div class="stat-value" id="activeAlerts">-</div>
+                    </div>
+                </div>
+
+                <div class="charts-section">
+                    <div class="chart-card chart-card-full">
+                        <div class="chart-header">
+                            <h3>Total Users Over Time</h3>
+                            <div class="chart-nav">
+                                <button id="prevMonthBtn" class="btn-nav">‹ Prev Month</button>
+                                <span id="currentMonthLabel" class="month-label"></span>
+                                <button id="nextMonthBtn" class="btn-nav">Next Month ›</button>
+                            </div>
+                        </div>
+                        <canvas id="cumulativeGrowthChart"></canvas>
+                    </div>
+                    <div class="chart-card chart-card-full">
+                        <div class="chart-header">
+                            <h3>New Users Per Day</h3>
+                            <div class="chart-nav">
+                                <button id="prevMonthBtn2" class="btn-nav">‹ Prev Month</button>
+                                <span id="currentMonthLabel2" class="month-label"></span>
+                                <button id="nextMonthBtn2" class="btn-nav">Next Month ›</button>
+                            </div>
+                        </div>
+                        <canvas id="dailyGrowthChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Devices by Platform</h3>
+                        <div id="platformChart" class="chart-placeholder">
+                            <p>iOS: <span id="iosCount">-</span></p>
+                            <p>Android: <span id="androidCount">-</span></p>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Alerts by Indicator</h3>
+                        <div id="indicatorChart" class="chart-placeholder">
+                            <p>RSI: <span id="rsiCount">-</span></p>
+                            <p>Stochastic: <span id="stochCount">-</span></p>
+                            <p>Williams %R: <span id="williamsCount">-</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
+
+
+
+
