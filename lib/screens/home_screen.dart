@@ -430,12 +430,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final loc = context.loc;
 
     try {
-      // Increase limit for large timeframes
-      int limit = 100;
+      // Optimized limits based on actual usage (calculation needs + chart display)
+      // RSI/Stochastic/Williams need max ~112 candles for period=100, charts show 60-100 points
+      int limit = 120; // For 1m, 5m, 15m, 1h - sufficient for calculation + chart (100 points)
       if (_selectedTimeframe == '4h') {
-        limit = 500; // For 4h need more data (minimum 15 for RSI)
+        limit = 180; // For 4h - sufficient for calculation + chart (60 points)
       } else if (_selectedTimeframe == '1d') {
-        limit = 730; // For 1d need 2 years of data (minimum 15 for RSI)
+        limit = 180; // For 1d - sufficient for calculation + chart (90 points)
       }
 
       final (candles, dataSource) = await _yahooService.fetchCandlesWithSource(

@@ -525,12 +525,13 @@ class _MarketsScreenState extends State<MarketsScreen>
 
     while (attempt < maxRetries) {
       try {
-        // Determine limit depending on timeframe (same as watchlist)
-        int limit = 100;
+        // Optimized limits based on actual usage (calculation needs + chart display)
+        // RSI/Stochastic/Williams need max ~112 candles for period=100
+        int limit = 120; // For 1m, 5m, 15m, 1h - sufficient for calculation
         if (_timeframe == '4h') {
-          limit = 500;
+          limit = 180; // For 4h - sufficient for calculation
         } else if (_timeframe == '1d') {
-          limit = 730;
+          limit = 180; // For 1d - sufficient for calculation
         }
 
         final candles = await _yahooService.fetchCandles(

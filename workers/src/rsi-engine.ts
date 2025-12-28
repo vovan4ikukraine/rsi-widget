@@ -111,8 +111,10 @@ export class IndicatorEngine {
             // If no cache or cache miss, fetch from Yahoo
             if (candles.length === 0) {
                 try {
+                    // Optimized limit: max ~112 candles needed for indicators (period=100),
+                    // using 250 for safety margin and historical context
                     candles = await this.yahooService.getCandles(symbol, timeframe, {
-                        limit: 1000
+                        limit: 250
                     });
 
                     // Save to D1 cache for future use (much cheaper than KV)
