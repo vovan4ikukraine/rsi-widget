@@ -147,6 +147,11 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
                   width: 1.6,
                 ),
               ),
+              labelStyle: const TextStyle(
+                overflow: TextOverflow.visible,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.always,
+              isDense: false,
             ),
             dropdownMenuTheme: DropdownMenuThemeData(
               textStyle: TextStyle(color: Colors.blueGrey[900], fontSize: 14),
@@ -192,6 +197,11 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
                   width: 1.5,
                 ),
               ),
+              labelStyle: const TextStyle(
+                overflow: TextOverflow.visible,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.always,
+              isDense: false,
             ),
             dropdownMenuTheme: const DropdownMenuThemeData(
               textStyle: TextStyle(color: Colors.white, fontSize: 14),

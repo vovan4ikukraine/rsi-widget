@@ -1597,9 +1597,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 // Timeframe for alerts
                 DropdownButtonFormField<String>(
                   value: _massAlertTimeframe,
@@ -1860,7 +1862,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                   ],
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

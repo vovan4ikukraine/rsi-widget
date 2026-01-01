@@ -175,7 +175,7 @@ export class FcmService {
                     this.tokenExpiry = cached.expiry;
                     console.log('Using cached FCM access token');
                     if (this.accessToken) {
-                        return this.accessToken;
+                    return this.accessToken;
                     }
                 }
             } catch (error) {

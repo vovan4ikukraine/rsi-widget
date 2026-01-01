@@ -378,8 +378,8 @@ export class IndicatorEngine {
      */
     calculateWilliams(candles: any[], period: number): number[] {
         if (candles.length < period) {
-            return [];
-        }
+        return [];
+    }
 
         const highs = candles.map(c => c.high);
         const lows = candles.map(c => c.low);
