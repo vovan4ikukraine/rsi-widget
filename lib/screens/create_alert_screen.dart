@@ -481,9 +481,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   child: TextFormField(
                     initialValue: _indicatorPeriod.toString(),
                     decoration: InputDecoration(
-                      labelText: indicatorType == IndicatorType.stoch
-                          ? '%K Period'
-                          : 'Period',
+                      labelText: () {
+                        switch (indicatorType) {
+                          case IndicatorType.stoch:
+                            return loc.t('home_stoch_k_period_label');
+                          case IndicatorType.williams:
+                            return loc.t('home_wpr_period_label');
+                          case IndicatorType.rsi:
+                            return loc.t('home_period_label');
+                        }
+                      }(),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.timeline),
                     ),
@@ -503,9 +510,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   Expanded(
                     child: TextFormField(
                       initialValue: (_stochDPeriod ?? 3).toString(),
-                      decoration: const InputDecoration(
-                        labelText: '%D Period',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: loc.t('home_stoch_d_period_label'),
+                        border: const OutlineInputBorder(),
                         prefixIcon: Icon(Icons.timeline),
                       ),
                       keyboardType: TextInputType.number,

@@ -388,8 +388,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadAlerts() async {
-    final alerts =
+    final allAlerts =
         await widget.isar.alertRules.filter().activeEqualTo(true).findAll();
+    // Filter out Watchlist Alerts - they are background monitoring, not visible in list
+    final alerts = allAlerts.where((a) {
+      final desc = a.description;
+      if (desc == null) return true;
+      return !desc.toUpperCase().contains('WATCHLIST:');
+    }).toList();
     setState(() {
       _alerts = alerts;
     });
@@ -1479,9 +1485,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             labelText: () {
                               switch (indicatorType) {
                                 case IndicatorType.stoch:
-                                  return '%K Period';
+                                  return loc.t('home_stoch_k_period_label');
                                 case IndicatorType.williams:
-                                  return 'WPR Period';
+                                  return loc.t('home_wpr_period_label');
                                 case IndicatorType.rsi:
                                   return loc.t('home_rsi_period_label');
                               }
@@ -1497,9 +1503,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         Expanded(
                           child: TextField(
                             controller: _stochDPeriodController,
-                            decoration: const InputDecoration(
-                              labelText: '%D Period',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: loc.t('home_stoch_d_period_label'),
+                              border: const OutlineInputBorder(),
                               isDense: true,
                             ),
                             keyboardType: TextInputType.number,

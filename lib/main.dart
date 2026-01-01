@@ -152,6 +152,7 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
               ),
               floatingLabelBehavior: FloatingLabelBehavior.always,
               isDense: false,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
             ),
             dropdownMenuTheme: DropdownMenuThemeData(
               textStyle: TextStyle(color: Colors.blueGrey[900], fontSize: 14),
@@ -202,6 +203,7 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
               ),
               floatingLabelBehavior: FloatingLabelBehavior.always,
               isDense: false,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
             ),
             dropdownMenuTheme: const DropdownMenuThemeData(
               textStyle: TextStyle(color: Colors.white, fontSize: 14),
