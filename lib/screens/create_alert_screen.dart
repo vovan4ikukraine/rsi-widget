@@ -34,6 +34,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   int _indicatorPeriod = 14;
   int? _stochDPeriod; // Stochastic %D period
   List<double> _levels = [30, 70];
+  bool _lowerLevelEnabled = true;
+  bool _upperLevelEnabled = true;
   String _mode = 'cross';
   int _cooldownSec = 600;
   bool _repeatable = true;
@@ -63,6 +65,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       final indicatorType = _appState!.selectedIndicator;
       _indicatorPeriod = indicatorType.defaultPeriod;
       _levels = List.from(indicatorType.defaultLevels);
+      _lowerLevelEnabled = _levels.isNotEmpty;
+      _upperLevelEnabled = _levels.length > 1;
       if (indicatorType == IndicatorType.stoch) {
         _stochDPeriod = 3;
       }
@@ -76,6 +80,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _selectedTimeframe = alert.timeframe;
     _indicatorPeriod = alert.period;
     _levels = List.from(alert.levels);
+    _lowerLevelEnabled = _levels.isNotEmpty;
+    _upperLevelEnabled = _levels.length > 1;
     _mode = alert.mode;
     _cooldownSec = alert.cooldownSec;
     _repeatable = alert.repeatable;
@@ -267,36 +273,45 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   });
                 }
 
-                return TextFormField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  decoration: InputDecoration(
-                    labelText: loc.t('home_symbol_label'),
-                    hintText: loc.t('home_symbol_hint'),
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.trending_up),
-                    suffixIcon: _isSearchingSymbols
-                        ? const Padding(
-                            padding: EdgeInsets.all(12.0),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : null,
-                  ),
-                  onChanged: (value) {
-                    _symbolController.text = value;
-                  },
-                  validator: (value) {
-                    if (value == null ||
-                        value.isEmpty ||
-                        value.trim().isEmpty) {
-                      return loc.t('create_alert_symbol_error');
-                    }
-                    return null;
-                  },
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      loc.t('home_symbol_label'),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    TextFormField(
+                      controller: textEditingController,
+                      focusNode: focusNode,
+                      decoration: InputDecoration(
+                        hintText: loc.t('home_symbol_hint'),
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.trending_up),
+                        suffixIcon: _isSearchingSymbols
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : null,
+                      ),
+                      onChanged: (value) {
+                        _symbolController.text = value;
+                      },
+                      validator: (value) {
+                        if (value == null ||
+                            value.isEmpty ||
+                            value.trim().isEmpty) {
+                          return loc.t('create_alert_symbol_error');
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                 );
               },
               onSelected: (SymbolInfo selection) {
@@ -422,13 +437,20 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               },
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedTimeframe,
-              decoration: InputDecoration(
-                labelText: loc.t('home_timeframe_label'),
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.schedule),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  loc.t('home_timeframe_label'),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 4),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedTimeframe,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.schedule),
+                  ),
               items: const [
                 DropdownMenuItem(value: '1m', child: Text('1m')),
                 DropdownMenuItem(value: '5m', child: Text('5m')),
@@ -445,17 +467,28 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 }
               },
             ),
-            const SizedBox(height: 16),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              loc.t('create_alert_description_label'),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 4),
             TextFormField(
               controller: _descriptionController,
               decoration: InputDecoration(
-                labelText: loc.t('create_alert_description_label'),
                 hintText: loc.t('create_alert_description_hint'),
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.description),
               ),
               maxLines: 2,
             ),
+          ],
+        ),
           ],
         ),
       ),
@@ -471,63 +504,83 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${indicatorType.name} Settings',
+              loc.t('markets_indicator_settings'),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    initialValue: _indicatorPeriod.toString(),
-                    decoration: InputDecoration(
-                      labelText: () {
-                        switch (indicatorType) {
-                          case IndicatorType.stoch:
-                            return loc.t('home_stoch_k_period_label');
-                          case IndicatorType.williams:
-                            return loc.t('home_wpr_period_label');
-                          case IndicatorType.rsi:
-                            return loc.t('home_period_label');
-                        }
-                      }(),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.timeline),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      final period = int.tryParse(value);
-                      if (period != null && period >= 1 && period <= 100) {
-                        setState(() {
-                          _indicatorPeriod = period;
-                        });
-                      }
-                    },
+            IntrinsicHeight(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        () {
+                          switch (indicatorType) {
+                            case IndicatorType.stoch:
+                              return loc.t('home_stoch_k_period_label');
+                            case IndicatorType.williams:
+                              return loc.t('home_wpr_period_label');
+                            case IndicatorType.rsi:
+                              return loc.t('home_period_label');
+                          }
+                        }(),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const Spacer(),
+                      TextFormField(
+                        initialValue: _indicatorPeriod.toString(),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.timeline),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          final period = int.tryParse(value);
+                          if (period != null && period >= 1 && period <= 100) {
+                            setState(() {
+                              _indicatorPeriod = period;
+                            });
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 if (indicatorType == IndicatorType.stoch) ...[
                   const SizedBox(width: 16),
                   Expanded(
-                    child: TextFormField(
-                      initialValue: (_stochDPeriod ?? 3).toString(),
-                      decoration: InputDecoration(
-                        labelText: loc.t('home_stoch_d_period_label'),
-                        border: const OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.timeline),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (value) {
-                        final dPeriod = int.tryParse(value);
-                        if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100) {
-                          setState(() {
-                            _stochDPeriod = dPeriod;
-                          });
-                        }
-                      },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          loc.t('home_stoch_d_period_label'),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const Spacer(),
+                        TextFormField(
+                          initialValue: (_stochDPeriod ?? 3).toString(),
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.timeline),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (value) {
+                            final dPeriod = int.tryParse(value);
+                            if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100) {
+                              setState(() {
+                                _stochDPeriod = dPeriod;
+                              });
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -544,61 +597,133 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
   Widget _buildLevelsSelector(IndicatorType indicatorType) {
     final defaultLevels = indicatorType.defaultLevels;
+    final lowerValue = _levels.isNotEmpty
+        ? _levels[0].toInt().toString()
+        : defaultLevels.first.toInt().toString();
+    final upperValue = _levels.length > 1
+        ? _levels[1].toInt().toString()
+        : (defaultLevels.length > 1
+            ? defaultLevels[1].toInt().toString()
+            : '100');
+    
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                initialValue: _levels.isNotEmpty
-                    ? _levels[0].toString()
-                    : defaultLevels.first.toString(),
-                decoration: InputDecoration(
-                  labelText: context.loc.t('create_alert_lower_level'),
-                  border: const OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (value) {
-                  final lower = double.tryParse(value);
-                  if (lower != null &&
-                      lower >= 0 &&
-                      lower <= 100 &&
-                      _levels.isNotEmpty) {
-                    setState(() {
-                      _levels[0] = lower.clamp(0.0, 100.0);
-                    });
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Checkbox(
+              value: _lowerLevelEnabled,
+              onChanged: (value) {
+                if (value == false && !_upperLevelEnabled) {
+                  // Prevent disabling both levels
+                  return;
+                }
+                setState(() {
+                  _lowerLevelEnabled = value ?? true;
+                  if (!_lowerLevelEnabled && _levels.isNotEmpty) {
+                    _levels.removeAt(0);
+                  } else if (_lowerLevelEnabled && _levels.isEmpty) {
+                    _levels.insert(0, defaultLevels.first);
                   }
-                },
+                });
+              },
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.loc.t('create_alert_lower_level'),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const Spacer(),
+                  TextFormField(
+                    key: ValueKey('lower_${_lowerLevelEnabled}_$lowerValue'),
+                    initialValue: lowerValue,
+                    enabled: _lowerLevelEnabled,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      final lower = int.tryParse(value)?.toDouble();
+                      if (lower != null &&
+                          lower >= 0 &&
+                          lower <= 100) {
+                        setState(() {
+                          if (_levels.isEmpty) {
+                            _levels.add(lower.clamp(0.0, 100.0));
+                          } else {
+                            _levels[0] = lower.clamp(0.0, 100.0);
+                          }
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                initialValue: _levels.length > 1
-                    ? _levels[1].toString()
-                    : (defaultLevels.length > 1
-                        ? defaultLevels[1].toString()
-                        : '100'),
-                decoration: InputDecoration(
-                  labelText: context.loc.t('create_alert_upper_level'),
-                  border: const OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (value) {
-                  final upper = double.tryParse(value);
-                  if (upper != null && upper >= 0 && upper <= 100) {
-                    setState(() {
-                      if (_levels.length > 1) {
-                        _levels[1] = upper.clamp(0.0, 100.0);
-                      } else {
-                        _levels.add(upper.clamp(0.0, 100.0));
-                      }
-                    });
+            Checkbox(
+              value: _upperLevelEnabled,
+              onChanged: (value) {
+                if (value == false && !_lowerLevelEnabled) {
+                  // Prevent disabling both levels
+                  return;
+                }
+                setState(() {
+                  _upperLevelEnabled = value ?? true;
+                  if (!_upperLevelEnabled && _levels.length > 1) {
+                    _levels.removeAt(1);
+                  } else if (_upperLevelEnabled && _levels.length < 2) {
+                    if (_levels.isEmpty) {
+                      _levels.add(defaultLevels.first);
+                    }
+                    _levels.add(defaultLevels.length > 1
+                        ? defaultLevels[1]
+                        : 100.0);
                   }
-                },
+                });
+              },
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.loc.t('create_alert_upper_level'),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const Spacer(),
+                  TextFormField(
+                    key: ValueKey('upper_${_upperLevelEnabled}_$upperValue'),
+                    initialValue: upperValue,
+                    enabled: _upperLevelEnabled,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      final upper = int.tryParse(value)?.toDouble();
+                      if (upper != null && upper >= 0 && upper <= 100) {
+                        setState(() {
+                          if (_levels.length < 2) {
+                            if (_levels.isEmpty) {
+                              _levels.add(defaultLevels.first);
+                            }
+                            _levels.add(upper.clamp(0.0, 100.0));
+                          } else {
+                            _levels[1] = upper.clamp(0.0, 100.0);
+                          }
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -622,6 +747,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       onPressed: () {
         setState(() {
           _levels = List.from(levels);
+          _lowerLevelEnabled = levels.isNotEmpty;
+          _upperLevelEnabled = levels.length > 1;
         });
       },
       child: Text(label),
@@ -640,59 +767,71 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _mode,
-              decoration: InputDecoration(
-                labelText: loc.t('create_alert_type_label'),
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.notifications),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 'cross',
-                  child: Text(loc.t('create_alert_type_cross')),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  loc.t('create_alert_type_label'),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                DropdownMenuItem(
-                  value: 'enter',
-                  child: Text(loc.t('create_alert_type_enter')),
-                ),
-                DropdownMenuItem(
-                  value: 'exit',
-                  child: Text(loc.t('create_alert_type_exit')),
-                ),
-              ],
-              onChanged: (value) {
+                const SizedBox(height: 4),
+                DropdownButtonFormField<String>(
+                  initialValue: _mode,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.notifications),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'cross',
+                      child: Text(loc.t('create_alert_type_cross')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'enter',
+                      child: Text(loc.t('create_alert_type_enter')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'exit',
+                      child: Text(loc.t('create_alert_type_exit')),
+                    ),
+                  ],
+                  onChanged: (value) {
                 if (value != null) {
                   setState(() {
                     _mode = value;
                   });
                 }
-              },
-            ),
+                },
+              ),
+            ],
+          ),
             const SizedBox(height: 16),
-            Row(
+          Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    initialValue: _cooldownSec.toString(),
-                    decoration: InputDecoration(
-                      labelText: loc.t('create_alert_cooldown_label'),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.timer),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      final cooldown = int.tryParse(value);
-                      if (cooldown != null &&
-                          cooldown >= 0 &&
-                          cooldown <= 86400) {
-                        _cooldownSec = cooldown;
-                      }
-                    },
-                  ),
+              Text(
+                loc.t('create_alert_cooldown_label'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 4),
+              TextFormField(
+                initialValue: _cooldownSec.toString(),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.timer),
                 ),
-              ],
-            ),
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final cooldown = int.tryParse(value);
+                  if (cooldown != null &&
+                      cooldown >= 0 &&
+                      cooldown <= 86400) {
+                    _cooldownSec = cooldown;
+                  }
+                },
+              ),
+            ],
+          ),
             const SizedBox(height: 16),
             SwitchListTile(
               title: Text(loc.t('create_alert_repeatable')),
@@ -830,7 +969,15 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             .toList();
 
         // Check if there's an identical alert (same symbol, timeframe, mode, period, and levels)
-        final sortedLevels = List.from(_levels)..sort();
+        // Use enabled levels for duplicate check
+        final enabledLevelsForCheck = <double>[];
+        if (_lowerLevelEnabled && _levels.isNotEmpty) {
+          enabledLevelsForCheck.add(_levels[0]);
+        }
+        if (_upperLevelEnabled && _levels.length > 1) {
+          enabledLevelsForCheck.add(_levels[1]);
+        }
+        final sortedLevels = List.from(enabledLevelsForCheck)..sort();
         for (final existing in existingAlerts) {
           final existingSortedLevels = List.from(existing.levels)..sort();
           if (existingSortedLevels.length == sortedLevels.length &&
@@ -858,13 +1005,35 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         }
       }
 
+      // Validate: at least one level must be enabled
+      final enabledLevels = <double>[];
+      if (_lowerLevelEnabled && _levels.isNotEmpty) {
+        enabledLevels.add(_levels[0]);
+      }
+      if (_upperLevelEnabled && _levels.length > 1) {
+        enabledLevels.add(_levels[1]);
+      }
+      
+      if (enabledLevels.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('create_alert_at_least_one_level_required')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
       final alert = widget.alert ?? AlertRule();
       alert.symbol = symbol;
       alert.timeframe = _selectedTimeframe;
       alert.indicator = indicatorName;
       alert.period = _indicatorPeriod;
       alert.indicatorParams = indicatorParams;
-      alert.levels = List.from(_levels);
+      alert.levels = enabledLevels;
       alert.mode = _mode;
       alert.cooldownSec = _cooldownSec;
       alert.active = true;

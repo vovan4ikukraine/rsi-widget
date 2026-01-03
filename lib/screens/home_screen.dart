@@ -271,6 +271,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             (indicatorType.defaultLevels.length > 1
                 ? indicatorType.defaultLevels[1]
                 : 100.0);
+        
+        // For Stochastic, load saved %D period or use default
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = prefs.getInt('home_stoch_d_period') ?? 3;
+        } else {
+          _stochDPeriod = null;
+        }
       } else {
         // Fallback to local preferences
         _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
@@ -288,6 +295,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 (indicatorType.defaultLevels.length > 1
                     ? indicatorType.defaultLevels[1]
                     : 100.0);
+        
+        // For Stochastic, load saved %D period or use default
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = prefs.getInt('home_stoch_d_period') ?? 3;
+        } else {
+          _stochDPeriod = null;
+        }
       }
     } else {
       // Anonymous mode: load from cache
@@ -322,6 +336,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           (indicatorType.defaultLevels.length > 1
               ? indicatorType.defaultLevels[1]
               : 100.0);
+      
+      // For Stochastic, load saved %D period or use default
+      if (indicatorType == IndicatorType.stoch) {
+        _stochDPeriod = prefs.getInt('home_stoch_d_period') ?? 3;
+      } else {
+        _stochDPeriod = null;
+      }
     }
 
     // Initialize symbol controller
@@ -840,7 +861,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: [
                 Expanded(
                   flex: 2,
-                  child: Autocomplete<SymbolInfo>(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        loc.t('home_symbol_label'),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 4),
+                      Autocomplete<SymbolInfo>(
                     optionsBuilder: (TextEditingValue textEditingValue) async {
                       final query = textEditingValue.text.trim();
 
@@ -953,7 +982,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onFieldSubmitted();
                         },
                         decoration: InputDecoration(
-                          labelText: loc.t('home_symbol_label'),
                           hintText: loc.t('home_symbol_hint'),
                           border: const OutlineInputBorder(),
                           suffixIcon: _isSearchingSymbols
@@ -1123,42 +1151,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       );
                     },
                   ),
+                  ],
                 ),
+              ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedTimeframe,
-                    decoration: InputDecoration(
-                      labelText: loc.t('home_timeframe_label'),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        loc.t('home_timeframe_label'),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
-                    ),
-                    isExpanded: true,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: '1m', child: Text('1m')),
-                      DropdownMenuItem(value: '5m', child: Text('5m')),
-                      DropdownMenuItem(value: '15m', child: Text('15m')),
-                      DropdownMenuItem(value: '1h', child: Text('1h')),
-                      DropdownMenuItem(value: '4h', child: Text('4h')),
-                      DropdownMenuItem(value: '1d', child: Text('1d')),
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String>(
+                        value: _selectedTimeframe,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 16,
+                          ),
+                        ),
+                        isExpanded: true,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: '1m', child: Text('1m')),
+                          DropdownMenuItem(value: '5m', child: Text('5m')),
+                          DropdownMenuItem(value: '15m', child: Text('15m')),
+                          DropdownMenuItem(value: '1h', child: Text('1h')),
+                          DropdownMenuItem(value: '4h', child: Text('4h')),
+                          DropdownMenuItem(value: '1d', child: Text('1d')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _selectedTimeframe = value;
+                            });
+                            _saveState();
+                            _loadIndicatorData();
+                          }
+                        },
+                      ),
                     ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _selectedTimeframe = value;
-                        });
-                        _saveState();
-                        _loadIndicatorData();
-                      }
-                    },
                   ),
                 ),
               ],
@@ -1228,6 +1267,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildIndicatorChart() {
+    final loc = context.loc;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
 
     if (_indicatorValues.isEmpty) {
@@ -1248,7 +1288,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                '${indicatorType.name} Chart',
+                loc.t('home_indicator_chart_title', params: {'indicator': indicatorType.name}),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1338,8 +1378,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _applyIndicatorSettings() {
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     final period = int.tryParse(_indicatorPeriodController.text);
-    final lower = double.tryParse(_lowerLevelController.text);
-    final upper = double.tryParse(_upperLevelController.text);
+    final lower = int.tryParse(_lowerLevelController.text)?.toDouble();
+    final upper = int.tryParse(_upperLevelController.text)?.toDouble();
     int? stochDPeriod;
     if (indicatorType == IndicatorType.stoch) {
       stochDPeriod = int.tryParse(_stochDPeriodController.text);
@@ -1454,7 +1494,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Row(
                 children: [
                   Text(
-                    '${indicatorType.name} Settings',
+                    loc.t('markets_indicator_settings'),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1476,71 +1516,105 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _indicatorPeriodController,
-                          decoration: InputDecoration(
-                            labelText: () {
-                              switch (indicatorType) {
-                                case IndicatorType.stoch:
-                                  return loc.t('home_stoch_k_period_label');
-                                case IndicatorType.williams:
-                                  return loc.t('home_wpr_period_label');
-                                case IndicatorType.rsi:
-                                  return loc.t('home_rsi_period_label');
-                              }
-                            }(),
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: TextInputType.number,
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              () {
+                                switch (indicatorType) {
+                                  case IndicatorType.stoch:
+                                    return loc.t('home_stoch_k_period_label');
+                                  case IndicatorType.williams:
+                                    return loc.t('home_wpr_period_label');
+                                  case IndicatorType.rsi:
+                                    return loc.t('home_rsi_period_label');
+                                }
+                              }(),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const Spacer(),
+                            TextField(
+                              controller: _indicatorPeriodController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
                         ),
                       ),
                       if (indicatorType == IndicatorType.stoch) ...[
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
-                            controller: _stochDPeriodController,
-                            decoration: InputDecoration(
-                              labelText: loc.t('home_stoch_d_period_label'),
-                              border: const OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            keyboardType: TextInputType.number,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                loc.t('home_stoch_d_period_label'),
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const Spacer(),
+                              TextField(
+                                controller: _stochDPeriodController,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ],
                           ),
                         ),
                       ],
                       const SizedBox(width: 12),
                       Expanded(
-                        child: TextField(
-                          controller: _lowerLevelController,
-                          decoration: InputDecoration(
-                            labelText: loc.t('home_lower_zone_label'),
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              loc.t('home_lower_zone_label'),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const Spacer(),
+                            TextField(
+                              controller: _lowerLevelController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: TextField(
-                          controller: _upperLevelController,
-                          decoration: InputDecoration(
-                            labelText: loc.t('home_upper_zone_label'),
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              loc.t('home_upper_zone_label'),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const Spacer(),
+                            TextField(
+                              controller: _upperLevelController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
                         ),
                       ),
                     ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(

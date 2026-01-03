@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:app_settings/app_settings.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../models.dart';
 import '../screens/alerts_screen.dart';
@@ -259,26 +260,31 @@ class NotificationService {
       final title = 'Watchlist: $symbol';
       final body = message ?? 'RSI $rsi crossed level $level ($type)';
 
-      const androidDetails = AndroidNotificationDetails(
+      // Get sound and vibration settings from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final soundEnabled = prefs.getBool('sound_enabled') ?? true;
+      final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
+
+      final androidDetails = AndroidNotificationDetails(
         'rsi_alerts',
         'RSI Alerts',
         channelDescription: 'Notifications about RSI level crossings',
         importance: Importance.high,
         priority: Priority.high,
         showWhen: true,
-        enableVibration: true,
-        playSound: true,
+        enableVibration: vibrationEnabled,
+        playSound: soundEnabled,
         icon: '@mipmap/ic_launcher',
       );
 
-      const iosDetails = DarwinNotificationDetails(
+      final iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
-        presentSound: true,
-        sound: 'default',
+        presentSound: soundEnabled,
+        sound: soundEnabled ? 'default' : null,
       );
 
-      const details = NotificationDetails(
+      final details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );
@@ -321,22 +327,30 @@ class NotificationService {
     }
 
     try {
-      const androidDetails = AndroidNotificationDetails(
+      // Get sound and vibration settings from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final soundEnabled = prefs.getBool('sound_enabled') ?? true;
+      final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
+
+      final androidDetails = AndroidNotificationDetails(
         'general',
         'General Notifications',
         channelDescription: 'General application notifications',
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
         showWhen: true,
+        enableVibration: vibrationEnabled,
+        playSound: soundEnabled,
       );
 
-      const iosDetails = DarwinNotificationDetails(
+      final iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
-        presentSound: true,
+        presentSound: soundEnabled,
+        sound: soundEnabled ? 'default' : null,
       );
 
-      const details = NotificationDetails(
+      final details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );

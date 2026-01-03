@@ -102,8 +102,8 @@ class _MarketsScreenState extends State<MarketsScreen>
         }
         // Update controllers
         _indicatorPeriodController.text = _indicatorPeriod.toString();
-        _lowerLevelController.text = _lowerLevel.toStringAsFixed(1);
-        _upperLevelController.text = _upperLevel.toStringAsFixed(1);
+        _lowerLevelController.text = _lowerLevel.toInt().toString();
+        _upperLevelController.text = _upperLevel.toInt().toString();
         if (_stochDPeriod != null) {
           _stochDPeriodController.text = _stochDPeriod.toString();
         }
@@ -167,8 +167,8 @@ class _MarketsScreenState extends State<MarketsScreen>
 
         // Update controllers
         _indicatorPeriodController.text = _indicatorPeriod.toString();
-        _lowerLevelController.text = _lowerLevel.toStringAsFixed(1);
-        _upperLevelController.text = _upperLevel.toStringAsFixed(1);
+        _lowerLevelController.text = _lowerLevel.toInt().toString();
+        _upperLevelController.text = _upperLevel.toInt().toString();
         if (_stochDPeriod != null) {
           _stochDPeriodController.text = _stochDPeriod.toString();
         } else {
@@ -390,8 +390,8 @@ class _MarketsScreenState extends State<MarketsScreen>
       }
       // Initialize controllers
       _indicatorPeriodController.text = _indicatorPeriod.toString();
-      _lowerLevelController.text = _lowerLevel.toStringAsFixed(1);
-      _upperLevelController.text = _upperLevel.toStringAsFixed(1);
+      _lowerLevelController.text = _lowerLevel.toInt().toString();
+      _upperLevelController.text = _upperLevel.toInt().toString();
       if (_stochDPeriod != null) {
         _stochDPeriodController.text = _stochDPeriod.toString();
       }
@@ -637,20 +637,21 @@ class _MarketsScreenState extends State<MarketsScreen>
     final loc = context.loc;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Markets'),
+        title: Text(loc.t('markets_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           onTap: (index) {
             // Load visible items when switching tabs
             unawaited(_loadVisibleItems());
           },
-          tabs: const [
-            Tab(text: 'Crypto'),
-            Tab(text: 'Indexes'),
-            Tab(text: 'Forex'),
-            Tab(text: 'Commodities'),
+          tabs: [
+            Tab(text: loc.t('markets_crypto')),
+            Tab(text: loc.t('markets_indexes')),
+            Tab(text: loc.t('markets_forex')),
+            Tab(text: loc.t('markets_commodities')),
           ],
         ),
       ),
@@ -724,9 +725,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                     child: Row(
                       children: [
                         Text(
-                          _appState != null
-                              ? '${_appState!.selectedIndicator.name} Settings'
-                              : 'Indicator Settings',
+                          loc.t('markets_indicator_settings'),
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
@@ -744,140 +743,174 @@ class _MarketsScreenState extends State<MarketsScreen>
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _indicatorPeriodController,
-                                decoration: InputDecoration(
-                                  labelText: () {
-                                    final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
-                                    switch (indicator) {
-                                      case IndicatorType.stoch:
-                                        return loc.t('home_stoch_k_period_label');
-                                      case IndicatorType.williams:
-                                        return loc.t('home_wpr_period_label');
-                                      case IndicatorType.rsi:
-                                        return loc.t('home_rsi_period_label');
-                                    }
-                                  }(),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType: TextInputType.number,
-                                onChanged: (value) {
-                                  final period = int.tryParse(value);
-                                  if (period != null &&
-                                      period >= 1 &&
-                                      period <= 100 &&
-                                      period != _indicatorPeriod) {
-                                    setState(() {
-                                      _indicatorPeriod = period;
-                                    });
-                                    _saveState();
-                                    // Clear cache and reload when period changes
-                                    _loadedSymbols.clear();
-                                    _indicatorDataMap.clear();
-                                    unawaited(_loadVisibleItems());
-                                  }
-                                },
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    () {
+                                      final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+                                      switch (indicator) {
+                                        case IndicatorType.stoch:
+                                          return loc.t('home_stoch_k_period_label');
+                                        case IndicatorType.williams:
+                                          return loc.t('home_wpr_period_label');
+                                        case IndicatorType.rsi:
+                                          return loc.t('home_rsi_period_label');
+                                      }
+                                    }(),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  const Spacer(),
+                                  TextField(
+                                    controller: _indicatorPeriodController,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (value) {
+                                      final period = int.tryParse(value);
+                                      if (period != null &&
+                                          period >= 1 &&
+                                          period <= 100 &&
+                                          period != _indicatorPeriod) {
+                                        setState(() {
+                                          _indicatorPeriod = period;
+                                        });
+                                        _saveState();
+                                        // Clear cache and reload when period changes
+                                        _loadedSymbols.clear();
+                                        _indicatorDataMap.clear();
+                                        unawaited(_loadVisibleItems());
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                             if (_appState?.selectedIndicator ==
                                 IndicatorType.stoch) ...[
                               const SizedBox(width: 8),
                               Expanded(
-                                child: TextField(
-                                  controller: _stochDPeriodController,
-                                  decoration: InputDecoration(
-                                    labelText: loc.t('home_stoch_d_period_label'),
-                                    border: const OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (value) {
-                                    final dPeriod = int.tryParse(value);
-                                    if (dPeriod != null &&
-                                        dPeriod >= 1 &&
-                                        dPeriod <= 100) {
-                                      setState(() {
-                                        _stochDPeriod = dPeriod;
-                                      });
-                                      _saveState();
-                                      // Clear cache and reload when period changes
-                                      _loadedSymbols.clear();
-                                      _indicatorDataMap.clear();
-                                      unawaited(_loadVisibleItems());
-                                    }
-                                  },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc.t('home_stoch_d_period_label'),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    TextField(
+                                      controller: _stochDPeriodController,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      onChanged: (value) {
+                                        final dPeriod = int.tryParse(value);
+                                        if (dPeriod != null &&
+                                            dPeriod >= 1 &&
+                                            dPeriod <= 100) {
+                                          setState(() {
+                                            _stochDPeriod = dPeriod;
+                                          });
+                                          _saveState();
+                                          // Clear cache and reload when period changes
+                                          _loadedSymbols.clear();
+                                          _indicatorDataMap.clear();
+                                          unawaited(_loadVisibleItems());
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                             const SizedBox(width: 8),
                             Expanded(
-                              child: TextField(
-                                controller: _lowerLevelController,
-                                decoration: InputDecoration(
-                                  labelText: loc.t('home_lower_zone_label'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                onChanged: (value) {
-                                  final level = double.tryParse(value);
-                                  if (level != null &&
-                                      level >= 0 &&
-                                      level <= 100 &&
-                                      level != _lowerLevel) {
-                                    setState(() {
-                                      _lowerLevel = level;
-                                    });
-                                    _saveState();
-                                    // Reload to update chart levels
-                                    setState(() {});
-                                  }
-                                },
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    loc.t('home_lower_zone_label'),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  const Spacer(),
+                                  TextField(
+                                    controller: _lowerLevelController,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (value) {
+                                      final level = int.tryParse(value)?.toDouble();
+                                      if (level != null &&
+                                          level >= 0 &&
+                                          level <= 100 &&
+                                          level != _lowerLevel) {
+                                        setState(() {
+                                          _lowerLevel = level;
+                                        });
+                                        _saveState();
+                                        // Reload to update chart levels
+                                        setState(() {});
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: TextField(
-                                controller: _upperLevelController,
-                                decoration: InputDecoration(
-                                  labelText: loc.t('home_upper_zone_label'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                onChanged: (value) {
-                                  final level = double.tryParse(value);
-                                  if (level != null &&
-                                      level >= 0 &&
-                                      level <= 100 &&
-                                      level != _upperLevel) {
-                                    setState(() {
-                                      _upperLevel = level;
-                                    });
-                                    _saveState();
-                                    // Reload to update chart levels
-                                    setState(() {});
-                                  }
-                                },
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    loc.t('home_upper_zone_label'),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  const Spacer(),
+                                  TextField(
+                                    controller: _upperLevelController,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (value) {
+                                      final level = int.tryParse(value)?.toDouble();
+                                      if (level != null &&
+                                          level >= 0 &&
+                                          level <= 100 &&
+                                          level != _upperLevel) {
+                                        setState(() {
+                                          _upperLevel = level;
+                                        });
+                                        _saveState();
+                                        // Reload to update chart levels
+                                        setState(() {});
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                           ],
+                          ),
                         ),
                       ],
                     ),

@@ -22,7 +22,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
   String _theme = 'dark';
@@ -64,7 +63,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedWidgetIndicator = prefs.getString('rsi_widget_indicator');
     setState(() {
-      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _soundEnabled = prefs.getBool('sound_enabled') ?? true;
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _theme = prefs.getString('theme') ?? 'dark';
@@ -77,7 +75,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notifications_enabled', _notificationsEnabled);
     await prefs.setBool('sound_enabled', _soundEnabled);
     await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
@@ -104,41 +101,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.notifications,
             children: [
               SwitchListTile(
-                title: Text(loc.t('settings_enable_notifications')),
-                subtitle: Text(loc.t('settings_enable_notifications_sub')),
-                value: _notificationsEnabled,
+                title: Text(loc.t('settings_sound')),
+                subtitle: Text(loc.t('settings_sound_sub')),
+                value: _soundEnabled,
                 onChanged: (value) {
                   setState(() {
-                    _notificationsEnabled = value;
+                    _soundEnabled = value;
                   });
                   _saveSettings();
                 },
               ),
               SwitchListTile(
-                title: Text(loc.t('settings_sound')),
-                subtitle: Text(loc.t('settings_sound_sub')),
-                value: _soundEnabled,
-                onChanged: _notificationsEnabled
-                    ? (value) {
-                        setState(() {
-                          _soundEnabled = value;
-                        });
-                        _saveSettings();
-                      }
-                    : null,
-              ),
-              SwitchListTile(
                 title: Text(loc.t('settings_vibration')),
                 subtitle: Text(loc.t('settings_vibration_sub')),
                 value: _vibrationEnabled,
-                onChanged: _notificationsEnabled
-                    ? (value) {
-                        setState(() {
-                          _vibrationEnabled = value;
-                        });
-                        _saveSettings();
-                      }
-                    : null,
+                onChanged: (value) {
+                  setState(() {
+                    _vibrationEnabled = value;
+                  });
+                  _saveSettings();
+                },
               ),
             ],
           ),
@@ -160,7 +142,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: Text(loc.t('settings_language')),
                 subtitle: Text(_language == 'ru'
                     ? loc.t('settings_language_russian')
-                    : loc.t('settings_language_english')),
+                    : _language == 'uk'
+                        ? loc.t('settings_language_ukrainian')
+                        : loc.t('settings_language_english')),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _showLanguageDialog(appState),
               ),
@@ -169,28 +153,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Widget
           _buildSectionCard(
-            title: 'Widget Settings',
+            title: loc.t('settings_widget_title'),
             icon: Icons.widgets,
             children: [
               ListTile(
-                title: const Text('Widget Indicator'),
+                title: Text(loc.t('settings_widget_indicator')),
                 subtitle: Text(_widgetIndicator.displayName),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: widget.isar != null ? () => _showWidgetIndicatorDialog(loc) : null,
-              ),
-            ],
-          ),
-
-          // Data
-          _buildSectionCard(
-            title: loc.t('settings_data_title'),
-            icon: Icons.data_usage,
-            children: [
-              ListTile(
-                title: Text(loc.t('settings_clear_cache')),
-                subtitle: Text(loc.t('settings_clear_cache_sub')),
-                trailing: const Icon(Icons.delete),
-                onTap: () => _showClearCacheDialog(loc),
               ),
             ],
           ),
@@ -211,23 +181,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : null,
                   ),
                   title: Text(
-                      AuthService.displayName ?? AuthService.email ?? 'User'),
+                      AuthService.displayName ?? AuthService.email ?? loc.t('common_user')),
                   subtitle: Text(
                     AuthService.email ?? '',
                   ),
-                ),
-                const Divider(),
-                ListTile(
-                  title: Text(loc.t('settings_profile')),
-                  subtitle: Text(loc.t('settings_profile_sub')),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () => _showProfileDialog(loc),
-                ),
-                ListTile(
-                  title: Text(loc.t('settings_sync')),
-                  subtitle: Text(loc.t('settings_sync_sub')),
-                  trailing: const Icon(Icons.sync),
-                  onTap: () => _showSyncDialog(loc),
                 ),
                 const Divider(),
                 ListTile(
@@ -255,18 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: loc.t('settings_about_title'),
             icon: Icons.info,
             children: [
-              ListTile(
-                title: Text(loc.t('settings_version')),
-                subtitle: const Text('1.0.0'),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showVersionDialog(loc),
-              ),
-              ListTile(
-                title: Text(loc.t('settings_license')),
-                subtitle: Text(loc.t('settings_license_sub')),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showLicenseDialog(loc),
-              ),
               ListTile(
                 title: Text(loc.t('settings_support')),
                 subtitle: Text(loc.t('settings_support_sub')),
@@ -402,102 +347,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            ListTile(
+              title: Text(loc.t('settings_language_ukrainian')),
+              leading: Radio<String>(
+                value: 'uk',
+                groupValue: _language,
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() {
+                    _language = value;
+                  });
+                  await appState.setLanguage(value);
+                  await _saveSettings();
+                  Navigator.pop(context);
+                },
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showClearCacheDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_clear_cache_title')),
-        content: Text(loc.t('settings_clear_cache_confirm')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_cancel')),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              // Clear data cache
-              DataCache.clear();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(loc.t('settings_clear_cache_success'))),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text(loc.t('settings_clear_cache')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showProfileDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_profile_dialog_title')),
-        content: Text(loc.t('settings_profile_dialog_message')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSyncDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_sync_dialog_title')),
-        content: Text(loc.t('settings_sync_dialog_message')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showVersionDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_about_dialog_title')),
-        content: Text(loc.t('settings_about_dialog_body')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLicenseDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_license_dialog_title')),
-        content: SingleChildScrollView(
-          child: Text(loc.t('settings_license_dialog_message')),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_ok')),
-          ),
-        ],
       ),
     );
   }
@@ -513,7 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select Widget Indicator'),
+        title: Text(loc.t('settings_widget_indicator_select')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: IndicatorType.values.map((indicator) {
@@ -551,7 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: const Text('Widget indicator updated'),
+                        content: Text(loc.t('settings_widget_indicator_updated')),
                         backgroundColor: Colors.green,
                       ),
                     );
@@ -570,17 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(loc.t('settings_support_dialog_title')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(loc.t('settings_support_email')),
-            SizedBox(height: 8),
-            Text(loc.t('settings_support_telegram')),
-            SizedBox(height: 8),
-            Text(loc.t('settings_support_github')),
-          ],
-        ),
+        content: Text(loc.t('settings_support_email')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -612,7 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth_signed_in_as',
-                params: {'email': AuthService.email ?? 'User'})),
+                params: {'email': AuthService.email ?? loc.t('common_user')})),
             backgroundColor: Colors.green,
           ),
         );
@@ -636,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(loc.t('auth_sign_out')),
-        content: const Text('Are you sure you want to sign out?'),
+            content: Text(loc.t('auth_sign_out_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -653,8 +510,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // Show error only if context is still valid
                 if (mounted && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error signing out: $e'),
+                  SnackBar(
+                    content: Text(loc.t('auth_sign_out_error', params: {'error': e.toString()})),
                       backgroundColor: Colors.red,
                     ),
                   );

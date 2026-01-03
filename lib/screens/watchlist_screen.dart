@@ -65,6 +65,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   String _massAlertMode = 'cross'; // cross|enter|exit
   double _massAlertLowerLevel = 30.0;
   double _massAlertUpperLevel = 70.0;
+  bool _massAlertLowerLevelEnabled = true;
+  bool _massAlertUpperLevelEnabled = true;
   int _massAlertCooldownSec = 600;
   bool _massAlertRepeatable = true;
   
@@ -416,6 +418,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             (indicatorType.defaultLevels.length > 1
                 ? indicatorType.defaultLevels[1]
                 : 100.0);
+        
+        // For Stochastic, load saved %D period or use default
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = prefs.getInt('watchlist_stoch_d_period') ?? 3;
+        } else {
+          _stochDPeriod = null;
+        }
+        
         // Load saved sort order, fallback to widget sort order if available
         final savedSortOrder = prefs.getString(_sortOrderPrefKey);
         final widgetSortDescending = prefs.getBool('rsi_widget_sort_descending');
@@ -935,8 +945,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
     try {
       final period = int.tryParse(_indicatorPeriodController.text);
-      final lower = double.tryParse(_lowerLevelController.text);
-      final upper = double.tryParse(_upperLevelController.text);
+      final lower = int.tryParse(_lowerLevelController.text)?.toDouble();
+      final upper = int.tryParse(_upperLevelController.text)?.toDouble();
 
       bool changed = false;
 
@@ -1122,9 +1132,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     child: Row(
                       children: [
                         Text(
-                          _appState != null
-                              ? '${_appState!.selectedIndicator.name} Settings'
-                              : loc.t('watchlist_settings_title'),
+                          loc.t('markets_indicator_settings'),
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold),
                         ),
@@ -1142,154 +1150,198 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: DropdownButtonFormField<String>(
-                                initialValue: _timeframe,
-                                decoration: InputDecoration(
-                                  labelText: loc.t('home_timeframe_label'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                isExpanded: true,
-                                items: const [
-                                  DropdownMenuItem(
-                                      value: '1m', child: Text('1m')),
-                                  DropdownMenuItem(
-                                      value: '5m', child: Text('5m')),
-                                  DropdownMenuItem(
-                                      value: '15m', child: Text('15m')),
-                                  DropdownMenuItem(
-                                      value: '1h', child: Text('1h')),
-                                  DropdownMenuItem(
-                                      value: '4h', child: Text('4h')),
-                                  DropdownMenuItem(
-                                      value: '1d', child: Text('1d')),
-                                ],
-                                onChanged: (value) async {
-                                  if (value != null) {
-                                    setState(() {
-                                      _timeframe = value;
-                                    });
-                                    _saveState();
-                                    // Save timeframe for widget
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    await prefs.setString(
-                                        'rsi_widget_timeframe', _timeframe);
-                                    await prefs.setInt(
-                                        'rsi_widget_period', _indicatorPeriod);
-                                    _loadAllIndicatorData(); // Automatically reload data when timeframe changes
-                                    // Update widget
-                                    final indicatorType =
-                                        _appState?.selectedIndicator ??
-                                            IndicatorType.rsi;
-                                    final indicatorParams =
-                                        indicatorType == IndicatorType.stoch &&
-                                                _stochDPeriod != null
-                                            ? {'dPeriod': _stochDPeriod}
-                                            : null;
-                                    unawaited(_widgetService.updateWidget(
-                                      timeframe: _timeframe,
-                                      rsiPeriod: _indicatorPeriod,
-                                      sortDescending: _currentSortOrder !=
-                                          _RsiSortOrder.ascending,
-                                      indicator: indicatorType,
-                                      indicatorParams: indicatorParams,
-                                    ));
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _indicatorPeriodController,
-                                decoration: InputDecoration(
-                                  labelText: () {
-                                    final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
-                                    switch (indicator) {
-                                      case IndicatorType.stoch:
-                                        return loc.t('home_stoch_k_period_label');
-                                      case IndicatorType.williams:
-                                        return loc.t('home_wpr_period_label');
-                                      case IndicatorType.rsi:
-                                        return loc.t('home_rsi_period_label');
-                                    }
-                                  }(),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            if (_appState?.selectedIndicator ==
-                                IndicatorType.stoch) ...[
-                              const SizedBox(width: 8),
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
                               Expanded(
-                                child: TextField(
-                                  controller: _stochDPeriodController,
-                                  decoration: InputDecoration(
-                                    labelText: loc.t('home_stoch_d_period_label'),
-                                    border: const OutlineInputBorder(),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (value) {
-                                    final dPeriod = int.tryParse(value);
-                                    if (dPeriod != null &&
-                                        dPeriod >= 1 &&
-                                        dPeriod <= 100) {
+                                flex: 2,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc.t('home_timeframe_label'),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const Spacer(),
+                                    DropdownButtonFormField<String>(
+                                      initialValue: _timeframe,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                  isExpanded: true,
+                                  items: const [
+                                    DropdownMenuItem(
+                                        value: '1m', child: Text('1m')),
+                                    DropdownMenuItem(
+                                        value: '5m', child: Text('5m')),
+                                    DropdownMenuItem(
+                                        value: '15m', child: Text('15m')),
+                                    DropdownMenuItem(
+                                        value: '1h', child: Text('1h')),
+                                    DropdownMenuItem(
+                                        value: '4h', child: Text('4h')),
+                                    DropdownMenuItem(
+                                        value: '1d', child: Text('1d')),
+                                  ],
+                                  onChanged: (value) async {
+                                    if (value != null) {
                                       setState(() {
-                                        _stochDPeriod = dPeriod;
+                                        _timeframe = value;
                                       });
                                       _saveState();
+                                      // Save timeframe for widget
+                                      final prefs =
+                                          await SharedPreferences.getInstance();
+                                      await prefs.setString(
+                                          'rsi_widget_timeframe', _timeframe);
+                                      await prefs.setInt(
+                                          'rsi_widget_period', _indicatorPeriod);
+                                      _loadAllIndicatorData(); // Automatically reload data when timeframe changes
+                                      // Update widget
+                                      final indicatorType =
+                                          _appState?.selectedIndicator ??
+                                              IndicatorType.rsi;
+                                      final indicatorParams =
+                                          indicatorType == IndicatorType.stoch &&
+                                                  _stochDPeriod != null
+                                              ? {'dPeriod': _stochDPeriod}
+                                              : null;
+                                      unawaited(_widgetService.updateWidget(
+                                        timeframe: _timeframe,
+                                        rsiPeriod: _indicatorPeriod,
+                                        sortDescending: _currentSortOrder !=
+                                            _RsiSortOrder.ascending,
+                                        indicator: indicatorType,
+                                        indicatorParams: indicatorParams,
+                                      ));
                                     }
-                                  },
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      () {
+                                        final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+                                        switch (indicator) {
+                                          case IndicatorType.stoch:
+                                            return loc.t('home_stoch_k_period_label');
+                                          case IndicatorType.williams:
+                                            return loc.t('home_wpr_period_label');
+                                          case IndicatorType.rsi:
+                                            return loc.t('home_rsi_period_label');
+                                        }
+                                      }(),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const Spacer(),
+                                    TextField(
+                                      controller: _indicatorPeriodController,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_appState?.selectedIndicator ==
+                                  IndicatorType.stoch) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        loc.t('home_stoch_d_period_label'),
+                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      ),
+                                      const Spacer(),
+                                      TextField(
+                                        key: ValueKey('stoch_d_period_${_stochDPeriod ?? 0}'),
+                                        controller: _stochDPeriodController,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 8),
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        onChanged: (value) {
+                                          final dPeriod = int.tryParse(value);
+                                          if (dPeriod != null &&
+                                              dPeriod >= 1 &&
+                                              dPeriod <= 100) {
+                                            setState(() {
+                                              _stochDPeriod = dPeriod;
+                                            });
+                                            _saveState();
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc.t('home_lower_zone_label'),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const Spacer(),
+                                    TextField(
+                                      controller: _lowerLevelController,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc.t('home_upper_zone_label'),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const Spacer(),
+                                    TextField(
+                                      controller: _upperLevelController,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _lowerLevelController,
-                                decoration: InputDecoration(
-                                  labelText: loc.t('home_lower_zone_label'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _upperLevelController,
-                                decoration: InputDecoration(
-                                  labelText: loc.t('home_upper_zone_label'),
-                                  border: const OutlineInputBorder(),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 8),
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -1616,17 +1668,24 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                 // Timeframe for alerts
-                DropdownButtonFormField<String>(
-                  value: _massAlertTimeframe,
-                  decoration: InputDecoration(
-                    labelText: loc.t('home_timeframe_label'),
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      loc.t('home_timeframe_label'),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String>(
+                      value: _massAlertTimeframe,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
                   items: const [
                     DropdownMenuItem(value: '1m', child: Text('1m')),
                     DropdownMenuItem(value: '5m', child: Text('5m')),
@@ -1649,124 +1708,155 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                         debugPrint('Mass alert not enabled, skipping update');
                       }
                     }
-                  },
+                      },
+                    ),
+                  ],
                 ),
                 // Note: Mass alerts use the indicator selected in the main interface (via IndicatorSelector above)
                 const SizedBox(height: 16),
                 // Period for alerts
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _massAlertPeriodController,
-                        decoration: InputDecoration(
-                          labelText: () {
-                            final indicator = _massAlertIndicator;
-                            switch (indicator) {
-                              case IndicatorType.stoch:
-                                return loc.t('home_stoch_k_period_label');
-                              case IndicatorType.williams:
-                                return loc.t('home_wpr_period_label');
-                              case IndicatorType.rsi:
-                                return loc.t('home_rsi_period_label');
-                            }
-                          }(),
-                          border: const OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                            IntrinsicHeight(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            () {
+                              final indicator = _massAlertIndicator;
+                              switch (indicator) {
+                                case IndicatorType.stoch:
+                                  return loc.t('home_stoch_k_period_label');
+                                case IndicatorType.williams:
+                                  return loc.t('home_wpr_period_label');
+                                case IndicatorType.rsi:
+                                  return loc.t('home_rsi_period_label');
+                              }
+                            }(),
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
                           ),
-                        ),
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) {
-                          final period = int.tryParse(value);
-                          if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
-                            setState(() {
-                              _massAlertPeriod = period;
-                            });
-                            _saveState();
-                            if (_massAlertEnabled) {
-                              unawaited(_updateMassAlerts());
-                            }
-                          }
-                        },
+                          const Spacer(),
+                          TextField(
+                            controller: _massAlertPeriodController,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final period = int.tryParse(value);
+                              if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
+                                setState(() {
+                                  _massAlertPeriod = period;
+                                });
+                                _saveState();
+                                if (_massAlertEnabled) {
+                                  unawaited(_updateMassAlerts());
+                                }
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     if (_massAlertIndicator == IndicatorType.stoch) ...[
                       const SizedBox(width: 8),
                       Expanded(
-                        child: TextField(
-                          controller: _massAlertStochDPeriodController,
-                          decoration: InputDecoration(
-                            labelText: loc.t('home_stoch_d_period_label'),
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              loc.t('home_stoch_d_period_label'),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (value) {
-                            final dPeriod = int.tryParse(value);
-                            if (dPeriod != null &&
-                                dPeriod >= 1 &&
-                                dPeriod <= 100 &&
-                                dPeriod != _massAlertStochDPeriod) {
-                              setState(() {
-                                _massAlertStochDPeriod = dPeriod;
-                              });
-                              _saveState();
-                              if (_massAlertEnabled) {
-                                unawaited(_updateMassAlerts());
-                              }
-                            }
-                          },
+                            const Spacer(),
+                            TextField(
+                              controller: _massAlertStochDPeriodController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (value) {
+                                final dPeriod = int.tryParse(value);
+                                if (dPeriod != null &&
+                                    dPeriod >= 1 &&
+                                    dPeriod <= 100 &&
+                                    dPeriod != _massAlertStochDPeriod) {
+                                  setState(() {
+                                    _massAlertStochDPeriod = dPeriod;
+                                  });
+                                  _saveState();
+                                  if (_massAlertEnabled) {
+                                    unawaited(_updateMassAlerts());
+                                  }
+                                }
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ],
                 ),
+              ),
                 const SizedBox(height: 16),
                 // Alert mode
-                DropdownButtonFormField<String>(
-                  value: _massAlertMode,
-                  decoration: InputDecoration(
-                    labelText: loc.t('create_alert_type_label'),
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      loc.t('create_alert_type_label'),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'cross',
-                      child: Text(loc.t('create_alert_type_cross')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'enter',
-                      child: Text(loc.t('create_alert_type_enter')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'exit',
-                      child: Text(loc.t('create_alert_type_exit')),
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String>(
+                      value: _massAlertMode,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'cross',
+                          child: Text(loc.t('create_alert_type_cross')),
+                        ),
+                        DropdownMenuItem(
+                          value: 'enter',
+                          child: Text(loc.t('create_alert_type_enter')),
+                        ),
+                        DropdownMenuItem(
+                          value: 'exit',
+                          child: Text(loc.t('create_alert_type_exit')),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null && value != _massAlertMode) {
+                          setState(() {
+                            _massAlertMode = value;
+                          });
+                          _saveState();
+                          if (_massAlertEnabled) {
+                            // Update all mass alerts
+                            unawaited(_updateMassAlerts());
+                          }
+                        }
+                      },
                     ),
                   ],
-                  onChanged: (value) {
-                    if (value != null && value != _massAlertMode) {
-                      setState(() {
-                        _massAlertMode = value;
-                      });
-                      _saveState();
-                      if (_massAlertEnabled) {
-                        // Update all mass alerts
-                        unawaited(_updateMassAlerts());
-                      }
-                    }
-                  },
                 ),
                 const SizedBox(height: 16),
                 // Levels
@@ -1778,107 +1868,159 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
+                IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: _massAlertLowerLevelEnabled,
+                      onChanged: (value) {
+                        if (value == false && !_massAlertUpperLevelEnabled) {
+                          // Prevent disabling both levels
+                          return;
+                        }
+                        setState(() {
+                          _massAlertLowerLevelEnabled = value ?? true;
+                        });
+                        _saveState();
+                        if (_massAlertEnabled) {
+                          unawaited(_updateMassAlerts());
+                        }
+                      },
+                    ),
                     Expanded(
-                      child: TextField(
-                        controller: _massAlertLowerLevelController,
-                        decoration: InputDecoration(
-                          labelText: () {
-                            final indicator = _massAlertIndicator;
-                            switch (indicator) {
-                              case IndicatorType.williams:
-                                return loc.t('home_wpr_lower_level_label');
-                              case IndicatorType.stoch:
-                                return loc.t('home_stoch_lower_level_label');
-                              case IndicatorType.rsi:
-                                return loc.t('create_alert_lower_level');
-                            }
-                          }(),
-                          border: const OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            () {
+                              final indicator = _massAlertIndicator;
+                              switch (indicator) {
+                                case IndicatorType.williams:
+                                  return loc.t('home_wpr_lower_level_label');
+                                case IndicatorType.stoch:
+                                  return loc.t('home_stoch_lower_level_label');
+                                case IndicatorType.rsi:
+                                  return loc.t('create_alert_lower_level');
+                              }
+                            }(),
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
                           ),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        onChanged: (value) {
-                          final lower = double.tryParse(value);
-                          bool isValid = false;
-                          if (_massAlertIndicator == IndicatorType.williams) {
-                            // WPR: -100 to 0
-                            isValid = lower != null && lower >= -100 && lower <= 0;
-                          } else {
-                            // RSI/STOCH: 0 to 100
-                            isValid = lower != null && lower >= 0 && lower <= 100;
-                          }
-                          if (isValid && lower != _massAlertLowerLevel) {
-                            setState(() {
-                              _massAlertLowerLevel = lower!;
-                            });
-                            _saveState();
-                            if (_massAlertEnabled) {
-                              unawaited(_updateMassAlerts());
-                            }
-                          }
-                        },
+                          const Spacer(),
+                          TextField(
+                            controller: _massAlertLowerLevelController,
+                            enabled: _massAlertLowerLevelEnabled,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final lower = int.tryParse(value)?.toDouble();
+                              bool isValid = false;
+                              if (_massAlertIndicator == IndicatorType.williams) {
+                                // WPR: -100 to 0
+                                isValid = lower != null && lower >= -100 && lower <= 0;
+                              } else {
+                                // RSI/STOCH: 0 to 100
+                                isValid = lower != null && lower >= 0 && lower <= 100;
+                              }
+                              if (isValid && lower != _massAlertLowerLevel) {
+                                setState(() {
+                                  _massAlertLowerLevel = lower!;
+                                });
+                                _saveState();
+                                if (_massAlertEnabled) {
+                                  unawaited(_updateMassAlerts());
+                                }
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),
+                    Checkbox(
+                      value: _massAlertUpperLevelEnabled,
+                      onChanged: (value) {
+                        if (value == false && !_massAlertLowerLevelEnabled) {
+                          // Prevent disabling both levels
+                          return;
+                        }
+                        setState(() {
+                          _massAlertUpperLevelEnabled = value ?? true;
+                        });
+                        _saveState();
+                        if (_massAlertEnabled) {
+                          unawaited(_updateMassAlerts());
+                        }
+                      },
+                    ),
                     Expanded(
-                      child: TextField(
-                        controller: _massAlertUpperLevelController,
-                        decoration: InputDecoration(
-                          labelText: () {
-                            final indicator = _massAlertIndicator;
-                            switch (indicator) {
-                              case IndicatorType.williams:
-                                return loc.t('home_wpr_upper_level_label');
-                              case IndicatorType.stoch:
-                                return loc.t('home_stoch_upper_level_label');
-                              case IndicatorType.rsi:
-                                return loc.t('create_alert_upper_level');
-                            }
-                          }(),
-                          border: const OutlineInputBorder(),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            () {
+                              final indicator = _massAlertIndicator;
+                              switch (indicator) {
+                                case IndicatorType.williams:
+                                  return loc.t('home_wpr_upper_level_label');
+                                case IndicatorType.stoch:
+                                  return loc.t('home_stoch_upper_level_label');
+                                case IndicatorType.rsi:
+                                  return loc.t('create_alert_upper_level');
+                              }
+                            }(),
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
                           ),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        onChanged: (value) {
-                          final upper = double.tryParse(value);
-                          bool isValid = false;
-                          if (_massAlertIndicator == IndicatorType.williams) {
-                            // WPR: -100 to 0, and upper must be greater than lower
-                            isValid = upper != null && upper >= -100 && upper <= 0 && upper > _massAlertLowerLevel;
-                          } else {
-                            // RSI/STOCH: 0 to 100, and upper must be greater than lower
-                            isValid = upper != null && upper >= 0 && upper <= 100 && upper > _massAlertLowerLevel;
-                          }
-                          if (isValid && upper != _massAlertUpperLevel) {
-                            setState(() {
-                              _massAlertUpperLevel = upper!;
-                            });
-                            _saveState();
-                            if (_massAlertEnabled) {
-                              unawaited(_updateMassAlerts());
-                            }
-                          }
-                        },
+                          const Spacer(),
+                          TextField(
+                            controller: _massAlertUpperLevelController,
+                            enabled: _massAlertUpperLevelEnabled,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final upper = int.tryParse(value)?.toDouble();
+                              bool isValid = false;
+                              if (_massAlertIndicator == IndicatorType.williams) {
+                                // WPR: -100 to 0, and upper must be greater than lower
+                                isValid = upper != null && upper >= -100 && upper <= 0 && upper > _massAlertLowerLevel;
+                              } else {
+                                // RSI/STOCH: 0 to 100, and upper must be greater than lower
+                                isValid = upper != null && upper >= 0 && upper <= 100 && upper > _massAlertLowerLevel;
+                              }
+                              if (isValid && upper != _massAlertUpperLevel) {
+                                setState(() {
+                                  _massAlertUpperLevel = upper!;
+                                });
+                                _saveState();
+                                if (_massAlertEnabled) {
+                                  unawaited(_updateMassAlerts());
+                                }
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ],
+                  ),
                 ),
-                ],
-              ),
-            ),
+            ],
           ),
+          ),
+        ),
         ],
       ),
     );
@@ -1907,7 +2049,30 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         indicatorParams = {'dPeriod': _massAlertStochDPeriod};
       }
 
-      final levels = [_massAlertLowerLevel, _massAlertUpperLevel];
+      // Only include enabled levels
+      final levels = <double>[];
+      if (_massAlertLowerLevelEnabled) {
+        levels.add(_massAlertLowerLevel);
+      }
+      if (_massAlertUpperLevelEnabled) {
+        levels.add(_massAlertUpperLevel);
+      }
+      
+      // Validate: at least one level must be enabled
+      if (levels.isEmpty) {
+        if (mounted) {
+          final loc = context.loc;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('create_alert_at_least_one_level_required')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
       final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       // Show loading indicator
@@ -2323,7 +2488,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         indicatorParams = {'dPeriod': _massAlertStochDPeriod};
       }
 
-      final levels = [_massAlertLowerLevel, _massAlertUpperLevel];
+      // Only include enabled levels
+      final levels = <double>[];
+      if (_massAlertLowerLevelEnabled) {
+        levels.add(_massAlertLowerLevel);
+      }
+      if (_massAlertUpperLevelEnabled) {
+        levels.add(_massAlertUpperLevel);
+      }
+      
       final watchlistSymbols =
           _watchlistItems.map((item) => item.symbol).toSet();
 
