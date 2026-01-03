@@ -1079,17 +1079,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   Widget build(BuildContext context) {
     final loc = context.loc;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(loc.t('watchlist_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // Indicator selector (always at top)
-          if (_appState != null) IndicatorSelector(appState: _appState!),
-          
-          // Collapsible settings bar
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Indicator selector (always at top)
+            if (_appState != null) IndicatorSelector(appState: _appState!),
+            
+            // Collapsible settings bar
           Card(
             margin: EdgeInsets.zero,
             child: Column(
@@ -1212,9 +1214,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                     final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
                                     switch (indicator) {
                                       case IndicatorType.stoch:
-                                        return '%K Period';
+                                        return loc.t('home_stoch_k_period_label');
                                       case IndicatorType.williams:
-                                        return 'WPR Period';
+                                        return loc.t('home_wpr_period_label');
                                       case IndicatorType.rsi:
                                         return loc.t('home_rsi_period_label');
                                     }
@@ -1233,9 +1235,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               Expanded(
                                 child: TextField(
                                   controller: _stochDPeriodController,
-                                  decoration: const InputDecoration(
-                                    labelText: '%D Period',
-                                    border: OutlineInputBorder(),
+                                  decoration: InputDecoration(
+                                    labelText: loc.t('home_stoch_d_period_label'),
+                                    border: const OutlineInputBorder(),
                                     isDense: true,
                                     contentPadding: EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 8),
@@ -1373,15 +1375,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ),
           ),
           
-          // Mass alerts section
-          if (_settingsExpanded) _buildMassAlertsSection(context),
+          // Mass alerts section (always visible as separate block)
+          _buildMassAlertsSection(context),
 
           // Instruments list
-          Expanded(
-            child: _isLoading && _watchlistItems.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : _watchlistItems.isEmpty
-                    ? Center(
+          _isLoading && _watchlistItems.isEmpty
+              ? const SizedBox(
+                  height: 200,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : _watchlistItems.isEmpty
+                  ? SizedBox(
+                      height: 200,
+                      child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -1400,52 +1406,58 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             ),
                           ],
                         ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadWatchlist(); // Reload entire list, not just RSI data
-                        },
-                        child: _watchlistItems.isEmpty
-                            ? Center(child: Text(loc.t('watchlist_no_items')))
-                            : Builder(
-                                builder: (context) {
-                                  debugPrint(
-                                      'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
-                                  return ListView.builder(
-                                    key: ValueKey(
-                                        'watchlist_${_watchlistItems.length}'), // Key for forced update
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 8),
-                                    itemCount: _watchlistItems.length,
-                                    itemBuilder: (context, index) {
-                                      if (index >= _watchlistItems.length) {
-                                        debugPrint(
-                                            'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
-                                        return const SizedBox.shrink();
-                                      }
-
-                                      final item = _watchlistItems[index];
-                                      debugPrint(
-                                          'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
-
-                                      final indicatorData =
-                                          _indicatorDataMap[item.symbol] ??
-                                              _SymbolIndicatorData(
-                                                currentIndicatorValue: 0.0,
-                                                indicatorValues: [],
-                                                timestamps: [],
-                                                indicatorResults: [],
-                                              );
-
-                                      return _buildWatchlistItem(
-                                          item, indicatorData);
-                                    },
-                                  );
-                                },
-                              ),
                       ),
-          ),
-        ],
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        await _loadWatchlist(); // Reload entire list, not just RSI data
+                      },
+                      child: _watchlistItems.isEmpty
+                          ? SizedBox(
+                              height: 200,
+                              child: Center(child: Text(loc.t('watchlist_no_items'))),
+                            )
+                          : Builder(
+                              builder: (context) {
+                                debugPrint(
+                                    'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
+                                return ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  key: ValueKey(
+                                      'watchlist_${_watchlistItems.length}'), // Key for forced update
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  itemCount: _watchlistItems.length,
+                                  itemBuilder: (context, index) {
+                                    if (index >= _watchlistItems.length) {
+                                      debugPrint(
+                                          'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
+                                      return const SizedBox.shrink();
+                                    }
+
+                                    final item = _watchlistItems[index];
+                                    debugPrint(
+                                        'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
+
+                                    final indicatorData =
+                                        _indicatorDataMap[item.symbol] ??
+                                            _SymbolIndicatorData(
+                                              currentIndicatorValue: 0.0,
+                                              indicatorValues: [],
+                                              timestamps: [],
+                                              indicatorResults: [],
+                                            );
+
+                                    return _buildWatchlistItem(
+                                        item, indicatorData);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+          ],
+        ),
       ),
     );
   }
@@ -1597,9 +1609,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 // Timeframe for alerts
                 DropdownButtonFormField<String>(
                   value: _massAlertTimeframe,
@@ -1649,9 +1664,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             final indicator = _massAlertIndicator;
                             switch (indicator) {
                               case IndicatorType.stoch:
-                                return '%K Period';
+                                return loc.t('home_stoch_k_period_label');
                               case IndicatorType.williams:
-                                return 'WPR Period';
+                                return loc.t('home_wpr_period_label');
                               case IndicatorType.rsi:
                                 return loc.t('home_rsi_period_label');
                             }
@@ -1683,9 +1698,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       Expanded(
                         child: TextField(
                           controller: _massAlertStochDPeriodController,
-                          decoration: const InputDecoration(
-                            labelText: '%D Period',
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: loc.t('home_stoch_d_period_label'),
+                            border: const OutlineInputBorder(),
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(
                               horizontal: 12,
@@ -1773,9 +1788,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             final indicator = _massAlertIndicator;
                             switch (indicator) {
                               case IndicatorType.williams:
-                                return 'WPR Lower Level';
+                                return loc.t('home_wpr_lower_level_label');
                               case IndicatorType.stoch:
-                                return 'STOCH Lower Level';
+                                return loc.t('home_stoch_lower_level_label');
                               case IndicatorType.rsi:
                                 return loc.t('create_alert_lower_level');
                             }
@@ -1820,9 +1835,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             final indicator = _massAlertIndicator;
                             switch (indicator) {
                               case IndicatorType.williams:
-                                return 'WPR Upper Level';
+                                return loc.t('home_wpr_upper_level_label');
                               case IndicatorType.stoch:
-                                return 'STOCH Upper Level';
+                                return loc.t('home_stoch_upper_level_label');
                               case IndicatorType.rsi:
                                 return loc.t('create_alert_upper_level');
                             }
@@ -1860,7 +1875,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                   ],
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

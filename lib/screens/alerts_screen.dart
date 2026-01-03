@@ -81,16 +81,13 @@ class _AlertsScreenState extends State<AlertsScreen>
       await AlertSyncService.syncPendingAlerts(widget.isar);
 
       final allAlerts = await widget.isar.alertRules.where().findAll();
-      // Temporarily show Watchlist Alert in list for debugging
-      // TODO: Filter out Watchlist Alert - they are background monitoring, not visible in list
-      final alerts = allAlerts;
-      // Uncomment below to filter out Watchlist Alert:
-      // final alerts = allAlerts.where((a) {
-      //   // Exclude alerts with description containing "WATCHLIST:"
-      //   final desc = a.description;
-      //   if (desc == null) return true;
-      //   return !desc.toUpperCase().contains('WATCHLIST:');
-      // }).toList();
+      // Filter out Watchlist Alerts - they are background monitoring, not visible in list
+      final alerts = allAlerts.where((a) {
+        // Exclude alerts with description containing "WATCHLIST:"
+        final desc = a.description;
+        if (desc == null) return true;
+        return !desc.toUpperCase().contains('WATCHLIST:');
+      }).toList();
 
       if (kDebugMode) {
         final watchlistCount = allAlerts

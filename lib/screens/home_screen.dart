@@ -109,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_appState != null) {
       final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
-      
+
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
         await prefs.setInt(
@@ -149,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
         _upperLevel = savedUpperValid ? savedUpperLevel :
             (indicatorType.defaultLevels.length > 1
-                ? indicatorType.defaultLevels[1]
+            ? indicatorType.defaultLevels[1]
                 : 100.0);
 
         // For Stochastic, load saved %D period or use default
@@ -388,8 +388,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadAlerts() async {
-    final alerts =
+    final allAlerts =
         await widget.isar.alertRules.filter().activeEqualTo(true).findAll();
+    // Filter out Watchlist Alerts - they are background monitoring, not visible in list
+    final alerts = allAlerts.where((a) {
+      final desc = a.description;
+      if (desc == null) return true;
+      return !desc.toUpperCase().contains('WATCHLIST:');
+    }).toList();
     setState(() {
       _alerts = alerts;
     });
@@ -747,48 +753,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 // Scrollable content
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: _loadIndicatorData,
-                    child: GestureDetector(
-                      onTap: () {
-                        // Remove focus when tapping on screen
-                        FocusScope.of(context).unfocus();
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 14,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Symbol and timeframe selection
-                            _buildSymbolSelector(),
-                            const SizedBox(height: 10),
+              onRefresh: _loadIndicatorData,
+              child: GestureDetector(
+                onTap: () {
+                  // Remove focus when tapping on screen
+                  FocusScope.of(context).unfocus();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Symbol and timeframe selection
+                      _buildSymbolSelector(),
+                      const SizedBox(height: 10),
 
                             // Indicator settings
-                            _buildIndicatorSettingsCard(),
-                            const SizedBox(height: 10),
+                      _buildIndicatorSettingsCard(),
+                      const SizedBox(height: 10),
 
                             // Current indicator value
-                            _buildCurrentIndicatorCard(),
-                            const SizedBox(height: 10),
+                      _buildCurrentIndicatorCard(),
+                      const SizedBox(height: 10),
 
-                            // Indicator chart
-                            _buildIndicatorChart(),
-                            const SizedBox(height: 10),
+                      // Indicator chart
+                      _buildIndicatorChart(),
+                      const SizedBox(height: 10),
 
-                            // Active alerts
-                            _buildActiveAlerts(),
-                            const SizedBox(height: 10),
+                      // Active alerts
+                      _buildActiveAlerts(),
+                      const SizedBox(height: 10),
 
-                            // Quick actions
-                            _buildQuickActions(),
-                          ],
-                        ),
-                      ),
-                    ),
+                      // Quick actions
+                      _buildQuickActions(),
+                    ],
+                  ),
+                ),
+              ),
                   ),
                 ),
               ],
@@ -1479,9 +1485,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             labelText: () {
                               switch (indicatorType) {
                                 case IndicatorType.stoch:
-                                  return '%K Period';
+                                  return loc.t('home_stoch_k_period_label');
                                 case IndicatorType.williams:
-                                  return 'WPR Period';
+                                  return loc.t('home_wpr_period_label');
                                 case IndicatorType.rsi:
                                   return loc.t('home_rsi_period_label');
                               }
@@ -1497,9 +1503,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         Expanded(
                           child: TextField(
                             controller: _stochDPeriodController,
-                            decoration: const InputDecoration(
-                              labelText: '%D Period',
-                              border: OutlineInputBorder(),
+                            decoration: InputDecoration(
+                              labelText: loc.t('home_stoch_d_period_label'),
+                              border: const OutlineInputBorder(),
                               isDense: true,
                             ),
                             keyboardType: TextInputType.number,

@@ -754,9 +754,9 @@ class _MarketsScreenState extends State<MarketsScreen>
                                     final indicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
                                     switch (indicator) {
                                       case IndicatorType.stoch:
-                                        return '%K Period';
+                                        return loc.t('home_stoch_k_period_label');
                                       case IndicatorType.williams:
-                                        return 'WPR Period';
+                                        return loc.t('home_wpr_period_label');
                                       case IndicatorType.rsi:
                                         return loc.t('home_rsi_period_label');
                                     }
@@ -791,9 +791,9 @@ class _MarketsScreenState extends State<MarketsScreen>
                               Expanded(
                                 child: TextField(
                                   controller: _stochDPeriodController,
-                                  decoration: const InputDecoration(
-                                    labelText: '%D Period',
-                                    border: OutlineInputBorder(),
+                                  decoration: InputDecoration(
+                                    labelText: loc.t('home_stoch_d_period_label'),
+                                    border: const OutlineInputBorder(),
                                     isDense: true,
                                     contentPadding: EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 8),
