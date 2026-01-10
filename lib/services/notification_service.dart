@@ -11,6 +11,7 @@ import '../main.dart';
 import '../models.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/home_screen.dart';
+import '../localization/app_localizations.dart';
 
 /// Service for local notifications
 class NotificationService {
@@ -132,7 +133,11 @@ class NotificationService {
 
         if (type == 'rsi_alert' || data.containsKey('symbol')) {
           final symbol = data['symbol'];
-          await _navigateToSymbol(symbol is String ? symbol : 'AAPL');
+          final indicator = data['indicator']; // Get indicator from payload
+          await _navigateToSymbol(
+            symbol is String ? symbol : 'AAPL',
+            indicator is String ? indicator : null,
+          );
         } else if (data.containsKey('alert_id')) {
           final alertId = data['alert_id'];
           if (alertId is String) {
@@ -141,8 +146,12 @@ class NotificationService {
         }
       } else if (data.containsKey('symbol')) {
         final symbol = data['symbol'];
+        final indicator = data['indicator']; // Get indicator from payload
         if (symbol is String) {
-          await _navigateToSymbol(symbol);
+          await _navigateToSymbol(
+            symbol,
+            indicator is String ? indicator : null,
+          );
         }
       }
 
@@ -181,7 +190,7 @@ class NotificationService {
   }
 
   /// Navigate to symbol
-  static Future<void> _navigateToSymbol(String symbol) async {
+  static Future<void> _navigateToSymbol(String symbol, String? indicator) async {
     try {
       final navigator = RSIWidgetApp.navigatorKey.currentState;
       if (navigator == null) return;
@@ -202,7 +211,11 @@ class NotificationService {
 
       navigator.push(
         MaterialPageRoute(
-          builder: (context) => HomeScreen(isar: isar, initialSymbol: symbol),
+          builder: (context) => HomeScreen(
+            isar: isar,
+            initialSymbol: symbol,
+            initialIndicator: indicator,
+          ),
         ),
       );
     } catch (e) {
@@ -251,24 +264,49 @@ class NotificationService {
     required double level,
     required String type,
     String? message,
+    String? indicator,
   }) async {
     if (!_initialized) {
       await initialize();
     }
 
     try {
-      final title = 'Watchlist: $symbol';
-      final body = message ?? 'RSI $rsi crossed level $level ($type)';
-
-      // Get sound and vibration settings from SharedPreferences
+      // Get language from SharedPreferences for localization
       final prefs = await SharedPreferences.getInstance();
+      final languageCode = prefs.getString('language') ?? 'en';
       final soundEnabled = prefs.getBool('sound_enabled') ?? true;
       final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
 
+      // Get localized strings
+      final title = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_watchlist_title',
+        params: {'symbol': symbol},
+      );
+      final body = message ??
+          await AppLocalizations.tByLanguage(
+            languageCode,
+            'notification_rsi_alert_body',
+            params: {
+              'rsi': rsi.toStringAsFixed(2),
+              'level': level.toStringAsFixed(0),
+              'type': type,
+            },
+          );
+
+      final channelName = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_rsi_alerts',
+      );
+      final channelDesc = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_rsi_alerts_desc',
+      );
+
       final androidDetails = AndroidNotificationDetails(
         'rsi_alerts',
-        'RSI Alerts',
-        channelDescription: 'Notifications about RSI level crossings',
+        channelName,
+        channelDescription: channelDesc,
         importance: Importance.high,
         priority: Priority.high,
         showWhen: true,
@@ -295,6 +333,7 @@ class NotificationService {
         'rsi': rsi.toString(),
         'level': level.toString(),
         'alert_type': type,
+        if (indicator != null) 'indicator': indicator,
       };
 
       await _notifications.show(
@@ -327,15 +366,25 @@ class NotificationService {
     }
 
     try {
-      // Get sound and vibration settings from SharedPreferences
+      // Get language from SharedPreferences for localization
       final prefs = await SharedPreferences.getInstance();
+      final languageCode = prefs.getString('language') ?? 'en';
       final soundEnabled = prefs.getBool('sound_enabled') ?? true;
       final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
 
+      final channelName = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_general',
+      );
+      final channelDesc = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_general_desc',
+      );
+
       final androidDetails = AndroidNotificationDetails(
         'general',
-        'General Notifications',
-        channelDescription: 'General application notifications',
+        channelName,
+        channelDescription: channelDesc,
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
         showWhen: true,
@@ -374,10 +423,18 @@ class NotificationService {
     required bool connected,
     String? message,
   }) async {
-    final title =
-        connected ? 'Connected to server' : 'Disconnected from server';
+    final prefs = await SharedPreferences.getInstance();
+    final languageCode = prefs.getString('language') ?? 'en';
+
+    final title = await AppLocalizations.tByLanguage(
+      languageCode,
+      connected ? 'notification_connected_title' : 'notification_disconnected_title',
+    );
     final body = message ??
-        (connected ? 'Receiving RSI data' : 'Check internet connection');
+        await AppLocalizations.tByLanguage(
+          languageCode,
+          connected ? 'notification_receiving_data' : 'notification_check_connection',
+        );
 
     await showNotification(
       title: title,
@@ -391,8 +448,16 @@ class NotificationService {
     required String error,
     String? details,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final languageCode = prefs.getString('language') ?? 'en';
+
+    final title = await AppLocalizations.tByLanguage(
+      languageCode,
+      'notification_error_title',
+    );
+
     await showNotification(
-      title: 'Application error',
+      title: title,
       body: details ?? error,
       payload: 'error',
     );
@@ -403,10 +468,18 @@ class NotificationService {
     required String symbol,
     required bool success,
   }) async {
-    final title = success ? 'Data synchronized' : 'Synchronization error';
-    final body = success
-        ? 'RSI data for $symbol updated'
-        : 'Failed to update data for $symbol';
+    final prefs = await SharedPreferences.getInstance();
+    final languageCode = prefs.getString('language') ?? 'en';
+
+    final title = await AppLocalizations.tByLanguage(
+      languageCode,
+      success ? 'notification_sync_success_title' : 'notification_sync_error_title',
+    );
+    final body = await AppLocalizations.tByLanguage(
+      languageCode,
+      success ? 'notification_sync_success_body' : 'notification_sync_error_body',
+      params: {'symbol': symbol},
+    );
 
     await showNotification(
       title: title,

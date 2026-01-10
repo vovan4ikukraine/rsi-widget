@@ -262,6 +262,7 @@ class FirebaseService {
         level: double.tryParse(data['level'] ?? '0') ?? 0.0,
         type: data['type'] ?? 'unknown',
         message: notification.body ?? data['message'],
+        indicator: data['indicator'], // Pass indicator from FCM data
       );
     }
   }

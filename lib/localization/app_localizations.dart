@@ -261,6 +261,23 @@ class AppLocalizations {
       'chart_zone_oversold': 'Oversold',
       'chart_zone_neutral': 'Neutral',
       'chart_zone_overbought': 'Overbought',
+
+      // Notifications
+      'notification_watchlist_title': 'Watchlist: {{symbol}}',
+      'notification_rsi_alert_body': 'RSI {{rsi}} crossed level {{level}} ({{type}})',
+      'notification_connected_title': 'Connected to server',
+      'notification_disconnected_title': 'Disconnected from server',
+      'notification_receiving_data': 'Receiving RSI data',
+      'notification_check_connection': 'Check internet connection',
+      'notification_error_title': 'Application error',
+      'notification_sync_success_title': 'Data synchronized',
+      'notification_sync_error_title': 'Synchronization error',
+      'notification_sync_success_body': 'RSI data for {{symbol}} updated',
+      'notification_sync_error_body': 'Failed to update data for {{symbol}}',
+      'notification_channel_rsi_alerts': 'RSI Alerts',
+      'notification_channel_rsi_alerts_desc': 'Notifications about RSI level crossings',
+      'notification_channel_general': 'General Notifications',
+      'notification_channel_general_desc': 'General application notifications',
     },
     'ru': {
       'app_title': 'RSI Виджет',
@@ -752,6 +769,23 @@ class AppLocalizations {
       'chart_zone_oversold': 'Перепродано',
       'chart_zone_neutral': 'Нейтрально',
       'chart_zone_overbought': 'Перекуплено',
+
+      // Notifications
+      'notification_watchlist_title': 'Список спостереження: {{symbol}}',
+      'notification_rsi_alert_body': 'RSI {{rsi}} перетнув рівень {{level}} ({{type}})',
+      'notification_connected_title': 'Підключено до сервера',
+      'notification_disconnected_title': 'Відключено від сервера',
+      'notification_receiving_data': 'Отримання даних RSI',
+      'notification_check_connection': 'Перевірте інтернет-з\'єднання',
+      'notification_error_title': 'Помилка додатка',
+      'notification_sync_success_title': 'Дані синхронізовано',
+      'notification_sync_error_title': 'Помилка синхронізації',
+      'notification_sync_success_body': 'Дані RSI для {{symbol}} оновлено',
+      'notification_sync_error_body': 'Не вдалося оновити дані для {{symbol}}',
+      'notification_channel_rsi_alerts': 'RSI Алерти',
+      'notification_channel_rsi_alerts_desc': 'Сповіщення про перетини рівнів RSI',
+      'notification_channel_general': 'Загальні сповіщення',
+      'notification_channel_general_desc': 'Загальні сповіщення додатка',
     },
   };
 
@@ -761,6 +795,23 @@ class AppLocalizations {
 
   String t(String key, {Map<String, String>? params}) {
     final languageCode = locale.languageCode;
+    final values = _localizedValues[languageCode] ?? _localizedValues['en']!;
+    final template = values[key] ?? _localizedValues['en']![key];
+    if (template == null) return key;
+    if (params == null || params.isEmpty) return template;
+
+    return params.entries.fold<String>(
+      template,
+      (acc, entry) => acc.replaceAll('{{${entry.key}}}', entry.value),
+    );
+  }
+
+  /// Get localized string by language code (for use without BuildContext)
+  static Future<String> tByLanguage(
+    String languageCode,
+    String key, {
+    Map<String, String>? params,
+  }) async {
     final values = _localizedValues[languageCode] ?? _localizedValues['en']!;
     final template = values[key] ?? _localizedValues['en']![key];
     if (template == null) return key;

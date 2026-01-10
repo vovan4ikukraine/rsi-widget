@@ -28,8 +28,14 @@ import 'markets_screen.dart';
 class HomeScreen extends StatefulWidget {
   final Isar isar;
   final String? initialSymbol;
+  final String? initialIndicator;
 
-  const HomeScreen({super.key, required this.isar, this.initialSymbol});
+  const HomeScreen({
+    super.key,
+    required this.isar,
+    this.initialSymbol,
+    this.initialIndicator,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -103,6 +109,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _appState = AppStateScope.of(context);
     _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
+    
+    // Set indicator from initialIndicator if provided (after appState is available)
+    if (widget.initialIndicator != null && _appState != null) {
+      _setInitialIndicator();
+    }
+  }
+
+  Future<void> _setInitialIndicator() async {
+    if (widget.initialIndicator == null || _appState == null) return;
+    
+    try {
+      final indicatorType = IndicatorType.fromJson(widget.initialIndicator!);
+      if (_appState!.selectedIndicator != indicatorType) {
+        await _appState!.setIndicator(indicatorType);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error setting indicator from initialIndicator: $e');
+      }
+    }
   }
 
   void _onIndicatorChanged() async {
