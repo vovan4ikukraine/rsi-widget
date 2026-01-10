@@ -1,7 +1,7 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    ext.kotlin_version = '2.0.21'
+    ext.kotlin_version = '2.1.0'
     repositories {
         google()
         mavenCentral()
@@ -19,14 +19,57 @@ allprojects {
         google()
         mavenCentral()
     }
+    
+    // Add Material Design dependency to all projects to support lStar attribute
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.dependencies.add('implementation', 'com.google.android.material:material:1.11.0')
+            
+            // Ensure Java 17 compatibility for all Android projects
+            try {
+                if (project.android.hasProperty('compileOptions')) {
+                    project.android.compileOptions {
+                        sourceCompatibility = JavaVersion.VERSION_17
+                        targetCompatibility = JavaVersion.VERSION_17
+                    }
+                }
+            } catch (e) {
+                // Try alternative approach
+                try {
+                    project.android.compileOptions.sourceCompatibility = JavaVersion.VERSION_17
+                    project.android.compileOptions.targetCompatibility = JavaVersion.VERSION_17
+                } catch (e2) {
+                    // Ignore if not accessible
+                }
+            }
+        }
+    }
 }
 
-// Fix isar_flutter_libs AndroidManifest.xml compatibility issue
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.evaluationDependsOn(":app")
+}
+
+// Fix isar_flutter_libs and other plugins - ensure compileSdk 34+ for Material Design 3 system colors
 gradle.beforeProject { project ->
+    // Special handling for isar_flutter_libs
     if (project.name == "isar_flutter_libs") {
         project.afterEvaluate {
             if (project.hasProperty("android")) {
                 project.android.namespace = "dev.isar.flutter_libs"
+                
+                // Ensure compileSdk is high enough for lStar attribute (API 31+)
+                try {
+                    project.android.compileSdk = 36
+                } catch (e) {
+                    try {
+                        project.android.compileSdkVersion = 36
+                    } catch (e2) {
+                        // Ignore if already set
+                    }
+                }
                 
                 // Fix AndroidManifest.xml - remove package attribute before processing
                 project.tasks.configureEach { task ->
@@ -48,12 +91,46 @@ gradle.beforeProject { project ->
             }
         }
     }
-}
-
-rootProject.buildDir = "../build"
-subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
-    project.evaluationDependsOn(":app")
+    
+    // For all Android projects, ensure compileSdk 34+ for Material Design 3 system colors
+    project.afterEvaluate {
+        if (project.hasProperty('android')) {
+            // Ensure compileSdk is high enough for Material Design 3 system colors (API 34+)
+            // and lStar attribute (API 31+)
+            try {
+                project.android.compileSdk = 36
+            } catch (e) {
+                try {
+                    project.android.compileSdkVersion = 36
+                } catch (e2) {
+                    // Ignore if already set or not accessible
+                }
+            }
+            
+            // Ensure Java 17 compatibility for all Android projects
+            try {
+                if (project.android.hasProperty('compileOptions')) {
+                    project.android.compileOptions {
+                        sourceCompatibility = JavaVersion.VERSION_17
+                        targetCompatibility = JavaVersion.VERSION_17
+                    }
+                }
+            } catch (e) {
+                // Ignore if not accessible
+            }
+        }
+        
+        // Also set Java 17 for Kotlin projects
+        if (project.hasProperty('kotlin')) {
+            try {
+                project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                    kotlinOptions.jvmTarget = "17"
+                }
+            } catch (e) {
+                // Ignore if not accessible
+            }
+        }
+    }
 }
 
 tasks.register("clean", Delete) {
