@@ -862,6 +862,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ? indicatorResults.sublist(indicatorResults.length - 50)
             : indicatorResults;
 
+        // Get last close price
+        final lastPrice = candles.isNotEmpty ? candles.last.close : null;
+
         if (mounted) {
           setState(() {
             _indicatorDataMap[symbol] = _SymbolIndicatorData(
@@ -870,6 +873,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               indicatorValues: chartIndicatorValues,
               timestamps: chartIndicatorTimestamps,
               indicatorResults: chartIndicatorResults,
+              price: lastPrice,
             );
           });
         }
@@ -1571,13 +1575,28 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: indicatorColor,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    children: [
+                      if (indicatorData.price != null) ...[
+                        Text(
+                          indicatorData.price!.toStringAsFixed(2),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: indicatorColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -2653,11 +2672,13 @@ class _SymbolIndicatorData {
   final List<double> indicatorValues;
   final List<int> timestamps;
   final List<IndicatorResult> indicatorResults; // Full results for chart
+  final double? price; // Last close price
 
   _SymbolIndicatorData({
     required this.currentIndicatorValue,
     required this.indicatorValues,
     required this.timestamps,
     required this.indicatorResults,
+    this.price,
   });
 }

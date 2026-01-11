@@ -167,6 +167,7 @@ class AppLocalizations {
       'home_error_label_timeframe': 'Timeframe: {{timeframe}}',
       'home_error_label': 'Error:',
       'home_close': 'Close',
+      'home_alpha_warning': 'ALPHA: some data can not be displayed',
       'search_no_results': 'No instruments found',
 
       // Markets
@@ -438,6 +439,7 @@ class AppLocalizations {
       'home_error_label_timeframe': 'Таймфрейм: {{timeframe}}',
       'home_error_label': 'Ошибка:',
       'home_close': 'Закрыть',
+      'home_alpha_warning': 'ALPHA: некоторые данные могут не отображаться',
       'search_no_results': 'Инструменты не найдены',
 
       // Markets
@@ -678,6 +680,7 @@ class AppLocalizations {
       'home_error_label_timeframe': 'Таймфрейм: {{timeframe}}',
       'home_error_label': 'Помилка:',
       'home_close': 'Закрити',
+      'home_alpha_warning': 'ALPHA: деякі дані можуть не відображатися',
       'search_no_results': 'Інструменти не знайдено',
 
       // Markets

@@ -60,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<IndicatorResult> _indicatorResults = []; // Full indicator results for chart
   List<int> _indicatorTimestamps = []; // Timestamps for each indicator point
   double _currentIndicatorValue = 0.0;
+  double? _currentPrice; // Current price (last close)
   bool _isLoading = false;
   bool _indicatorSettingsExpanded = false; // Indicator settings expansion state
   String? _dataSource; // 'cache' or 'yahoo' - shows where data came from
@@ -595,6 +596,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
           : indicatorResults;
 
+      // Get last close price
+      final lastPrice = candles.isNotEmpty ? candles.last.close : null;
+
       setState(() {
         _selectedSymbol = requestedSymbol;
         _indicatorValues = chartIndicatorValues;
@@ -602,6 +606,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _indicatorResults = chartIndicatorResults;
         _currentIndicatorValue =
             indicatorValues.isNotEmpty ? indicatorValues.last : 0.0;
+        _currentPrice = lastPrice;
         _dataSource = dataSource;
         _syncSymbolFieldText(requestedSymbol);
       });
@@ -838,6 +843,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                       // Quick actions
                       _buildQuickActions(),
+                      const SizedBox(height: 10),
+
+                      // Alpha warning
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          loc.t('home_alpha_warning'),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[500],
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1277,6 +1297,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       color: color,
                     ),
                   ),
+                  if (_currentPrice != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _currentPrice!.toStringAsFixed(2),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
