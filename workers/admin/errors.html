@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Logs - RSI Widget Admin</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .error-groups {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .error-group-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .error-group-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .error-group-card.selected {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+        .error-group-type {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        .error-group-count {
+            font-size: 2rem;
+            color: #007bff;
+            margin: 0.5rem 0;
+        }
+        .error-group-message {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .error-group-time {
+            color: #999;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+        .error-history {
+            margin-top: 2rem;
+        }
+        .error-history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .error-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .error-table th,
+        .error-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .error-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        .error-table tr:hover {
+            background: #f8f9fa;
+        }
+        .error-message {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .error-context {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .filter-controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: center;
+        }
+        .filter-controls select,
+        .filter-controls input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>RSI Widget Admin Dashboard</h1>
+            <div class="header-actions">
+                <span id="apiKeyStatus" class="status-indicator"></span>
+                <input type="password" id="apiKeyInput" placeholder="Enter Admin API Key" class="api-key-input">
+                <button id="connectBtn" class="btn btn-primary">Connect</button>
+            </div>
+        </header>
+
+        <nav class="nav">
+            <a href="index.html" class="nav-link" data-page="dashboard">Dashboard</a>
+            <a href="providers.html" class="nav-link" data-page="providers">Providers</a>
+            <a href="errors.html" class="nav-link active" data-page="errors">Errors</a>
+        </nav>
+
+        <main id="mainContent" class="main-content">
+            <div id="loading" class="loading">Loading...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            
+            <div id="errorsContent" style="display: none;">
+                <div class="filter-controls">
+                    <label>
+                        Time Range:
+                        <select id="timeRange">
+                            <option value="1">Last 1 hour</option>
+                            <option value="6">Last 6 hours</option>
+                            <option value="24" selected>Last 24 hours</option>
+                            <option value="72">Last 3 days</option>
+                            <option value="168">Last 7 days</option>
+                        </select>
+                    </label>
+                    <button id="refreshBtn" class="btn btn-primary">Refresh</button>
+                </div>
+
+                <h2>Error Groups</h2>
+                <div id="errorGroups" class="error-groups"></div>
+
+                <div id="errorHistory" class="error-history" style="display: none;">
+                    <div class="error-history-header">
+                        <h2 id="historyTitle">Error History</h2>
+                        <button id="closeHistoryBtn" class="btn btn-secondary">Close</button>
+                    </div>
+                    <table class="error-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Message</th>
+                                <th>Context</th>
+                                <th>Symbol</th>
+                                <th>User ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="errorHistoryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let apiKey = '';
+        let selectedErrorType = null;
+
+        // Load API key from localStorage
+        const savedApiKey = localStorage.getItem('adminApiKey');
+        if (savedApiKey) {
+            apiKey = savedApiKey;
+            document.getElementById('apiKeyInput').value = savedApiKey;
+            updateApiKeyStatus('connected');
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', () => {
+            apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (apiKey) {
+                localStorage.setItem('adminApiKey', apiKey);
+                updateApiKeyStatus('connected');
+                loadErrorGroups();
+            } else {
+                updateApiKeyStatus('disconnected');
+            }
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadErrorGroups();
+            if (selectedErrorType) {
+                loadErrorHistory(selectedErrorType);
+            }
+        });
+
+        document.getElementById('timeRange').addEventListener('change', () => {
+            loadErrorGroups();
+            if (selectedErrorType) {
+                loadErrorHistory(selectedErrorType);
+            }
+        });
+
+        document.getElementById('closeHistoryBtn').addEventListener('click', () => {
+            document.getElementById('errorHistory').style.display = 'none';
+            selectedErrorType = null;
+            updateSelectedGroup();
+        });
+
+        function updateApiKeyStatus(status) {
+            const statusEl = document.getElementById('apiKeyStatus');
+            if (status === 'connected') {
+                statusEl.textContent = '✓ Connected';
+                statusEl.style.color = 'green';
+            } else {
+                statusEl.textContent = '✗ Disconnected';
+                statusEl.style.color = 'red';
+            }
+        }
+
+        async function loadErrorGroups() {
+            if (!apiKey) {
+                showError('Please enter API key');
+                return;
+            }
+
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('error').style.display = 'none';
+                document.getElementById('errorsContent').style.display = 'none';
+
+                const hours = document.getElementById('timeRange').value;
+                const response = await fetch(`https://rsi-workers.vovan4ikukraine.workers.dev/admin/errors?hours=${hours}`, {
+                    headers: {
+                        'X-Admin-API-Key': apiKey
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                displayErrorGroups(data.groups);
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('errorsContent').style.display = 'block';
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                showError(`Failed to load error groups: ${error.message}`);
+            }
+        }
+
+        function displayErrorGroups(groups) {
+            const container = document.getElementById('errorGroups');
+            container.innerHTML = '';
+
+            if (groups.length === 0) {
+                container.innerHTML = '<p>No errors found in the selected time range.</p>';
+                return;
+            }
+
+            groups.forEach(group => {
+                const card = document.createElement('div');
+                card.className = 'error-group-card';
+                if (selectedErrorType === group.type) {
+                    card.classList.add('selected');
+                }
+                card.onclick = () => {
+                    selectedErrorType = group.type;
+                    updateSelectedGroup();
+                    loadErrorHistory(group.type);
+                };
+
+                const lastOccurrence = new Date(group.lastOccurrence);
+                card.innerHTML = `
+                    <div class="error-group-type">${group.type}</div>
+                    <div class="error-group-count">${group.count}</div>
+                    <div class="error-group-message" title="${escapeHtml(group.sampleMessage)}">${escapeHtml(group.sampleMessage)}</div>
+                    <div class="error-group-time">Last: ${lastOccurrence.toLocaleString()}</div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function updateSelectedGroup() {
+            document.querySelectorAll('.error-group-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            if (selectedErrorType) {
+                const cards = document.querySelectorAll('.error-group-card');
+                cards.forEach(card => {
+                    if (card.textContent.includes(selectedErrorType)) {
+                        card.classList.add('selected');
+                    }
+                });
+            }
+        }
+
+        async function loadErrorHistory(type) {
+            if (!apiKey) return;
+
+            try {
+                const hours = document.getElementById('timeRange').value;
+                const response = await fetch(`https://rsi-workers.vovan4ikukraine.workers.dev/admin/errors/${type}?hours=${hours}&limit=100`, {
+                    headers: {
+                        'X-Admin-API-Key': apiKey
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                displayErrorHistory(type, data.errors);
+
+                document.getElementById('errorHistory').style.display = 'block';
+            } catch (error) {
+                showError(`Failed to load error history: ${error.message}`);
+            }
+        }
+
+        function displayErrorHistory(type, errors) {
+            document.getElementById('historyTitle').textContent = `Error History: ${type}`;
+            const tbody = document.getElementById('errorHistoryBody');
+            tbody.innerHTML = '';
+
+            if (errors.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">No errors found</td></tr>';
+                return;
+            }
+
+            errors.forEach(error => {
+                const row = document.createElement('tr');
+                const timestamp = new Date(error.timestamp);
+                row.innerHTML = `
+                    <td>${timestamp.toLocaleString()}</td>
+                    <td class="error-message" title="${escapeHtml(error.message)}">${escapeHtml(error.message)}</td>
+                    <td class="error-context">${error.context || '-'}</td>
+                    <td>${error.symbol || '-'}</td>
+                    <td>${error.userId ? error.userId.substring(0, 8) + '...' : '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto-load on page load if API key is saved
+        if (savedApiKey) {
+            loadErrorGroups();
+        }
+    </script>
+</body>
+</html>

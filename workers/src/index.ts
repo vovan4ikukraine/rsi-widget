@@ -7,6 +7,7 @@ import { Logger } from './logger';
 import { adminAuthMiddleware } from './admin/auth';
 import { getAdminStats, getUsers } from './admin/stats';
 import { getProviders, updateProviders } from './admin/providers';
+import { logError, getErrorGroups, getErrorHistory } from './admin/errors';
 
 export interface Env {
     KV: KVNamespace;
@@ -221,6 +222,31 @@ async function ensureTables(db: D1Database, env?: any) {
     try {
         await db.prepare(`CREATE INDEX IF NOT EXISTS idx_candles_cache_symbol_timeframe ON candles_cache(symbol, timeframe)`).run();
         await db.prepare(`CREATE INDEX IF NOT EXISTS idx_candles_cache_cached_at ON candles_cache(cached_at)`).run();
+    } catch (e: any) {
+        // Indexes may already exist, ignore
+    }
+
+    // Create error log table
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS error_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        error_class TEXT,
+        timestamp TEXT NOT NULL,
+        user_id TEXT,
+        context TEXT,
+        symbol TEXT,
+        timeframe TEXT,
+        additional_data TEXT
+      )
+    `).run();
+
+    // Create indexes for error log
+    try {
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_error_log_type ON error_log(type)`).run();
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp)`).run();
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_error_log_user_id ON error_log(user_id)`).run();
     } catch (e: any) {
         // Indexes may already exist, ignore
     }
@@ -1166,6 +1192,13 @@ const worker: ExportedHandler<Env> = {
     // Provider endpoints
     adminRoutes.get('/providers', getProviders);
     adminRoutes.put('/providers', updateProviders);
+    
+    // Error logging endpoint (public, no auth required)
+    app.post('/admin/log-error', logError);
+    
+    // Error endpoints (require auth)
+    adminRoutes.get('/errors', getErrorGroups);
+    adminRoutes.get('/errors/:type', getErrorHistory);
     
     // Mount admin routes
     app.route('/admin', adminRoutes);

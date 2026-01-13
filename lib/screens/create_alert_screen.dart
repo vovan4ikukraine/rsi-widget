@@ -5,6 +5,7 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/alert_sync_service.dart';
 import '../services/symbol_search_service.dart';
+import '../services/error_service.dart';
 import '../localization/app_localizations.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
@@ -920,7 +921,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                    'Symbol "$symbol" not found. Please enter a valid symbol.'),
+                  loc.t('error_symbol_not_found', params: {'symbol': symbol}),
+                ),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 3),
               ),
@@ -929,12 +931,20 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           return;
         }
       } catch (e) {
+        // Log error to server
+        ErrorService.logError(
+          error: e,
+          context: 'create_alert_screen_validate_symbol',
+          symbol: symbol,
+        );
+        
         // If validation fails, still allow creation but show warning
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'Could not validate symbol "$symbol". Please verify it exists.'),
+                loc.t('error_symbol_validation_failed', params: {'symbol': symbol}),
+              ),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 3),
             ),
@@ -1065,12 +1075,20 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         );
       }
     } catch (e) {
+      // Log error to server
+      final symbolForLog = _symbolController.text.trim().toUpperCase();
+      ErrorService.logError(
+        error: e,
+        context: 'create_alert_screen_save_alert',
+        symbol: symbolForLog,
+      );
+      
       if (mounted) {
         final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t('alerts_error_generic', params: {'message': '$e'}),
+              ErrorService.getUserFriendlyError(e, loc),
             ),
           ),
         );
@@ -1119,11 +1137,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           );
         }
       } catch (e) {
+        // Log error to server
+        ErrorService.logError(
+          error: e,
+          context: 'create_alert_screen_delete_alert',
+        );
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                loc.t('alerts_error_generic', params: {'message': '$e'}),
+                ErrorService.getUserFriendlyError(e, loc),
               ),
             ),
           );

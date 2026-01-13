@@ -113,6 +113,14 @@ class AppLocalizations {
       'common_error': 'Error',
       'common_details': 'Details',
       'common_close': 'Close',
+      'error_no_internet': 'No internet connection',
+      'error_server_error': 'Server error. Please try again later',
+      'error_timeout': 'Request timeout. Check your connection',
+      'error_too_many_requests': 'Too many requests. Please wait a moment',
+      'error_no_data': 'No data available',
+      'error_unknown': 'An error occurred. Please try again',
+      'error_symbol_not_found': 'Symbol "{{symbol}}" not found. Please enter a valid symbol',
+      'error_symbol_validation_failed': 'Could not validate symbol "{{symbol}}. Please verify it exists',
 
       // Home
       'home_title': 'Overview',
@@ -385,6 +393,14 @@ class AppLocalizations {
       'common_error': 'Ошибка',
       'common_details': 'Подробнее',
       'common_close': 'Закрыть',
+      'error_no_internet': 'Нет соединения с интернетом',
+      'error_server_error': 'Ошибка сервера. Попробуйте позже',
+      'error_timeout': 'Превышено время ожидания. Проверьте соединение',
+      'error_too_many_requests': 'Слишком много запросов. Подождите немного',
+      'error_no_data': 'Нет данных для отображения',
+      'error_unknown': 'Произошла ошибка. Попробуйте позже',
+      'error_symbol_not_found': 'Тикер "{{symbol}}" не найден. Введите корректный тикер',
+      'error_symbol_validation_failed': 'Не удалось проверить тикер "{{symbol}}". Убедитесь, что он существует',
 
       // Home
       'home_title': 'Обзор',
@@ -632,6 +648,14 @@ class AppLocalizations {
       'common_error': 'Помилка',
       'common_details': 'Деталі',
       'common_close': 'Закрити',
+      'error_no_internet': 'Немає з\'єднання з інтернетом',
+      'error_server_error': 'Помилка сервера. Спробуйте пізніше',
+      'error_timeout': 'Перевищено час очікування. Перевірте з\'єднання',
+      'error_too_many_requests': 'Занадто багато запитів. Зачекайте трохи',
+      'error_no_data': 'Немає даних для відображення',
+      'error_unknown': 'Сталася помилка. Спробуйте пізніше',
+      'error_symbol_not_found': 'Тікер "{{symbol}}" не знайдено. Введіть коректний тікер',
+      'error_symbol_validation_failed': 'Не вдалося перевірити тікер "{{symbol}}". Переконайтеся, що він існує',
 
       // Home
       'home_title': 'Огляд',

@@ -513,6 +513,34 @@ const Map<String, SymbolInfo> _fallbackMap = {
   ),
 
   // Cryptocurrencies
+  'MATIC': SymbolInfo(
+    symbol: 'POL28321-USD',
+    name: 'Polygon (MATIC)',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'POLYGON': SymbolInfo(
+    symbol: 'POL28321-USD',
+    name: 'Polygon (MATIC)',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'APTOS': SymbolInfo(
+    symbol: 'APT21794-USD',
+    name: 'Aptos',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'APT': SymbolInfo(
+    symbol: 'APT21794-USD',
+    name: 'Aptos',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
   'BTC-USD': SymbolInfo(
     symbol: 'BTC-USD',
     name: 'Bitcoin',
@@ -576,8 +604,8 @@ const Map<String, SymbolInfo> _fallbackMap = {
     currency: 'USD',
     exchange: 'Crypto',
   ),
-  'MATIC': SymbolInfo(
-    symbol: 'MATIC-USD',
+  'MATIC-USD': SymbolInfo(
+    symbol: 'POL28321-USD',
     name: 'Polygon (MATIC)',
     type: 'crypto',
     currency: 'USD',
@@ -604,15 +632,43 @@ const Map<String, SymbolInfo> _fallbackMap = {
     currency: 'USD',
     exchange: 'Crypto',
   ),
-  'APT': SymbolInfo(
-    symbol: 'APT-USD',
+  'UNI': SymbolInfo(
+    symbol: 'UNI7083-USD',
+    name: 'Uniswap',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'UNI-USD': SymbolInfo(
+    symbol: 'UNI7083-USD',
+    name: 'Uniswap',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'UNISWAP': SymbolInfo(
+    symbol: 'UNI7083-USD',
+    name: 'Uniswap',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'APT-USD': SymbolInfo(
+    symbol: 'APT21794-USD',
     name: 'Aptos',
     type: 'crypto',
     currency: 'USD',
     exchange: 'Crypto',
   ),
   'SUI': SymbolInfo(
-    symbol: 'SUI-USD',
+    symbol: 'SUI20947-USD',
+    name: 'Sui',
+    type: 'crypto',
+    currency: 'USD',
+    exchange: 'Crypto',
+  ),
+  'SUI-USD': SymbolInfo(
+    symbol: 'SUI20947-USD',
     name: 'Sui',
     type: 'crypto',
     currency: 'USD',

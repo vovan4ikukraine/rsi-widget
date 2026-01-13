@@ -12,6 +12,7 @@ import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
 import '../services/alert_sync_service.dart';
+import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 
@@ -882,6 +883,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         attempt++;
         debugPrint(
             'Error loading indicator for $symbol (attempt $attempt/$maxRetries): $e');
+
+        // Log error to server (only on final attempt to avoid spam)
+        if (attempt >= maxRetries) {
+          ErrorService.logError(
+            error: e,
+            context: 'watchlist_screen_load_indicator',
+            symbol: symbol,
+            timeframe: _timeframe,
+            additionalData: {'attempt': attempt.toString()},
+          );
+        }
 
         if (attempt >= maxRetries) {
           // All retries failed, set empty data

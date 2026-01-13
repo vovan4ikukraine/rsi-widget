@@ -56,7 +56,7 @@ class YahooProtoSource {
 
       // Get userId for activity tracking (optional - doesn't break if null)
       final userId = UserService.currentUserId;
-      
+
       final uri = Uri.parse('$endpoint/yf/candles').replace(
         queryParameters: {
           'symbol': symbol,

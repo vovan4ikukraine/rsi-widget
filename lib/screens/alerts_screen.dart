@@ -7,6 +7,7 @@ import '../models/indicator_type.dart';
 import 'create_alert_screen.dart';
 import '../localization/app_localizations.dart';
 import '../services/alert_sync_service.dart';
+import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 
@@ -110,15 +111,19 @@ class _AlertsScreenState extends State<AlertsScreen>
       setState(() {
         _isLoading = false;
       });
+      
+      // Log error to server
+      ErrorService.logError(
+        error: e,
+        context: 'alerts_screen_load_data',
+      );
+      
       if (mounted) {
         final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t(
-                'alerts_error_loading',
-                params: {'message': '$e'},
-              ),
+              ErrorService.getUserFriendlyError(e, loc),
             ),
           ),
         );
@@ -654,11 +659,18 @@ class _AlertsScreenState extends State<AlertsScreen>
           SnackBar(content: Text(loc.t('alerts_delete_success'))),
         );
       } catch (e) {
+        // Log error to server
+        ErrorService.logError(
+          error: e,
+          context: 'alerts_screen_delete_alert',
+          additionalData: {'alertId': alert.id.toString()},
+        );
+        
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t('alerts_error_generic', params: {'message': '$e'}),
+              ErrorService.getUserFriendlyError(e, loc),
             ),
           ),
         );
@@ -873,11 +885,18 @@ class _AlertsScreenState extends State<AlertsScreen>
           return;
       }
     } catch (e) {
+      // Log error to server
+      ErrorService.logError(
+        error: e,
+        context: 'alerts_screen_bulk_action',
+        additionalData: {'action': action},
+      );
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t('alerts_error_generic', params: {'message': '$e'}),
+              ErrorService.getUserFriendlyError(e, loc),
             ),
           ),
         );

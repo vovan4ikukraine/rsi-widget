@@ -17,6 +17,7 @@ import '../services/symbol_search_service.dart';
 import '../services/alert_sync_service.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
+import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 import 'alerts_screen.dart';
@@ -615,12 +616,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (symbol != null) {
         _syncSymbolFieldText(previousSymbol);
       }
-      // Detailed error logging
-      debugPrint('Error loading RSI data:');
-      debugPrint('Symbol: $requestedSymbol');
-      debugPrint('Timeframe: $_selectedTimeframe');
-      debugPrint('Error: $e');
-      debugPrint('Stack trace: $stackTrace');
+      
+      // Log error to server
+      ErrorService.logError(
+        error: e,
+        context: 'home_screen_load_indicator_data',
+        symbol: requestedSymbol,
+        timeframe: _selectedTimeframe,
+        additionalData: {
+          'stackTrace': stackTrace.toString(),
+        },
+      );
 
       if (mounted) {
         String message;
@@ -641,58 +647,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             message += '\n${loc.t('home_check_symbol_hint')}';
           }
         } else {
-          message = symbol == null
-              ? loc.t('common_error')
-              : loc.t('home_instrument_not_found');
+          // Use ErrorService to get user-friendly message
+          message = ErrorService.getUserFriendlyError(e, loc);
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
             duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: loc.t('common_details'),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(loc.t('home_error_details_title')),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            loc.t(
-                              'home_error_label_symbol',
-                              params: {'symbol': requestedSymbol},
-                            ),
-                          ),
-                          Text(
-                            loc.t(
-                              'home_error_label_timeframe',
-                              params: {'timeframe': _selectedTimeframe},
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            loc.t('home_error_label'),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text('$e'),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: Text(loc.t('common_close')),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
           ),
         );
       }

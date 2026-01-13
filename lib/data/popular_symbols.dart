@@ -474,7 +474,7 @@ const List<SymbolInfo> popularSymbols = [
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'MATIC-USD',
+    symbol: 'POL28321-USD',
     name: 'Polygon (MATIC)',
     type: 'crypto',
     currency: 'USD',
@@ -495,7 +495,7 @@ const List<SymbolInfo> popularSymbols = [
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'UNI-USD',
+    symbol: 'UNI7083-USD',
     name: 'Uniswap',
     type: 'crypto',
     currency: 'USD',
@@ -516,14 +516,14 @@ const List<SymbolInfo> popularSymbols = [
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'APT-USD',
+    symbol: 'APT21794-USD',
     name: 'Aptos',
     type: 'crypto',
     currency: 'USD',
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'SUI-USD',
+    symbol: 'SUI20947-USD',
     name: 'Sui',
     type: 'crypto',
     currency: 'USD',

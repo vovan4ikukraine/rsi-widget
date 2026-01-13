@@ -6,6 +6,7 @@ import '../models/indicator_type.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/indicator_service.dart';
+import '../services/error_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
 import '../data/popular_symbols.dart';
@@ -615,6 +616,17 @@ class _MarketsScreenState extends State<MarketsScreen>
         debugPrint(
             'Error loading indicator data for $symbol (attempt $attempt/$maxRetries): $e');
 
+        // Log error to server (only on final attempt to avoid spam)
+        if (attempt >= maxRetries) {
+          ErrorService.logError(
+            error: e,
+            context: 'markets_screen_load_indicator',
+            symbol: symbol,
+            timeframe: _timeframe,
+            additionalData: {'attempt': attempt.toString()},
+          );
+        }
+
         // Check if it's a 500 error or rate limit error
         final errorStr = e.toString().toLowerCase();
         final isServerError = errorStr.contains('500') ||
@@ -625,6 +637,22 @@ class _MarketsScreenState extends State<MarketsScreen>
           // All retries failed or not a retryable error
           debugPrint(
               'Failed to load indicator for $symbol after $maxRetries attempts');
+          
+          // Set empty data to show "no data" message
+          if (mounted) {
+            setState(() {
+              _indicatorDataMap[symbol] = _SymbolIndicatorData(
+                currentValue: 0.0,
+                previousValue: null,
+                history: [],
+                timestamps: [],
+                indicatorResults: [],
+                price: null,
+              );
+              _loadedSymbols.add(symbol);
+            });
+          }
+          
           _loadingSymbols.remove(symbol);
           return;
         } else {
@@ -1064,7 +1092,19 @@ class _MarketsScreenState extends State<MarketsScreen>
                   lineWidth: 1.2,
                 ),
               )
-            : const SizedBox(height: 40),
+            : SizedBox(
+                height: 40,
+                child: Center(
+                  child: Text(
+                    loc.t('error_no_data'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
         onTap: () {
           // Navigate to home screen with selected symbol
           Navigator.of(context).pushNamedAndRemoveUntil(
