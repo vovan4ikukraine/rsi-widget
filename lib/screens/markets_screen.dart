@@ -1105,14 +1105,6 @@ class _MarketsScreenState extends State<MarketsScreen>
                   ),
                 ),
               ),
-        onTap: () {
-          // Navigate to home screen with selected symbol
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/home',
-            (route) => false,
-            arguments: {'symbol': symbol.symbol},
-          );
-        },
       ),
     );
   }

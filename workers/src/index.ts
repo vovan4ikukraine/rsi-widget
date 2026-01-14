@@ -539,22 +539,35 @@ app.post('/alerts/create', async (c) => {
         }
 
         // Validate levels
-        // For Williams %R: -100 to 0, for others: 0 to 100
-        if (!Array.isArray(levels) || levels.length === 0 || levels.length > 10) {
-            return c.json({ error: 'Invalid levels: must be array of 1-10 numbers' }, 400);
+        // Levels array should have 2 elements [lower, upper] with null for disabled levels
+        // For Williams %R: -99 to -1, for others: 1 to 99
+        if (!Array.isArray(levels) || levels.length === 0 || levels.length > 2) {
+            return c.json({ error: 'Invalid levels: must be array of 1-2 elements [lower, upper] with null for disabled' }, 400);
         }
         const isWilliams = alertIndicator === 'williams';
-        const minLevel = isWilliams ? -100 : 0;
-        const maxLevel = isWilliams ? 0 : 100;
-        for (const level of levels) {
+        const minLevel = isWilliams ? -99 : 1;
+        const maxLevel = isWilliams ? -1 : 99;
+        
+        // Filter out null values and validate
+        const validLevels: number[] = [];
+        for (let i = 0; i < levels.length; i++) {
+            const level = levels[i];
+            if (level === null || level === undefined) {
+                continue; // Skip null/undefined (disabled level)
+            }
             if (typeof level !== 'number' || !isFinite(level)) {
-                return c.json({ error: `Invalid level: must be a finite number` }, 400);
+                return c.json({ error: `Invalid level at index ${i}: must be a finite number or null` }, 400);
             }
             if (level < minLevel || level > maxLevel) {
                 return c.json({ 
-                    error: `Invalid level: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''}` 
+                    error: `Invalid level at index ${i}: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''} or null` 
                 }, 400);
             }
+            validLevels.push(level);
+        }
+        
+        if (validLevels.length === 0) {
+            return c.json({ error: 'At least one level must be enabled (not null)' }, 400);
         }
 
         // Validate mode
@@ -581,7 +594,7 @@ app.post('/alerts/create', async (c) => {
     `).bind(
             userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
             indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
-            JSON.stringify(levels), alertMode,
+            JSON.stringify(validLevels), alertMode,
             cooldown, Date.now()
         ).run();
 
@@ -692,25 +705,39 @@ app.put('/alerts/:ruleId', async (c) => {
         }
 
         if (updates.levels !== undefined) {
-            if (!Array.isArray(updates.levels) || updates.levels.length === 0 || updates.levels.length > 10) {
-                return c.json({ error: 'Invalid levels: must be array of 1-10 numbers' }, 400);
+            // Levels array should have 2 elements [lower, upper] with null for disabled levels
+            if (!Array.isArray(updates.levels) || updates.levels.length === 0 || updates.levels.length > 2) {
+                return c.json({ error: 'Invalid levels: must be array of 1-2 elements [lower, upper] with null for disabled' }, 400);
             }
             // Determine indicator type for validation (use updates.indicator if provided, otherwise check existing alert)
             const updateIndicator = updates.indicator || existing.indicator || 'rsi';
             const isWilliams = updateIndicator === 'williams';
-            const minLevel = isWilliams ? -100 : 0;
-            const maxLevel = isWilliams ? 0 : 100;
-            for (const level of updates.levels) {
+            const minLevel = isWilliams ? -99 : 1;
+            const maxLevel = isWilliams ? -1 : 99;
+            
+            // Filter out null values and validate
+            const validLevels: number[] = [];
+            for (let i = 0; i < updates.levels.length; i++) {
+                const level = updates.levels[i];
+                if (level === null || level === undefined) {
+                    continue; // Skip null/undefined (disabled level)
+                }
                 if (typeof level !== 'number' || !isFinite(level)) {
-                    return c.json({ error: `Invalid level: must be a finite number` }, 400);
+                    return c.json({ error: `Invalid level at index ${i}: must be a finite number or null` }, 400);
                 }
                 if (level < minLevel || level > maxLevel) {
                     return c.json({ 
-                        error: `Invalid level: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''}` 
+                        error: `Invalid level at index ${i}: must be number between ${minLevel} and ${maxLevel}${isWilliams ? ' (Williams %R range)' : ''} or null` 
                     }, 400);
                 }
+                validLevels.push(level);
             }
-            updates.levels = JSON.stringify(updates.levels);
+            
+            if (validLevels.length === 0) {
+                return c.json({ error: 'At least one level must be enabled (not null)' }, 400);
+            }
+            
+            updates.levels = JSON.stringify(validLevels);
         }
 
         if (updates.mode !== undefined) {

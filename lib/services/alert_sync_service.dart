@@ -14,7 +14,14 @@ import 'auth_service.dart';
 class AlertSyncService {
   static const _baseUrl = 'https://rsi-workers.vovan4ikukraine.workers.dev';
 
-  static Future<void> syncAlert(Isar isar, AlertRule alert) async {
+  static Future<void> syncAlert(
+    Isar isar, 
+    AlertRule alert, {
+    bool? lowerLevelEnabled,
+    bool? upperLevelEnabled,
+    double? lowerLevelValue,
+    double? upperLevelValue,
+  }) async {
     final userId = await UserService.ensureUserId();
     if (kDebugMode) {
       debugPrint(
@@ -22,9 +29,19 @@ class AlertSyncService {
     }
     try {
       if (alert.remoteId == null) {
-        await _createRemoteAlert(isar, alert, userId);
+        await _createRemoteAlert(isar, alert, userId,
+          lowerLevelEnabled: lowerLevelEnabled,
+          upperLevelEnabled: upperLevelEnabled,
+          lowerLevelValue: lowerLevelValue,
+          upperLevelValue: upperLevelValue,
+        );
       } else {
-        await _updateRemoteAlert(alert, userId);
+        await _updateRemoteAlert(alert, userId,
+          lowerLevelEnabled: lowerLevelEnabled,
+          upperLevelEnabled: upperLevelEnabled,
+          lowerLevelValue: lowerLevelValue,
+          upperLevelValue: upperLevelValue,
+        );
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -301,12 +318,38 @@ class AlertSyncService {
   static Future<void> _createRemoteAlert(
     Isar isar,
     AlertRule alert,
-    String userId,
-  ) async {
+    String userId, {
+    bool? lowerLevelEnabled,
+    bool? upperLevelEnabled,
+    double? lowerLevelValue,
+    double? upperLevelValue,
+  }) async {
     final uri = Uri.parse('$_baseUrl/alerts/create');
     // Convert indicator to server format (williams -> williams, not wpr)
     final indicatorType = IndicatorType.fromJson(alert.indicator);
     final serverIndicator = indicatorType.toServerJson();
+    
+    // Convert levels array to always have 2 elements [lower, upper] with null for disabled
+    // Use provided enabled state if available, otherwise try to reconstruct from stored levels
+    final levelsForServer = <double?>[];
+    if (lowerLevelEnabled != null && upperLevelEnabled != null) {
+      // We have full information about enabled levels
+      final lower = (lowerLevelEnabled && lowerLevelValue != null && lowerLevelValue.isFinite) ? lowerLevelValue : null;
+      final upper = (upperLevelEnabled && upperLevelValue != null && upperLevelValue.isFinite) ? upperLevelValue : null;
+      levelsForServer.add(lower);
+      levelsForServer.add(upper);
+    } else {
+      // Fallback: try to reconstruct from stored levels array
+      if (alert.levels.isEmpty) {
+        levelsForServer.addAll([null, null]);
+      } else if (alert.levels.length == 1) {
+        // Single level - can't determine if it's lower or upper, assume lower
+        levelsForServer.addAll([alert.levels[0], null]);
+      } else {
+        // Two levels - assume first is lower, second is upper
+        levelsForServer.addAll([alert.levels[0], alert.levels[1]]);
+      }
+    }
     
     final payload = {
       'userId': userId,
@@ -316,14 +359,18 @@ class AlertSyncService {
       'indicator': serverIndicator,
       'period': alert.period,
       'indicatorParams': alert.indicatorParams,
-      'levels': alert.levels,
+      'levels': levelsForServer,
       'mode': alert.mode,
       'cooldownSec': alert.cooldownSec,
     };
 
     if (kDebugMode) {
       debugPrint('AlertSyncService: Creating alert ${alert.id} with indicator=${alert.indicator} -> serverIndicator=$serverIndicator, levels=${alert.levels}');
+      debugPrint('AlertSyncService: levelsForServer=$levelsForServer');
+      debugPrint('AlertSyncService: lowerLevelEnabled=$lowerLevelEnabled, upperLevelEnabled=$upperLevelEnabled');
+      debugPrint('AlertSyncService: lowerLevelValue=$lowerLevelValue, upperLevelValue=$upperLevelValue');
       debugPrint('AlertSyncService: Payload indicator=${payload['indicator']}, levels=${payload['levels']}');
+      debugPrint('AlertSyncService: JSON payload levels=${jsonEncode(levelsForServer)}');
     }
 
     final response = await http.post(
@@ -362,13 +409,39 @@ class AlertSyncService {
     }
   }
 
-  static Future<void> _updateRemoteAlert(AlertRule alert, String userId) async {
+  static Future<void> _updateRemoteAlert(
+    AlertRule alert, 
+    String userId, {
+    bool? lowerLevelEnabled,
+    bool? upperLevelEnabled,
+    double? lowerLevelValue,
+    double? upperLevelValue,
+  }) async {
     final uri = Uri.parse('$_baseUrl/alerts/${alert.remoteId}');
 
     // Convert indicator to server format (williams -> williams, not wpr)
     final indicatorType = IndicatorType.fromJson(alert.indicator);
     final serverIndicator = indicatorType.toServerJson();
 
+    // Convert levels array to always have 2 elements [lower, upper] with null for disabled
+    final levelsForServer = <double?>[];
+    if (lowerLevelEnabled != null && upperLevelEnabled != null) {
+      // We have full information about enabled levels
+      levelsForServer.add(lowerLevelEnabled && lowerLevelValue != null ? lowerLevelValue : null);
+      levelsForServer.add(upperLevelEnabled && upperLevelValue != null ? upperLevelValue : null);
+    } else {
+      // Fallback: try to reconstruct from stored levels array
+      if (alert.levels.isEmpty) {
+        levelsForServer.addAll([null, null]);
+      } else if (alert.levels.length == 1) {
+        // Single level - can't determine if it's lower or upper, assume lower
+        levelsForServer.addAll([alert.levels[0], null]);
+      } else {
+        // Two levels - assume first is lower, second is upper
+        levelsForServer.addAll([alert.levels[0], alert.levels[1]]);
+      }
+    }
+    
     final payload = {
       'userId': userId, // Server expects 'userId', not 'user_id'
       'symbol': alert.symbol,
@@ -379,7 +452,7 @@ class AlertSyncService {
           ? jsonEncode(alert.indicatorParams)
           : null,
       'rsi_period': alert.period, // Keep for backward compatibility
-      'levels': alert.levels, // Server expects array, not JSON string (it will stringify on server side)
+      'levels': levelsForServer, // Always send array with 2 elements [lower, upper] with null for disabled
       'mode': alert.mode,
       'cooldown_sec': alert.cooldownSec,
       'active': alert.active ? 1 : 0,

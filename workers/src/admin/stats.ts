@@ -26,6 +26,18 @@ interface AlertStats {
         williams: number;
         [key: string]: number;
     };
+    byIndicatorCustom: {
+        rsi: number;
+        stoch: number;
+        williams: number;
+        [key: string]: number;
+    };
+    byIndicatorWatchlist: {
+        rsi: number;
+        stoch: number;
+        williams: number;
+        [key: string]: number;
+    };
 }
 
 interface AdminStats {
@@ -136,7 +148,7 @@ async function getAlertStats(db: D1Database): Promise<AlertStats> {
         SELECT COUNT(*) as count FROM alert_rule WHERE active = 1
     `).first<{ count: number }>();
 
-    // Статистика по индикаторам
+    // Статистика по индикаторам (общая)
     const indicatorStats = await db.prepare(`
         SELECT indicator, COUNT(*) as count 
         FROM alert_rule 
@@ -156,10 +168,54 @@ async function getAlertStats(db: D1Database): Promise<AlertStats> {
         byIndicator[normalizedIndicator] = (byIndicator[normalizedIndicator] || 0) + (row.count || 0);
     }
 
+    // Статистика по индикаторам для кастомных алертов (без WATCHLIST)
+    const customIndicatorStats = await db.prepare(`
+        SELECT indicator, COUNT(*) as count 
+        FROM alert_rule 
+        WHERE active = 1 
+        AND (description IS NULL OR description NOT LIKE 'WATCHLIST:%')
+        GROUP BY indicator
+    `).all<{ indicator: string; count: number }>();
+
+    const byIndicatorCustom: { [key: string]: number } = {
+        rsi: 0,
+        stoch: 0,
+        williams: 0,
+    };
+
+    for (const row of customIndicatorStats.results || []) {
+        const indicator = row.indicator?.toLowerCase() || 'rsi';
+        const normalizedIndicator = indicator === 'wpr' ? 'williams' : indicator;
+        byIndicatorCustom[normalizedIndicator] = (byIndicatorCustom[normalizedIndicator] || 0) + (row.count || 0);
+    }
+
+    // Статистика по индикаторам для watchlist алертов (с WATCHLIST)
+    const watchlistIndicatorStats = await db.prepare(`
+        SELECT indicator, COUNT(*) as count 
+        FROM alert_rule 
+        WHERE active = 1 
+        AND description LIKE 'WATCHLIST:%'
+        GROUP BY indicator
+    `).all<{ indicator: string; count: number }>();
+
+    const byIndicatorWatchlist: { [key: string]: number } = {
+        rsi: 0,
+        stoch: 0,
+        williams: 0,
+    };
+
+    for (const row of watchlistIndicatorStats.results || []) {
+        const indicator = row.indicator?.toLowerCase() || 'rsi';
+        const normalizedIndicator = indicator === 'wpr' ? 'williams' : indicator;
+        byIndicatorWatchlist[normalizedIndicator] = (byIndicatorWatchlist[normalizedIndicator] || 0) + (row.count || 0);
+    }
+
     return {
         total: totalResult?.count || 0,
         active: activeResult?.count || 0,
         byIndicator,
+        byIndicatorCustom,
+        byIndicatorWatchlist,
     };
 }
 

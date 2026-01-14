@@ -645,17 +645,28 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: TextInputType.numberWithOptions(signed: indicatorType == IndicatorType.williams),
                     onChanged: (value) {
                       final lower = int.tryParse(value)?.toDouble();
-                      if (lower != null &&
-                          lower >= 0 &&
-                          lower <= 100) {
+                      if (lower == null) return;
+                      
+                      // Validate range based on indicator type
+                      final isWilliams = indicatorType == IndicatorType.williams;
+                      final minLevel = isWilliams ? -99.0 : 1.0;
+                      final maxLevel = isWilliams ? -1.0 : 99.0;
+                      
+                      if (lower >= minLevel && lower <= maxLevel) {
+                        // Check that lower level is below upper level (if both enabled)
+                        final upperLevel = _levels.length > 1 ? _levels[1] : null;
+                        if (_upperLevelEnabled && upperLevel != null && lower >= upperLevel) {
+                          return; // Lower level cannot be above or equal to upper level
+                        }
+                        
                         setState(() {
                           if (_levels.isEmpty) {
-                            _levels.add(lower.clamp(0.0, 100.0));
+                            _levels.add(lower.clamp(minLevel, maxLevel));
                           } else {
-                            _levels[0] = lower.clamp(0.0, 100.0);
+                            _levels[0] = lower.clamp(minLevel, maxLevel);
                           }
                         });
                       }
@@ -703,18 +714,31 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: TextInputType.numberWithOptions(signed: indicatorType == IndicatorType.williams),
                     onChanged: (value) {
                       final upper = int.tryParse(value)?.toDouble();
-                      if (upper != null && upper >= 0 && upper <= 100) {
+                      if (upper == null) return;
+                      
+                      // Validate range based on indicator type
+                      final isWilliams = indicatorType == IndicatorType.williams;
+                      final minLevel = isWilliams ? -99.0 : 1.0;
+                      final maxLevel = isWilliams ? -1.0 : 99.0;
+                      
+                      if (upper >= minLevel && upper <= maxLevel) {
+                        // Check that upper level is above lower level (if both enabled)
+                        final lowerLevel = _levels.isNotEmpty ? _levels[0] : null;
+                        if (_lowerLevelEnabled && lowerLevel != null && upper <= lowerLevel) {
+                          return; // Upper level cannot be below or equal to lower level
+                        }
+                        
                         setState(() {
                           if (_levels.length < 2) {
                             if (_levels.isEmpty) {
                               _levels.add(defaultLevels.first);
                             }
-                            _levels.add(upper.clamp(0.0, 100.0));
+                            _levels.add(upper.clamp(minLevel, maxLevel));
                           } else {
-                            _levels[1] = upper.clamp(0.0, 100.0);
+                            _levels[1] = upper.clamp(minLevel, maxLevel);
                           }
                         });
                       }
@@ -726,33 +750,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: [
-            _buildPresetButton(
-                context.loc.t('create_alert_presets_3070'), [30, 70]),
-            _buildPresetButton(
-                context.loc.t('create_alert_presets_2080'), [20, 80]),
-            _buildPresetButton(
-                context.loc.t('create_alert_presets_2575'), [25, 75]),
-            _buildPresetButton(context.loc.t('create_alert_presets_50'), [50]),
-          ],
-        ),
       ],
-    );
-  }
-
-  Widget _buildPresetButton(String label, List<double> levels) {
-    return OutlinedButton(
-      onPressed: () {
-        setState(() {
-          _levels = List.from(levels);
-          _lowerLevelEnabled = levels.isNotEmpty;
-          _upperLevelEnabled = levels.length > 1;
-        });
-      },
-      child: Text(label),
     );
   }
 
@@ -767,45 +765,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               loc.t('create_alert_settings_title'),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  loc.t('create_alert_type_label'),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 4),
-                DropdownButtonFormField<String>(
-                  initialValue: _mode,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.notifications),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'cross',
-                      child: Text(loc.t('create_alert_type_cross')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'enter',
-                      child: Text(loc.t('create_alert_type_enter')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'exit',
-                      child: Text(loc.t('create_alert_type_exit')),
-                    ),
-                  ],
-                  onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _mode = value;
-                  });
-                }
-                },
-              ),
-            ],
-          ),
             const SizedBox(height: 16),
           Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1016,16 +975,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       }
 
       // Validate: at least one level must be enabled
-      final enabledLevels = <double>[];
-      if (_lowerLevelEnabled && _levels.isNotEmpty) {
-        enabledLevels.add(_levels[0]);
-      }
-      if (_upperLevelEnabled && _levels.length > 1) {
-        enabledLevels.add(_levels[1]);
-      }
+      // Always send array with 2 elements: [lower, upper], where disabled level is null
+      final enabledLevels = <double?>[
+        (_lowerLevelEnabled && _levels.isNotEmpty) ? _levels[0] : null,
+        (_upperLevelEnabled && _levels.length > 1) ? _levels[1] : null,
+      ];
       
-      if (enabledLevels.isEmpty) {
+      if (enabledLevels[0] == null && enabledLevels[1] == null) {
         if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(loc.t('create_alert_at_least_one_level_required')),
@@ -1043,8 +1003,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       alert.indicator = indicatorName;
       alert.period = _indicatorPeriod;
       alert.indicatorParams = indicatorParams;
-      alert.levels = enabledLevels;
-      alert.mode = _mode;
+      // Filter out null values for storage (keep only enabled levels)
+      alert.levels = enabledLevels.whereType<double>().toList();
+      alert.mode = 'cross'; // Always use cross mode with one-way crossing
       alert.cooldownSec = _cooldownSec;
       alert.active = true;
       alert.repeatable = _repeatable;
@@ -1060,7 +1021,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       await widget.isar.writeTxn(() {
         return widget.isar.alertRules.put(alert);
       });
-      await AlertSyncService.syncAlert(widget.isar, alert);
+      // Pass enabled levels info to sync service so it can send proper array to server
+      await AlertSyncService.syncAlert(widget.isar, alert, 
+        lowerLevelEnabled: _lowerLevelEnabled,
+        upperLevelEnabled: _upperLevelEnabled,
+        lowerLevelValue: _levels.isNotEmpty ? _levels[0] : null,
+        upperLevelValue: _levels.length > 1 ? _levels[1] : null,
+      );
 
       if (mounted) {
         Navigator.pop(context, true);

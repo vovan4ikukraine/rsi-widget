@@ -9,7 +9,8 @@ export interface AlertRule {
     period?: number;     // Universal period (replaces rsi_period)
     indicator_params?: string;  // JSON with additional parameters
     rsi_period?: number;  // Deprecated: kept for backward compatibility
-    levels: number[];
+    levels: number[];  // Filtered array without null (for backward compatibility)
+    levelsWithNull?: (number | null)[];  // Full array with null [lower, upper] where null = disabled
     mode: string;
     cooldown_sec: number;
     active: number;
@@ -64,13 +65,41 @@ export class IndicatorEngine {
       ORDER BY created_at DESC
     `).all();
 
-        return result.results.map((row: any) => ({
-            ...row,
-            indicator: row.indicator || 'rsi',  // Default to 'rsi' for backward compatibility
-            period: row.period || row.rsi_period || 14,  // Use period, fallback to rsi_period
-            indicator_params: row.indicator_params ? JSON.parse(row.indicator_params) : undefined,
-            levels: JSON.parse(row.levels || '[]'),
-        })) as AlertRule[];
+        return result.results.map((row: any) => {
+            const parsedLevels = JSON.parse(row.levels || '[]');
+            // If levels is stored as array with null, convert to array with 2 elements [lower, upper]
+            // where null means disabled level. If stored as single array, keep as is for backward compatibility
+            let levelsWithNull: (number | null)[] = [];
+            if (Array.isArray(parsedLevels)) {
+                if (parsedLevels.length === 2 && (parsedLevels[0] === null || parsedLevels[1] === null || typeof parsedLevels[0] === 'number' || typeof parsedLevels[1] === 'number')) {
+                    // Already in [lower, upper] format with possible null
+                    levelsWithNull = parsedLevels;
+                } else {
+                    // Old format: single array with enabled levels only
+                    // Convert to [lower, upper] format (assume all are enabled)
+                    if (parsedLevels.length === 1) {
+                        levelsWithNull = [parsedLevels[0], null]; // Assume single level is lower
+                    } else if (parsedLevels.length >= 2) {
+                        levelsWithNull = [parsedLevels[0], parsedLevels[1]];
+                    } else {
+                        levelsWithNull = [null, null];
+                    }
+                }
+            }
+            
+            return {
+                ...row,
+                indicator: row.indicator || 'rsi',  // Default to 'rsi' for backward compatibility
+                period: row.period || row.rsi_period || 14,  // Use period, fallback to rsi_period
+                indicator_params: row.indicator_params ? JSON.parse(row.indicator_params) : undefined,
+                levels: parsedLevels.filter((l: any): l is number => l !== null && l !== undefined), // Filter null for backward compatibility
+                levelsWithNull: levelsWithNull, // Store full array with null for processing
+                mode: row.mode || 'cross',
+                cooldown_sec: row.cooldown_sec || 600,
+                active: row.active !== undefined ? row.active : 1,
+                created_at: row.created_at || Date.now()
+            };
+        }) as any[];
     }
 
     /**
@@ -433,9 +462,18 @@ export class IndicatorEngine {
         const indicatorName = indicator.toUpperCase();
 
         if (rule.mode === 'cross') {
-            for (const level of rule.levels) {
-                // Upward crossing
-                if (this.checkCrossUp(currentValue, previousValue, level)) {
+            // One-way crossing logic:
+            // - Lower level (levelsWithNull[0]) triggers only on downward crossing (cross_down) - when value falls below the level
+            // - Upper level (levelsWithNull[1]) triggers only on upward crossing (cross_up) - when value rises above the level
+            // Use levelsWithNull if available (new format with null), otherwise fallback to levels (old format)
+            const levelsArray = rule.levelsWithNull || (rule.levels.length === 1 ? [rule.levels[0], null] : rule.levels.length >= 2 ? [rule.levels[0], rule.levels[1]] : [null, null]);
+            
+            const lowerLevel = levelsArray[0];
+            const upperLevel = levelsArray[1];
+            
+            // Lower level: downward crossing only (e.g., from 21 to 19 for level 20)
+            if (lowerLevel !== null && lowerLevel !== undefined) {
+                if (this.checkCrossDown(currentValue, previousValue, lowerLevel)) {
                     triggers.push({
                         ruleId: rule.id,
                         userId: rule.user_id,
@@ -443,26 +481,28 @@ export class IndicatorEngine {
                         indicatorValue: currentValue,
                         indicator: indicator,
                         rsi: currentValue,  // Keep for backward compatibility
-                        level: level,
-                        type: 'cross_up',
-                        timestamp: timestamp,
-                        message: `${indicatorName} crossed level ${level} upward (${currentValue.toFixed(1)})`
-                    });
-                }
-
-                // Downward crossing
-                if (this.checkCrossDown(currentValue, previousValue, level)) {
-                    triggers.push({
-                        ruleId: rule.id,
-                        userId: rule.user_id,
-                        symbol: rule.symbol,
-                        indicatorValue: currentValue,
-                        indicator: indicator,
-                        rsi: currentValue,  // Keep for backward compatibility
-                        level: level,
+                        level: lowerLevel,
                         type: 'cross_down',
                         timestamp: timestamp,
-                        message: `${indicatorName} crossed level ${level} downward (${currentValue.toFixed(1)})`
+                        message: `${indicatorName} crossed level ${lowerLevel} downward (${currentValue.toFixed(1)})`
+                    });
+                }
+            }
+            
+            // Upper level: upward crossing only (e.g., from 79 to 81 for level 80)
+            if (upperLevel !== null && upperLevel !== undefined) {
+                if (this.checkCrossUp(currentValue, previousValue, upperLevel)) {
+                    triggers.push({
+                        ruleId: rule.id,
+                        userId: rule.user_id,
+                        symbol: rule.symbol,
+                        indicatorValue: currentValue,
+                        indicator: indicator,
+                        rsi: currentValue,  // Keep for backward compatibility
+                        level: upperLevel,
+                        type: 'cross_up',
+                        timestamp: timestamp,
+                        message: `${indicatorName} crossed level ${upperLevel} upward (${currentValue.toFixed(1)})`
                     });
                 }
             }
@@ -523,6 +563,22 @@ export class IndicatorEngine {
      */
     checkCrossDown(currentRsi: number, previousRsi: number, level: number): boolean {
         return previousRsi >= level && currentRsi < level;
+    }
+
+    /**
+     * Determine if a single level is upper or lower based on indicator type and value
+     * - For RSI/STOCH (0-100 range): >= 50 is upper, < 50 is lower
+     * - For Williams %R (-100 to 0 range): >= -50 is upper, < -50 is lower
+     */
+    isUpperLevel(level: number, indicator: string): boolean {
+        const indicatorLower = indicator.toLowerCase();
+        if (indicatorLower === 'williams' || indicatorLower === 'wpr') {
+            // Williams %R: range -100 to 0, typical levels -80 (lower) and -20 (upper)
+            return level >= -50;
+        } else {
+            // RSI/STOCH: range 0 to 100, typical levels 30 (lower) and 70 (upper)
+            return level >= 50;
+        }
     }
 
     /**

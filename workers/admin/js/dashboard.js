@@ -97,11 +97,15 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('iosCount').textContent = stats.devices?.ios || 0;
             document.getElementById('androidCount').textContent = stats.devices?.android || 0;
 
-            // Update indicator chart
-            const byIndicator = stats.alerts?.byIndicator || {};
-            document.getElementById('rsiCount').textContent = byIndicator.rsi || 0;
-            document.getElementById('stochCount').textContent = byIndicator.stoch || 0;
-            document.getElementById('williamsCount').textContent = byIndicator.williams || 0;
+            // Update indicator chart (separated by custom and watchlist)
+            const byIndicatorCustom = stats.alerts?.byIndicatorCustom || {};
+            const byIndicatorWatchlist = stats.alerts?.byIndicatorWatchlist || {};
+            document.getElementById('rsiCustomCount').textContent = byIndicatorCustom.rsi || 0;
+            document.getElementById('rsiWatchlistCount').textContent = byIndicatorWatchlist.rsi || 0;
+            document.getElementById('stochCustomCount').textContent = byIndicatorCustom.stoch || 0;
+            document.getElementById('stochWatchlistCount').textContent = byIndicatorWatchlist.stoch || 0;
+            document.getElementById('williamsCustomCount').textContent = byIndicatorCustom.williams || 0;
+            document.getElementById('williamsWatchlistCount').textContent = byIndicatorWatchlist.williams || 0;
 
             // Store growth data and initialize charts
             if (stats.userGrowth && stats.userGrowth.dates && stats.userGrowth.dates.length > 0) {

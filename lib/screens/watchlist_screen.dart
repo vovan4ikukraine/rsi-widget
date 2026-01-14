@@ -148,6 +148,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', _massAlertPeriod);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', _massAlertLowerLevel);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', _massAlertUpperLevel);
+        await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_lower_level_enabled', _massAlertLowerLevelEnabled);
+        await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_upper_level_enabled', _massAlertUpperLevelEnabled);
       }
 
       // Load saved view settings for the new indicator, or use defaults
@@ -200,6 +202,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               (indicatorType.defaultLevels.length > 1
                   ? indicatorType.defaultLevels[1]
                   : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
+          
+          // Load level enabled state
+          final indicatorKey = indicatorType.toJson();
+          final savedLowerEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled');
+          final savedUpperEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_upper_level_enabled');
+          _massAlertLowerLevelEnabled = savedLowerEnabled ?? true;
+          _massAlertUpperLevelEnabled = savedUpperEnabled ?? true;
+          
           if (indicatorType == IndicatorType.stoch) {
             _massAlertStochDPeriod = prefs.getInt('watchlist_mass_alert_stoch_d_period') ?? 3;
           } else {
@@ -481,6 +491,28 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? 600;
         _massAlertRepeatable =
             prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
+        
+        // Load level enabled state (if not saved, check existing alerts to determine state)
+        final savedLowerEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled');
+        final savedUpperEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_upper_level_enabled');
+        
+        if (savedLowerEnabled != null && savedUpperEnabled != null) {
+          // Use saved state
+          _massAlertLowerLevelEnabled = savedLowerEnabled;
+          _massAlertUpperLevelEnabled = savedUpperEnabled;
+        } else {
+          // Try to sync with existing alerts (if mass alerts are enabled)
+          if (_massAlertEnabledByIndicator[indicatorType] == true) {
+            // This will be synced after watchlist items are loaded
+            // For now, use defaults (both enabled)
+            _massAlertLowerLevelEnabled = true;
+            _massAlertUpperLevelEnabled = true;
+          } else {
+            // Defaults
+            _massAlertLowerLevelEnabled = true;
+            _massAlertUpperLevelEnabled = true;
+          }
+        }
 
         // Initialize mass alert controllers
         _massAlertPeriodController.text = _massAlertPeriod.toString();
@@ -545,6 +577,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         'watchlist_mass_alert_${indicatorKey}_lower_level', _massAlertLowerLevel);
     await prefs.setDouble(
         'watchlist_mass_alert_${indicatorKey}_upper_level', _massAlertUpperLevel);
+    await prefs.setBool(
+        'watchlist_mass_alert_${indicatorKey}_lower_level_enabled', _massAlertLowerLevelEnabled);
+    await prefs.setBool(
+        'watchlist_mass_alert_${indicatorKey}_upper_level_enabled', _massAlertUpperLevelEnabled);
     await prefs.setInt(
         'watchlist_mass_alert_cooldown_sec', _massAlertCooldownSec);
     await prefs.setBool(
@@ -1856,55 +1892,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 ),
               ),
                 const SizedBox(height: 16),
-                // Alert mode
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loc.t('create_alert_type_label'),
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<String>(
-                      value: _massAlertMode,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'cross',
-                          child: Text(loc.t('create_alert_type_cross')),
-                        ),
-                        DropdownMenuItem(
-                          value: 'enter',
-                          child: Text(loc.t('create_alert_type_enter')),
-                        ),
-                        DropdownMenuItem(
-                          value: 'exit',
-                          child: Text(loc.t('create_alert_type_exit')),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null && value != _massAlertMode) {
-                          setState(() {
-                            _massAlertMode = value;
-                          });
-                          _saveState();
-                          if (_massAlertEnabled) {
-                            // Update all mass alerts
-                            unawaited(_updateMassAlerts());
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
                 // Levels
                 Text(
                   loc.t('create_alert_levels_title'),
@@ -1966,17 +1953,25 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             keyboardType: TextInputType.number,
                             onChanged: (value) {
                               final lower = int.tryParse(value)?.toDouble();
+                              if (lower == null) return;
+                              
                               bool isValid = false;
                               if (_massAlertIndicator == IndicatorType.williams) {
-                                // WPR: -100 to 0
-                                isValid = lower != null && lower >= -100 && lower <= 0;
+                                // WPR: -99 to -1
+                                isValid = lower >= -99 && lower <= -1;
                               } else {
-                                // RSI/STOCH: 0 to 100
-                                isValid = lower != null && lower >= 0 && lower <= 100;
+                                // RSI/STOCH: 1 to 99
+                                isValid = lower >= 1 && lower <= 99;
                               }
+                              
+                              // Check that lower level is below upper level (if both enabled)
+                              if (isValid && _massAlertUpperLevelEnabled && lower >= _massAlertUpperLevel) {
+                                return; // Lower level cannot be above or equal to upper level
+                              }
+                              
                               if (isValid && lower != _massAlertLowerLevel) {
                                 setState(() {
-                                  _massAlertLowerLevel = lower!;
+                                  _massAlertLowerLevel = lower;
                                 });
                                 _saveState();
                                 if (_massAlertEnabled) {
@@ -2038,17 +2033,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             keyboardType: TextInputType.number,
                             onChanged: (value) {
                               final upper = int.tryParse(value)?.toDouble();
+                              if (upper == null) return;
+                              
                               bool isValid = false;
                               if (_massAlertIndicator == IndicatorType.williams) {
-                                // WPR: -100 to 0, and upper must be greater than lower
-                                isValid = upper != null && upper >= -100 && upper <= 0 && upper > _massAlertLowerLevel;
+                                // WPR: -99 to -1, and upper must be greater than lower
+                                isValid = upper >= -99 && upper <= -1 && upper > _massAlertLowerLevel;
                               } else {
-                                // RSI/STOCH: 0 to 100, and upper must be greater than lower
-                                isValid = upper != null && upper >= 0 && upper <= 100 && upper > _massAlertLowerLevel;
+                                // RSI/STOCH: 1 to 99, and upper must be greater than lower
+                                isValid = upper >= 1 && upper <= 99 && upper > _massAlertLowerLevel;
                               }
+                              
                               if (isValid && upper != _massAlertUpperLevel) {
                                 setState(() {
-                                  _massAlertUpperLevel = upper!;
+                                  _massAlertUpperLevel = upper;
                                 });
                                 _saveState();
                                 if (_massAlertEnabled) {
@@ -2295,7 +2293,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..period = _massAlertPeriod
             ..indicatorParams = indicatorParams
             ..levels = List.from(levels)
-            ..mode = _massAlertMode
+            ..mode = 'cross' // Always use cross mode with one-way crossing
             ..cooldownSec = _massAlertCooldownSec
             ..active = true
             ..repeatable = _massAlertRepeatable
@@ -2324,8 +2322,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Sync all created alerts in parallel (outside transaction)
       if (createdAlerts.isNotEmpty) {
         unawaited(Future.wait(
-          createdAlerts
-              .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+          createdAlerts.map((alert) => AlertSyncService.syncAlert(
+            widget.isar, 
+            alert,
+            lowerLevelEnabled: _massAlertLowerLevelEnabled,
+            upperLevelEnabled: _massAlertUpperLevelEnabled,
+            lowerLevelValue: _massAlertLowerLevel,
+            upperLevelValue: _massAlertUpperLevel,
+          )),
         ));
       }
 
@@ -2603,7 +2607,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             alert.period = _massAlertPeriod;
             alert.indicatorParams = indicatorParams;
             alert.levels = List.from(levels);
-            alert.mode = _massAlertMode;
+            alert.mode = 'cross'; // Always use cross mode with one-way crossing
             alert.cooldownSec = _massAlertCooldownSec;
             alert.repeatable = _massAlertRepeatable;
 
@@ -2674,7 +2678,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ..period = _massAlertPeriod
               ..indicatorParams = indicatorParams
               ..levels = List.from(levels)
-              ..mode = _massAlertMode
+              ..mode = 'cross' // Always use cross mode with one-way crossing
               ..cooldownSec = _massAlertCooldownSec
               ..active = true
             ..repeatable = _massAlertRepeatable
@@ -2683,7 +2687,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..createdAt = createdAt;
 
             await widget.isar.alertRules.put(alert);
-            unawaited(AlertSyncService.syncAlert(widget.isar, alert));
+            unawaited(AlertSyncService.syncAlert(
+              widget.isar, 
+              alert,
+              lowerLevelEnabled: _massAlertLowerLevelEnabled,
+              upperLevelEnabled: _massAlertUpperLevelEnabled,
+              lowerLevelValue: _massAlertLowerLevel,
+              upperLevelValue: _massAlertUpperLevel,
+            ));
           }
         }
       });
@@ -2692,7 +2703,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       if (alertsToSync.isNotEmpty) {
         debugPrint('_updateMassAlerts: Syncing ${alertsToSync.length} updated alerts');
         for (final alert in alertsToSync) {
-          unawaited(AlertSyncService.syncAlert(widget.isar, alert));
+          unawaited(AlertSyncService.syncAlert(
+            widget.isar, 
+            alert,
+            lowerLevelEnabled: _massAlertLowerLevelEnabled,
+            upperLevelEnabled: _massAlertUpperLevelEnabled,
+            lowerLevelValue: _massAlertLowerLevel,
+            upperLevelValue: _massAlertUpperLevel,
+          ));
         }
       } else {
         debugPrint('_updateMassAlerts: No alerts to sync');
