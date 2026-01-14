@@ -1731,14 +1731,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _addToWatchlist(String symbol) async {
     final loc = context.loc;
 
-    // Check watchlist limit (max 50 symbols)
+    // Check watchlist limit (max 30 symbols)
     final allExistingItems = await widget.isar.watchlistItems.where().findAll();
-    if (allExistingItems.length >= 50) {
+    if (allExistingItems.length >= 30) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              loc.t('home_watchlist_limit_reached', params: {'limit': '50'}),
+              loc.t('home_watchlist_limit_reached'),
             ),
             backgroundColor: Colors.orange,
           ),

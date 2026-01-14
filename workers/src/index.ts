@@ -573,15 +573,6 @@ app.post('/alerts/create', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
-        // Check alert limit per user (max 100 alerts to prevent DoS)
-        const countResult = await db.prepare(`
-            SELECT COUNT(*) as count FROM alert_rule WHERE user_id = ? AND active = 1
-        `).bind(userId).first<{ count: number }>();
-        const alertCount = countResult?.count || 0;
-        if (alertCount >= 100) {
-            return c.json({ error: 'Alert limit reached: maximum 100 active alerts per user' }, 400);
-        }
-
         const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
@@ -885,39 +876,51 @@ const worker: ExportedHandler<Env> = {
                 // If 100 users have alerts for AAPL 15m, we check it once, not 100 times
                 const groupedRules = indicatorEngine.groupRulesBySymbolTimeframe(rules);
                 const symbolTimeframePairs = Object.entries(groupedRules);
+                const startTime = Date.now();
 
                 // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits
-                // This spreads requests over time (e.g., 300 pairs = ~100 seconds max)
+                // Delay only applies to cache misses (real Yahoo Finance requests)
                 const RATE_LIMIT_DELAY_MS = 350; // ~3 requests per second
-                let requestCount = 0;
+                let yahooRequestCount = 0;
+                let cacheHitCount = 0;
+                let cacheMissCount = 0;
+                let totalTriggers = 0;
 
-                // Check each symbol/timeframe with rate limiting
+                // Check each symbol/timeframe with optimized rate limiting
                 for (const [key, rules] of symbolTimeframePairs) {
                     const [symbol, timeframe] = key.split('|');
 
-                    // Add delay between requests to respect rate limits
-                    if (requestCount > 0) {
+                    // Add delay between Yahoo Finance requests (only for cache misses)
+                    if (yahooRequestCount > 0) {
                         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
                     }
 
                     try {
-                        const triggers = await indicatorEngine.checkSymbolTimeframe(
+                        const result = await indicatorEngine.checkSymbolTimeframe(
                             symbol,
                             timeframe,
                             rules
                         );
 
-                        // Only increment if we actually made a request (cache miss)
-                        // This is approximate - actual rate limiting happens in checkSymbolTimeframe
-                        requestCount++;
+                        // Track cache hits/misses for performance logging
+                        if (result.cacheHit) {
+                            cacheHitCount++;
+                        } else {
+                            cacheMissCount++;
+                            yahooRequestCount++;
+                        }
 
-                        if (triggers.length > 0) {
-                            Logger.info(`Found ${triggers.length} triggers for ${symbol} ${timeframe}`, env);
+                        if (result.triggers.length > 0) {
+                            Logger.info(`Found ${result.triggers.length} triggers for ${symbol} ${timeframe}`, env);
+                            totalTriggers += result.triggers.length;
 
-                            // Send notifications
-                            for (const trigger of triggers) {
-                                await fcmService.sendAlert(trigger);
-                            }
+                            // Send notifications in parallel (batch processing)
+                            const notificationPromises = result.triggers.map(trigger =>
+                                fcmService.sendAlert(trigger).catch(error => {
+                                    Logger.error(`Error sending notification for trigger ${trigger.ruleId}:`, error, env);
+                                })
+                            );
+                            await Promise.all(notificationPromises);
                         }
                     } catch (error) {
                         Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
@@ -928,6 +931,10 @@ const worker: ExportedHandler<Env> = {
                         }
                     }
                 }
+
+                // Log performance metrics
+                const executionTime = Date.now() - startTime;
+                Logger.info(`CRON performance: ${symbolTimeframePairs.length} pairs checked, ${cacheHitCount} cache hits, ${cacheMissCount} cache misses, ${totalTriggers} triggers, ${executionTime}ms total`, env);
 
                 // Watchlist Alerts are now handled as regular AlertRule with description "WATCHLIST:"
                 // They are automatically processed by IndicatorEngine above, so no separate logic needed
@@ -954,9 +961,9 @@ const worker: ExportedHandler<Env> = {
                 return c.json({ error: 'Symbols must be an array' }, 400);
             }
 
-            // Limit watchlist size (max 50 symbols to prevent DoS)
-            if (symbols.length > 50) {
-                return c.json({ error: 'Watchlist limit exceeded: maximum 50 symbols per user' }, 400);
+            // Limit watchlist size (max 30 symbols to prevent DoS)
+            if (symbols.length > 30) {
+                return c.json({ error: 'Watchlist limit exceeded: maximum 30 symbols per user' }, 400);
             }
 
             // Validate each symbol

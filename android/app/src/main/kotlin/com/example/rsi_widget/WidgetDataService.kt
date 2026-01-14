@@ -44,10 +44,10 @@ object WidgetDataService {
                 val watchlistJson = prefs.getString("watchlist_symbols", "[]") ?: "[]"
                 val watchlist = parseWatchlist(watchlistJson)
 
-                // Limit watchlist size for widget (max 50 symbols to prevent performance issues)
-                val limitedWatchlist = if (watchlist.size > 50) {
-                    Log.w(TAG, "Watchlist has ${watchlist.size} symbols, limiting to 50 for widget")
-                    watchlist.take(50)
+                // Limit watchlist size for widget (max 30 symbols to prevent performance issues)
+                val limitedWatchlist = if (watchlist.size > 30) {
+                    Log.w(TAG, "Watchlist has ${watchlist.size} symbols, limiting to 30 for widget")
+                    watchlist.take(30)
                 } else {
                     watchlist
                 }

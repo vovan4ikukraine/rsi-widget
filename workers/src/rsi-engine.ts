@@ -43,6 +43,11 @@ export interface AlertTrigger {
     rsi?: number;
 }
 
+export interface CheckSymbolTimeframeResult {
+    triggers: AlertTrigger[];
+    cacheHit: boolean;  // true if data came from cache, false if fetched from Yahoo
+}
+
 export class IndicatorEngine {
     constructor(
         private db: D1Database,
@@ -87,13 +92,15 @@ export class IndicatorEngine {
 
     /**
      * Check alerts for specific symbol and timeframe
+     * Returns triggers and cache hit information for rate limiting optimization
      */
     async checkSymbolTimeframe(
         symbol: string,
         timeframe: string,
         rules: AlertRule[]
-    ): Promise<AlertTrigger[]> {
+    ): Promise<CheckSymbolTimeframeResult> {
         const triggers: AlertTrigger[] = [];
+        let cacheHit = false;
 
         try {
             // Get candles - try D1 cache first (much cheaper than KV), then Yahoo
@@ -105,6 +112,7 @@ export class IndicatorEngine {
             if (cached && cached.length > 0) {
                 candles = cached;
                 lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+                cacheHit = true;
                 console.log(`RSI Engine: Using cached candles from D1 for ${symbol} ${timeframe} (${candles.length} candles)`);
             }
 
@@ -134,7 +142,7 @@ export class IndicatorEngine {
 
             if (candles.length < 2) {
                 console.log(`Not enough candles for ${symbol} ${timeframe}`);
-                return triggers;
+                return { triggers, cacheHit };
             }
 
             // Smart check: only process alerts if last candle timestamp has changed
@@ -150,7 +158,7 @@ export class IndicatorEngine {
 
                 if (stateChecks.every(r => r)) {
                     console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
-                    return triggers;
+                    return { triggers, cacheHit };
                 }
             }
 
@@ -168,7 +176,7 @@ export class IndicatorEngine {
             console.error(`Error checking ${symbol} ${timeframe}:`, error);
         }
 
-        return triggers;
+        return { triggers, cacheHit };
     }
 
     /**
@@ -656,8 +664,8 @@ export class IndicatorEngine {
                     const rules = await this.getRulesForSymbolTimeframe(symbol, timeframe);
 
                     if (rules.length > 0) {
-                        const triggers = await this.checkSymbolTimeframe(symbol, timeframe, rules);
-                        results[symbol][timeframe] = triggers;
+                        const result = await this.checkSymbolTimeframe(symbol, timeframe, rules);
+                        results[symbol][timeframe] = result.triggers;
                     }
                 } catch (error) {
                     console.error(`Error checking ${symbol} ${timeframe}:`, error);

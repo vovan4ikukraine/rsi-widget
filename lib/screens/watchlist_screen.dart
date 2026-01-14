@@ -1446,6 +1446,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           // Mass alerts section (always visible as separate block)
           _buildMassAlertsSection(context),
 
+          // Watchlist counter (e.g., "23/30")
+          Padding(
+            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${_watchlistItems.length}/30',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ),
+
           // Instruments list
           _isLoading && _watchlistItems.isEmpty
               ? const SizedBox(
@@ -2233,12 +2248,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               final currentIndicatorValue = indicatorResults.last.value;
               String? lastSide;
               // Determine initial side based on current value and levels
-              if (currentIndicatorValue < levels[0]) {
-                lastSide = 'below';
-              } else if (currentIndicatorValue > levels[1]) {
-                lastSide = 'above';
+              if (levels.length == 1) {
+                // Only one level enabled
+                if (currentIndicatorValue < levels[0]) {
+                  lastSide = 'below';
+                } else {
+                  lastSide = 'above';
+                }
               } else {
-                lastSide = 'between';
+                // Two levels enabled
+                if (currentIndicatorValue < levels[0]) {
+                  lastSide = 'below';
+                } else if (currentIndicatorValue > levels[1]) {
+                  lastSide = 'above';
+                } else {
+                  lastSide = 'between';
+                }
               }
 
               symbolValues[item.symbol] = {

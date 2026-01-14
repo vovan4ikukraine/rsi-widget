@@ -158,7 +158,7 @@ class AppLocalizations {
       'home_watchlist_added': '{{symbol}} added to Watchlist',
       'home_watchlist_exists': '{{symbol}} already in Watchlist',
       'home_watchlist_limit_reached':
-          'Watchlist limit reached: maximum {{limit}} symbols',
+          'Watchlist limit reached (30 symbols). Remove a symbol to add a new one.',
       'home_no_data_for_timeframe':
           'No data for instrument on timeframe {{timeframe}}',
       'home_weekend_hint':
@@ -438,7 +438,7 @@ class AppLocalizations {
       'home_watchlist_added': '{{symbol}} добавлен в список наблюдения',
       'home_watchlist_exists': '{{symbol}} уже есть в списке наблюдения',
       'home_watchlist_limit_reached':
-          'Достигнут лимит списка: максимум {{limit}} символов',
+          'Достигнут лимит списка (30 символов). Удалите какой-нибудь символ чтобы добавить новый.',
       'home_no_data_for_timeframe':
           'Нет данных для инструмента на таймфрейме {{timeframe}}',
       'home_weekend_hint':
@@ -692,7 +692,7 @@ class AppLocalizations {
       'home_refresh': 'Оновити',
       'home_watchlist_added': '{{symbol}} додано до списку спостереження',
       'home_watchlist_exists': '{{symbol}} вже є в списку спостереження',
-      'home_watchlist_limit_reached': 'Досягнуто ліміт списку: максимум {{limit}} символів',
+      'home_watchlist_limit_reached': 'Досягнуто ліміт списку (30 символів). Видаліть який-небудь символ щоб додати новий.',
       'home_no_data_for_timeframe': 'Немає даних для інструмента на таймфреймі {{timeframe}}',
       'home_weekend_hint': 'Ринки закриті в вихідні. Для таймфреймів 4h і 1d Yahoo Finance може не повертати свіжі дані.\nСпробуйте в робочі дні (понеділок-п\'ятниця).',
       'home_large_timeframe_hint': 'Для великих таймфреймів потрібна більш тривала історія даних.',
