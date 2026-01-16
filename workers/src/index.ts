@@ -905,16 +905,27 @@ const worker: ExportedHandler<Env> = {
                 const symbolTimeframePairs = Object.entries(groupedRules);
                 const startTime = Date.now();
 
-                // Rate limiting: max 3 requests per second to Yahoo Finance to avoid hitting limits
+                // Rate limiting: max 3.5 requests per second to Yahoo Finance (balanced between speed and safety)
                 // Delay only applies to cache misses (real Yahoo Finance requests)
-                const RATE_LIMIT_DELAY_MS = 350; // ~3 requests per second
+                const RATE_LIMIT_DELAY_MS = 285; // ~3.5 requests per second (balanced)
                 let yahooRequestCount = 0;
                 let cacheHitCount = 0;
                 let cacheMissCount = 0;
                 let totalTriggers = 0;
 
+                // Safety limit: process max 200 symbol/timeframe pairs per cron run
+                // This prevents CPU burst and keeps wall time under Cloudflare's 30-60s limit
+                // Remaining pairs will be processed in next cron run (runs every minute)
+                const MAX_PAIRS_PER_RUN = 200;
+                const pairsToProcess = symbolTimeframePairs.slice(0, MAX_PAIRS_PER_RUN);
+                
+                if (symbolTimeframePairs.length > MAX_PAIRS_PER_RUN) {
+                    Logger.warn(`Processing ${MAX_PAIRS_PER_RUN} of ${symbolTimeframePairs.length} pairs to prevent CPU burst`, env);
+                }
+
                 // Check each symbol/timeframe with optimized rate limiting
-                for (const [key, rules] of symbolTimeframePairs) {
+                for (let pairIndex = 0; pairIndex < pairsToProcess.length; pairIndex++) {
+                    const [key, rules] = pairsToProcess[pairIndex];
                     const [symbol, timeframe] = key.split('|');
 
                     // Add delay between Yahoo Finance requests (only for cache misses)
@@ -932,6 +943,11 @@ const worker: ExportedHandler<Env> = {
                         // Track cache hits/misses for performance logging
                         if (result.cacheHit) {
                             cacheHitCount++;
+                            // Small delay every 20 cache hits to prevent burst when processing many pairs rapidly
+                            // This helps distribute load and prevent rate limiting issues
+                            if (pairIndex > 0 && pairIndex % 20 === 0) {
+                                await new Promise(resolve => setTimeout(resolve, 3));
+                            }
                         } else {
                             cacheMissCount++;
                             yahooRequestCount++;
@@ -941,13 +957,24 @@ const worker: ExportedHandler<Env> = {
                             Logger.info(`Found ${result.triggers.length} triggers for ${symbol} ${timeframe}`, env);
                             totalTriggers += result.triggers.length;
 
-                            // Send notifications in parallel (batch processing)
-                            const notificationPromises = result.triggers.map(trigger =>
-                                fcmService.sendAlert(trigger).catch(error => {
-                                    Logger.error(`Error sending notification for trigger ${trigger.ruleId}:`, error, env);
-                                })
-                            );
-                            await Promise.all(notificationPromises);
+                            // Send notifications in batches to avoid CPU burst
+                            // Reduced to 3 notifications per batch for better CPU distribution
+                            const BATCH_SIZE = 3;
+                            for (let i = 0; i < result.triggers.length; i += BATCH_SIZE) {
+                                const batch = result.triggers.slice(i, i + BATCH_SIZE);
+                                const notificationPromises = batch.map(trigger =>
+                                    fcmService.sendAlert(trigger).catch(error => {
+                                        Logger.error(`Error sending notification for trigger ${trigger.ruleId}:`, error, env);
+                                    })
+                                );
+                                await Promise.all(notificationPromises);
+                                
+                                // Small delay between batches to prevent CPU burst (reduced from 20ms to 10ms)
+                                // 10ms is enough to prevent burst while keeping wall time low
+                                if (i + BATCH_SIZE < result.triggers.length) {
+                                    await new Promise(resolve => setTimeout(resolve, 10));
+                                }
+                            }
                         }
                     } catch (error) {
                         Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
@@ -961,7 +988,8 @@ const worker: ExportedHandler<Env> = {
 
                 // Log performance metrics
                 const executionTime = Date.now() - startTime;
-                Logger.info(`CRON performance: ${symbolTimeframePairs.length} pairs checked, ${cacheHitCount} cache hits, ${cacheMissCount} cache misses, ${totalTriggers} triggers, ${executionTime}ms total`, env);
+                const avgTimePerPair = pairsToProcess.length > 0 ? executionTime / pairsToProcess.length : 0;
+                Logger.info(`CRON performance: ${pairsToProcess.length} pairs processed (${symbolTimeframePairs.length} total), ${cacheHitCount} cache hits, ${cacheMissCount} cache misses, ${totalTriggers} triggers, ${executionTime}ms total (avg ${Math.round(avgTimePerPair)}ms/pair)`, env);
 
                 // Watchlist Alerts are now handled as regular AlertRule with description "WATCHLIST:"
                 // They are automatically processed by IndicatorEngine above, so no separate logic needed

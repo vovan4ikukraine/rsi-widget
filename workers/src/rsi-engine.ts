@@ -179,19 +179,25 @@ export class IndicatorEngine {
             const currentLastTimestamp = candles[candles.length - 1]?.timestamp;
             if (currentLastTimestamp && lastCandleTimestamp !== null && currentLastTimestamp === lastCandleTimestamp) {
                 // Check if we already processed this candle by checking alert states
-                // If all rules already processed this candle, skip processing
-                const stateChecks = await Promise.all(rules.map(async (rule) => {
+                // Process sequentially to avoid CPU burst from parallel DB queries
+                let allProcessed = true;
+                for (const rule of rules) {
                     const state = await this.getAlertState(rule.id);
-                    return state.last_bar_ts === currentLastTimestamp;
-                }));
+                    if (state.last_bar_ts !== currentLastTimestamp) {
+                        allProcessed = false;
+                        break;
+                    }
+                }
 
-                if (stateChecks.every(r => r)) {
+                if (allProcessed) {
                     console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
                     return { triggers, cacheHit };
                 }
             }
 
-            // Check each rule
+            // Check each rule sequentially to avoid CPU burst from parallel calculations
+            // Even with same candles, processing many rules can create microtask bursts
+            // Sequential processing already prevents burst without additional delays
             for (const rule of rules) {
                 try {
                     const ruleTriggers = await this.checkRule(rule, candles);

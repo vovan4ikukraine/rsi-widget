@@ -1147,13 +1147,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Indicator selector (always at top)
-            if (_appState != null) IndicatorSelector(appState: _appState!),
-            
-            // Collapsible settings bar
+      body: Column(
+        children: [
+          // Indicator selector (always at top, fixed)
+          if (_appState != null) IndicatorSelector(appState: _appState!),
+          
+          // Collapsible settings bar (fixed)
           Card(
             margin: EdgeInsets.zero,
             child: Column(
@@ -1479,10 +1478,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ),
           ),
           
-          // Mass alerts section (always visible as separate block)
+          // Mass alerts section (always visible as separate block, fixed)
           _buildMassAlertsSection(context),
 
-          // Watchlist counter (e.g., "23/30")
+          // Watchlist counter (e.g., "23/30") (fixed)
           Padding(
             padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
             child: Align(
@@ -1497,16 +1496,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ),
           ),
 
-          // Instruments list
-          _isLoading && _watchlistItems.isEmpty
-              ? const SizedBox(
-                  height: 200,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              : _watchlistItems.isEmpty
-                  ? SizedBox(
-                      height: 200,
-                      child: Center(
+          // Scrollable instruments list
+          Expanded(
+            child: _isLoading && _watchlistItems.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : _watchlistItems.isEmpty
+                    ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -1525,24 +1520,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             ),
                           ],
                         ),
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: () async {
-                        await _loadWatchlist(); // Reload entire list, not just RSI data
-                      },
-                      child: _watchlistItems.isEmpty
-                          ? SizedBox(
-                              height: 200,
-                              child: Center(child: Text(loc.t('watchlist_no_items'))),
-                            )
-                          : Builder(
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          await _loadWatchlist(); // Reload entire list, not just RSI data
+                        },
+                        child: _watchlistItems.isEmpty
+                            ? Center(child: Text(loc.t('watchlist_no_items')))
+                            : Builder(
                               builder: (context) {
                                 debugPrint(
                                     'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
                                 return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
                                   key: ValueKey(
                                       'watchlist_${_watchlistItems.length}'), // Key for forced update
                                   padding:
@@ -1574,9 +1563,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 );
                               },
                             ),
-                    ),
-          ],
-        ),
+                      ),
+                ),
+        ],
       ),
     );
   }
