@@ -99,6 +99,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   final TextEditingController _massAlertUpperLevelController =
       TextEditingController();
 
+  // Scroll controller for scrolling to focused fields
+  final ScrollController _settingsScrollController = ScrollController();
+  final GlobalKey _settingsKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -637,6 +641,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _settingsScrollController.dispose();
     _indicatorPeriodController.dispose();
     _lowerLevelController.dispose();
     _upperLevelController.dispose();
@@ -1137,6 +1142,32 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
   }
 
+  // Scroll to settings when a field is focused and keyboard is open
+  void _scrollToSettings() {
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    if (keyboardHeight > 0 && _settingsScrollController.hasClients) {
+      // Wait for the widget to rebuild after keyboard opens
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_settingsScrollController.hasClients && _settingsKey.currentContext != null) {
+          final renderBox = _settingsKey.currentContext?.findRenderObject() as RenderBox?;
+          if (renderBox != null) {
+            final settingsPosition = renderBox.localToGlobal(Offset.zero).dy;
+            final currentScrollOffset = _settingsScrollController.offset;
+            final targetOffset = currentScrollOffset + settingsPosition - 100; // 100px from top
+            
+            if (targetOffset >= 0) {
+              _settingsScrollController.animateTo(
+                targetOffset,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+            }
+          }
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final loc = context.loc;
@@ -1147,15 +1178,23 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // Indicator selector (always at top, fixed)
-          if (_appState != null) IndicatorSelector(appState: _appState!),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+          final hasKeyboard = keyboardHeight > 0;
           
-          // Collapsible settings bar (fixed)
-          Card(
-            margin: EdgeInsets.zero,
+          return SingleChildScrollView(
+            controller: _settingsScrollController,
             child: Column(
+              children: [
+                // Indicator selector (always at top, fixed)
+                if (_appState != null) IndicatorSelector(appState: _appState!),
+                
+                // Collapsible settings bar (fixed)
+                Card(
+                  key: _settingsKey,
+                  margin: EdgeInsets.zero,
+                  child: Column(
               children: [
                 InkWell(
                   onTap: () {
@@ -1303,6 +1342,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                             horizontal: 12, vertical: 8),
                                       ),
                                       keyboardType: TextInputType.number,
+                                      onTap: _scrollToSettings,
                                     ),
                                   ],
                                 ),
@@ -1329,6 +1369,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                               horizontal: 12, vertical: 8),
                                         ),
                                         keyboardType: TextInputType.number,
+                                        onTap: _scrollToSettings,
                                         onChanged: (value) {
                                           final dPeriod = int.tryParse(value);
                                           if (dPeriod != null &&
@@ -1364,6 +1405,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                             horizontal: 12, vertical: 8),
                                       ),
                                       keyboardType: TextInputType.number,
+                                      onTap: _scrollToSettings,
                                     ),
                                   ],
                                 ),
@@ -1387,6 +1429,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                             horizontal: 12, vertical: 8),
                                       ),
                                       keyboardType: TextInputType.number,
+                                      onTap: _scrollToSettings,
                                     ),
                                   ],
                                 ),
@@ -1496,77 +1539,94 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ),
           ),
 
-          // Scrollable instruments list
-          Expanded(
-            child: _isLoading && _watchlistItems.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : _watchlistItems.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.list, size: 64, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text(
-                              loc.t('watchlist_empty_title'),
-                              style: TextStyle(
-                                  color: Colors.grey[400], fontSize: 18),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              loc.t('watchlist_empty_subtitle'),
-                              style: TextStyle(
-                                  color: Colors.grey[600], fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadWatchlist(); // Reload entire list, not just RSI data
-                        },
-                        child: _watchlistItems.isEmpty
-                            ? Center(child: Text(loc.t('watchlist_no_items')))
-                            : Builder(
-                              builder: (context) {
-                                debugPrint(
-                                    'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
-                                return ListView.builder(
-                                  key: ValueKey(
-                                      'watchlist_${_watchlistItems.length}'), // Key for forced update
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8),
-                                  itemCount: _watchlistItems.length,
-                                  itemBuilder: (context, index) {
-                                    if (index >= _watchlistItems.length) {
-                                      debugPrint(
-                                          'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
-                                      return const SizedBox.shrink();
-                                    }
-
-                                    final item = _watchlistItems[index];
-                                    debugPrint(
-                                        'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
-
-                                    final indicatorData =
-                                        _indicatorDataMap[item.symbol] ??
-                                            _SymbolIndicatorData(
-                                              currentIndicatorValue: 0.0,
-                                              indicatorValues: [],
-                                              timestamps: [],
-                                              indicatorResults: [],
-                                            );
-
-                                    return _buildWatchlistItem(
-                                        item, indicatorData);
-                                  },
-                                );
-                              },
-                            ),
-                      ),
+                // Scrollable instruments list
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: hasKeyboard
+                        ? MediaQuery.of(context).size.height - keyboardHeight - 200
+                        : constraints.maxHeight - 200,
+                  ),
+                  child: _buildWatchlistList(loc),
                 ),
-        ],
+                
+                // Add padding at bottom when keyboard is open
+                if (hasKeyboard) SizedBox(height: keyboardHeight + 16),
+              ],
+            ),
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildWatchlistList(AppLocalizations loc) {
+    if (_isLoading && _watchlistItems.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_watchlistItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.list, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              loc.t('watchlist_empty_title'),
+              style: TextStyle(
+                  color: Colors.grey[400], fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              loc.t('watchlist_empty_subtitle'),
+              style: TextStyle(
+                  color: Colors.grey[600], fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadWatchlist(); // Reload entire list, not just RSI data
+      },
+      child: _watchlistItems.isEmpty
+          ? Center(child: Text(loc.t('watchlist_no_items')))
+          : Builder(
+            builder: (context) {
+              debugPrint(
+                  'WatchlistScreen: ListView.builder will display ${_watchlistItems.length} items');
+              return ListView.builder(
+                key: ValueKey(
+                    'watchlist_${_watchlistItems.length}'), // Key for forced update
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8),
+                itemCount: _watchlistItems.length,
+                itemBuilder: (context, index) {
+                  if (index >= _watchlistItems.length) {
+                    debugPrint(
+                        'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
+                    return const SizedBox.shrink();
+                  }
+
+                  final item = _watchlistItems[index];
+                  debugPrint(
+                      'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
+
+                  final indicatorData =
+                      _indicatorDataMap[item.symbol] ??
+                          _SymbolIndicatorData(
+                            currentIndicatorValue: 0.0,
+                            indicatorValues: [],
+                            timestamps: [],
+                            indicatorResults: [],
+                          );
+
+                  return _buildWatchlistItem(
+                      item, indicatorData);
+                },
+              );
+            },
+          ),
     );
   }
 
