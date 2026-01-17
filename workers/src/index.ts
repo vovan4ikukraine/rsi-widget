@@ -84,6 +84,15 @@ async function ensureTables(db: D1Database, env?: any) {
         }
     }
 
+    // Migration: Add description column if it doesn't exist
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN description TEXT`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: description column may already exist', env);
+        }
+    }
+
     // Migration: Copy rsi_period to period for existing records
     await db.prepare(`
       UPDATE alert_rule 
@@ -495,7 +504,8 @@ app.post('/alerts/create', async (c) => {
             indicatorParams,
             levels,
             mode,
-            cooldownSec
+            cooldownSec,
+            description  // Optional description (used for watchlist alerts: "WATCHLIST:")
         } = await c.req.json();
 
         if (!userId || !symbol || !timeframe || !levels) {
@@ -589,13 +599,13 @@ app.post('/alerts/create', async (c) => {
         const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
-        cooldown_sec, active, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        cooldown_sec, active, created_at, description
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `).bind(
             userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
             indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
             JSON.stringify(validLevels), alertMode,
-            cooldown, Date.now()
+            cooldown, Date.now(), description || null
         ).run();
 
         // Update device activity (user action)

@@ -1,5 +1,5 @@
-import { Context } from 'hono';
-import { Env } from '../index';
+import type { Context } from 'hono';
+import type { Env } from '../index';
 import { Logger } from '../logger';
 
 interface ProviderConfig {
@@ -75,7 +75,7 @@ export async function updateProviders(c: Context<{ Bindings: Env }>) {
 
         // TODO: В будущем сохранять в БД или env переменные
         // Пока просто возвращаем успех
-        Logger.info('Provider config update requested (stub):', body, c.env);
+        Logger.info(`Provider config update requested (stub): ${JSON.stringify(body)}`, c.env);
 
         return c.json({
             success: true,

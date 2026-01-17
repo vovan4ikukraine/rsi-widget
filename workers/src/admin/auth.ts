@@ -1,11 +1,12 @@
-import { Context, Next } from 'hono';
-import { Env } from '../index';
+import type { Context } from 'hono';
+import type { Next } from 'hono';
+import type { Env } from '../index';
 import { Logger } from '../logger';
 
 /**
  * Middleware для проверки админ API ключа
  */
-export async function adminAuthMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
+export async function adminAuthMiddleware(c: Context<{ Bindings: Env }>, next: Next): Promise<Response | void> {
     const apiKey = c.req.header('X-Admin-API-Key');
     const envApiKey = c.env?.ADMIN_API_KEY;
 
@@ -19,7 +20,7 @@ export async function adminAuthMiddleware(c: Context<{ Bindings: Env }>, next: N
         return c.json({ error: 'Unauthorized' }, 401);
     }
 
-    await next();
+    return await next();
 }
 
 

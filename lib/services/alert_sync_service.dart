@@ -227,6 +227,7 @@ class AlertSyncService {
               ..active = (ruleData['active'] as int? ?? 1) == 1
               ..createdAt = ruleData['created_at'] as int? ??
                   DateTime.now().millisecondsSinceEpoch
+              ..description = ruleData['description'] as String?
               ..repeatable = true
               ..soundEnabled = true;
 
@@ -259,7 +260,8 @@ class AlertSyncService {
               ..levels = levelsList
               ..mode = ruleData['mode'] as String? ?? 'cross'
               ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
-              ..active = (ruleData['active'] as int? ?? 1) == 1;
+              ..active = (ruleData['active'] as int? ?? 1) == 1
+              ..description = ruleData['description'] as String? ?? existing.description;
 
             await isar.alertRules.put(existing);
             if (kDebugMode) {
@@ -362,6 +364,7 @@ class AlertSyncService {
       'levels': levelsForServer,
       'mode': alert.mode,
       'cooldownSec': alert.cooldownSec,
+      if (alert.description != null && alert.description!.isNotEmpty) 'description': alert.description,
     };
 
     if (kDebugMode) {

@@ -1,5 +1,5 @@
-import { Context } from 'hono';
-import { Env } from '../index';
+import type { Context } from 'hono';
+import type { Env } from '../index';
 import { Logger } from '../logger';
 
 interface UserStats {
@@ -156,7 +156,7 @@ async function getAlertStats(db: D1Database): Promise<AlertStats> {
         GROUP BY indicator
     `).all<{ indicator: string; count: number }>();
 
-    const byIndicator: { [key: string]: number } = {
+    const byIndicator: { rsi: number; stoch: number; williams: number; [key: string]: number } = {
         rsi: 0,
         stoch: 0,
         williams: 0,
@@ -177,7 +177,7 @@ async function getAlertStats(db: D1Database): Promise<AlertStats> {
         GROUP BY indicator
     `).all<{ indicator: string; count: number }>();
 
-    const byIndicatorCustom: { [key: string]: number } = {
+    const byIndicatorCustom: { rsi: number; stoch: number; williams: number; [key: string]: number } = {
         rsi: 0,
         stoch: 0,
         williams: 0,
@@ -198,7 +198,7 @@ async function getAlertStats(db: D1Database): Promise<AlertStats> {
         GROUP BY indicator
     `).all<{ indicator: string; count: number }>();
 
-    const byIndicatorWatchlist: { [key: string]: number } = {
+    const byIndicatorWatchlist: { rsi: number; stoch: number; williams: number; [key: string]: number } = {
         rsi: 0,
         stoch: 0,
         williams: 0,
