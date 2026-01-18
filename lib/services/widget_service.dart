@@ -33,7 +33,8 @@ class WidgetService {
       final prefs = await SharedPreferences.getInstance();
       final savedTimeframe = prefs.getString('rsi_widget_timeframe');
       final savedPeriod = prefs.getInt('rsi_widget_period');
-      final savedIndicator = prefs.getString('rsi_widget_indicator');
+      // Use 'widget_indicator' to match Android native code (MainActivity.kt line 42)
+      final savedIndicator = prefs.getString('widget_indicator');
       final savedSortOrder = prefs.getBool('rsi_widget_sort_descending');
 
       // Use passed parameters or saved in widget
@@ -46,11 +47,16 @@ class WidgetService {
       final finalSortDescending = savedSortOrder ?? sortDescending;
       final finalIndicatorParams = indicatorParams;
 
-      // Save used values
+      // CRITICAL: Save widget_indicator FIRST and synchronously before calculating data
+      // This ensures WidgetDataService.refreshWidgetData reads correct indicator if it runs concurrently
+      // Use 'widget_indicator' to match Android native code (MainActivity.kt line 42)
+      await prefs.setString('widget_indicator', finalIndicator.toJson());
       await prefs.setString('rsi_widget_timeframe', finalTimeframe);
       await prefs.setInt('rsi_widget_period', finalPeriod);
-      await prefs.setString('rsi_widget_indicator', finalIndicator.toJson());
       await prefs.setBool('rsi_widget_sort_descending', finalSortDescending);
+      
+      // DEBUG: Log indicator being saved
+      print('WidgetService: Saving widget_indicator=${finalIndicator.toJson()}, period=$finalPeriod, params=$finalIndicatorParams');
 
       // Load watchlist
       final watchlistItems = await isar.watchlistItems.where().findAll();

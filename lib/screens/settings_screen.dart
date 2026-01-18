@@ -61,7 +61,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedWidgetIndicator = prefs.getString('rsi_widget_indicator');
+    // Use 'widget_indicator' to match Android native code and widget_service.dart
+    final savedWidgetIndicator = prefs.getString('widget_indicator');
     setState(() {
       _soundEnabled = prefs.getBool('sound_enabled') ?? true;
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
@@ -79,7 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
     await prefs.setString('language', _language);
-    await prefs.setString('rsi_widget_indicator', _widgetIndicator.toJson());
+    // Use 'widget_indicator' to match Android native code and widget_service.dart
+    await prefs.setString('widget_indicator', _widgetIndicator.toJson());
   }
 
   @override
@@ -373,9 +375,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (widget.isar == null) return;
     
     final prefs = await SharedPreferences.getInstance();
-    final savedTimeframe = prefs.getString('rsi_widget_timeframe') ?? '15m';
     final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? true;
-    final savedStochDPeriod = prefs.getInt('watchlist_stoch_d_period') ?? 3;
 
     showDialog(
       context: context,
@@ -399,15 +399,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   
                   // Update widget with new indicator
                   if (_widgetService != null) {
-                    // Get period for the selected indicator
-                    final indicatorPeriod = prefs.getInt('watchlist_${value.toJson()}_period') ?? 
-                                           prefs.getInt('home_${value.toJson()}_period') ?? 
+                    // Get current settings for the selected indicator from watchlist/home
+                    // This ensures widget uses actual user settings, not defaults
+                    final indicatorKey = value.toJson();
+                    
+                    // Get timeframe: try watchlist first, then home, then widget saved, then default
+                    final watchlistTimeframe = prefs.getString('watchlist_timeframe');
+                    final homeTimeframe = prefs.getString('home_selected_timeframe');
+                    final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
+                    final indicatorTimeframe = watchlistTimeframe ??
+                                              homeTimeframe ??
+                                              widgetTimeframe ??
+                                              '15m';
+                    
+                    // Get period: try watchlist first, then home, then default
+                    final watchlistPeriod = prefs.getInt('watchlist_${indicatorKey}_period');
+                    final homePeriod = prefs.getInt('home_${indicatorKey}_period');
+                    final indicatorPeriod = watchlistPeriod ?? 
+                                           homePeriod ?? 
                                            value.defaultPeriod;
-                    final indicatorParams = value == IndicatorType.stoch
-                        ? {'dPeriod': savedStochDPeriod}
-                        : null;
+                    
+                    // For STOCH, get %D period: try watchlist first, then home, then default
+                    Map<String, dynamic>? indicatorParams;
+                    if (value == IndicatorType.stoch) {
+                      final watchlistStochD = prefs.getInt('watchlist_stoch_d_period');
+                      final homeStochD = prefs.getInt('home_stoch_d_period');
+                      final stochDPeriod = watchlistStochD ?? homeStochD ?? 3;
+                      indicatorParams = {'dPeriod': stochDPeriod};
+                      
+                      // DEBUG: Log STOCH parameters
+                      print('SettingsScreen: Updating widget with STOCH - period (K): $indicatorPeriod, dPeriod (D): $stochDPeriod');
+                      print('SettingsScreen: watchlist_stoch_d_period=$watchlistStochD, home_stoch_d_period=$homeStochD');
+                    }
+                    
+                    // DEBUG: Log parameters being used
+                    print('SettingsScreen: Updating widget with indicator=$indicatorKey, timeframe=$indicatorTimeframe (watchlist=$watchlistTimeframe, home=$homeTimeframe), period=$indicatorPeriod (watchlist=$watchlistPeriod, home=$homePeriod)');
+                    
                     await _widgetService!.updateWidget(
-                      timeframe: savedTimeframe,
+                      timeframe: indicatorTimeframe,
                       rsiPeriod: indicatorPeriod,
                       sortDescending: savedSortDescending,
                       indicator: value,
@@ -415,7 +444,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   }
                   
-                  if (mounted) {
+                  // Use ScaffoldMessenger with mounted check to avoid deactivated widget error
+                  if (mounted && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(loc.t('settings_widget_indicator_updated')),

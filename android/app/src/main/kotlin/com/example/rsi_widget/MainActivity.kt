@@ -30,16 +30,18 @@ class MainActivity: FlutterActivity() {
                         val indicatorParams = call.argument<String>("indicatorParams")
                         val watchlistSymbols = call.argument<List<String>>("watchlistSymbols")
                         
-                        Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
+                        Log.d(TAG, "Updating widget with ${watchlistData?.length ?: 0} chars, timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator, params: $indicatorParams")
                         
                         // Save data to SharedPreferences
+                        // Use commit() instead of apply() to ensure synchronous save
+                        // This prevents WidgetDataService from reading stale widget_indicator value
                         val prefs = getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
                         prefs.edit().apply {
                             putString("watchlist_data", watchlistData)
                             putString("timeframe", timeframe)
                             putInt("rsi_period", rsiPeriod)
                             putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
-                            putString("widget_indicator", indicator)
+                            putString("widget_indicator", indicator) // CRITICAL: must be saved synchronously
                             if (indicatorParams != null) {
                                 putString("widget_indicator_params", indicatorParams)
                             } else {
@@ -49,7 +51,7 @@ class MainActivity: FlutterActivity() {
                                 putString("watchlist_symbols", JSONArray(it).toString())
                             }
                             putBoolean("is_loading", false)
-                            apply()
+                            commit() // Use commit() for synchronous save to prevent race condition
                         }
                         
                         // Send broadcast to update widget

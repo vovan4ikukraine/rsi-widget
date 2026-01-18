@@ -42,6 +42,56 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
+class WprLevelInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String newText = newValue.text;
+
+    // Remove all non-digit characters
+    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // If trying to delete the minus sign from a non-empty field, prevent it
+    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
+      // Restore the old value if user is trying to delete the minus
+      return oldValue;
+    }
+
+    // Always prepend minus if there are digits
+    if (digitsOnly.isNotEmpty) {
+      newText = '-$digitsOnly';
+    } else {
+      // If empty, keep minus sign if it was there before
+      newText = oldValue.text.startsWith('-') ? '-' : '';
+    }
+
+    // Calculate cursor position
+    int cursorPosition = newValue.selection.baseOffset;
+    
+    // Adjust cursor if it's before or at the minus sign position (position 0)
+    if (newText.startsWith('-')) {
+      if (cursorPosition <= 0) {
+        // If cursor is before or at minus, move it after minus
+        cursorPosition = 1;
+      } else if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    } else {
+      if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    }
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursorPosition),
+    );
+  }
+}
+
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final YahooProtoSource _yahooService = YahooProtoSource(
     'https://rsi-workers.vovan4ikukraine.workers.dev',
@@ -140,20 +190,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
+        // Get current values from controllers to ensure we save the latest user input
+        final periodFromController = int.tryParse(_indicatorPeriodController.text);
+        final lowerFromController = int.tryParse(_lowerLevelController.text)?.toDouble();
+        final upperFromController = int.tryParse(_upperLevelController.text)?.toDouble();
+        
+        // Save view settings - use controller values if valid, otherwise use state variables
         await prefs.setInt(
           'home_${_previousIndicatorType!.toJson()}_period',
-          _indicatorPeriod,
+          periodFromController ?? _indicatorPeriod,
         );
         await prefs.setDouble(
           'home_${_previousIndicatorType!.toJson()}_lower_level',
-          _lowerLevel,
+          lowerFromController ?? _lowerLevel,
         );
         await prefs.setDouble(
           'home_${_previousIndicatorType!.toJson()}_upper_level',
-          _upperLevel,
+          upperFromController ?? _upperLevel,
         );
-        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
-          await prefs.setInt('home_stoch_d_period', _stochDPeriod!);
+        if (_previousIndicatorType == IndicatorType.stoch) {
+          final stochDFromController = int.tryParse(_stochDPeriodController.text);
+          await prefs.setInt('home_stoch_d_period', stochDFromController ?? _stochDPeriod ?? 3);
         }
       }
 
@@ -1563,6 +1620,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 isDense: true,
                               ),
                               keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                             ),
                           ],
                         ),
@@ -1585,6 +1643,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   isDense: true,
                                 ),
                                 keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                               ),
                             ],
                           ),
@@ -1606,7 +1665,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 border: OutlineInputBorder(),
                                 isDense: true,
                               ),
-                              keyboardType: TextInputType.number,
+                              keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                              inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                  ? [WprLevelInputFormatter()]
+                                  : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                             ),
                           ],
                         ),
@@ -1627,7 +1689,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 border: OutlineInputBorder(),
                                 isDense: true,
                               ),
-                              keyboardType: TextInputType.number,
+                              keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                              inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                  ? [WprLevelInputFormatter()]
+                                  : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                             ),
                           ],
                         ),

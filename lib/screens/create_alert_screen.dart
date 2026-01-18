@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
@@ -24,10 +25,62 @@ class CreateAlertScreen extends StatefulWidget {
   State<CreateAlertScreen> createState() => _CreateAlertScreenState();
 }
 
+// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
+class WprLevelInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String newText = newValue.text;
+
+    // Remove all non-digit characters
+    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // If trying to delete the minus sign from a non-empty field, prevent it
+    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
+      // Restore the old value if user is trying to delete the minus
+      return oldValue;
+    }
+
+    // Always prepend minus if there are digits
+    if (digitsOnly.isNotEmpty) {
+      newText = '-$digitsOnly';
+    } else {
+      // If empty, keep minus sign if it was there before
+      newText = oldValue.text.startsWith('-') ? '-' : '';
+    }
+
+    // Calculate cursor position
+    int cursorPosition = newValue.selection.baseOffset;
+    
+    // Adjust cursor if it's before or at the minus sign position (position 0)
+    if (newText.startsWith('-')) {
+      if (cursorPosition <= 0) {
+        // If cursor is before or at minus, move it after minus
+        cursorPosition = 1;
+      } else if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    } else {
+      if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    }
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursorPosition),
+    );
+  }
+}
+
 class _CreateAlertScreenState extends State<CreateAlertScreen> {
   final _formKey = GlobalKey<FormState>();
   final _symbolController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _lowerLevelController = TextEditingController();
+  final _upperLevelController = TextEditingController();
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
@@ -57,12 +110,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     }
   }
 
+  bool _controllersInitialized = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _appState = AppStateScope.of(context);
     // If creating new alert, use selected indicator
-    if (widget.alert == null && _appState != null) {
+    if (widget.alert == null && _appState != null && !_controllersInitialized) {
       final indicatorType = _appState!.selectedIndicator;
       _indicatorPeriod = indicatorType.defaultPeriod;
       _levels = List.from(indicatorType.defaultLevels);
@@ -71,6 +126,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       if (indicatorType == IndicatorType.stoch) {
         _stochDPeriod = 3;
       }
+      // Initialize controllers with default values only if they are empty
+      if (_levels.isNotEmpty && _lowerLevelController.text.isEmpty) {
+        _lowerLevelController.text = _levels[0].toInt().toString();
+      }
+      if (_levels.length > 1 && _upperLevelController.text.isEmpty) {
+        _upperLevelController.text = _levels[1].toInt().toString();
+      }
+      _controllersInitialized = true;
     }
   }
 
@@ -95,6 +158,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         _stochDPeriod = params['dPeriod'] as int?;
       }
     }
+    
+    // Initialize controllers with alert values
+    if (_levels.isNotEmpty) {
+      _lowerLevelController.text = _levels[0].toInt().toString();
+    }
+    if (_levels.length > 1) {
+      _upperLevelController.text = _levels[1].toInt().toString();
+    }
   }
 
   Future<void> _loadPopularSymbols() async {
@@ -113,6 +184,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   void dispose() {
     _symbolController.dispose();
     _descriptionController.dispose();
+    _lowerLevelController.dispose();
+    _upperLevelController.dispose();
     _symbolSearchService.cancelPending();
     super.dispose();
   }
@@ -537,6 +610,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                           prefixIcon: Icon(Icons.timeline),
                         ),
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                         onChanged: (value) {
                           final period = int.tryParse(value);
                           if (period != null && period >= 1 && period <= 100) {
@@ -567,6 +641,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                             prefixIcon: Icon(Icons.timeline),
                           ),
                           keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                           onChanged: (value) {
                             final dPeriod = int.tryParse(value);
                             if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100) {
@@ -598,14 +673,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
   Widget _buildLevelsSelector(IndicatorType indicatorType) {
     final defaultLevels = indicatorType.defaultLevels;
-    final lowerValue = _levels.isNotEmpty
-        ? _levels[0].toInt().toString()
-        : defaultLevels.first.toInt().toString();
-    final upperValue = _levels.length > 1
-        ? _levels[1].toInt().toString()
-        : (defaultLevels.length > 1
-            ? defaultLevels[1].toInt().toString()
-            : '100');
     
     return Column(
       children: [
@@ -623,8 +690,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   _lowerLevelEnabled = value ?? true;
                   if (!_lowerLevelEnabled && _levels.isNotEmpty) {
                     _levels.removeAt(0);
+                    _lowerLevelController.clear();
                   } else if (_lowerLevelEnabled && _levels.isEmpty) {
                     _levels.insert(0, defaultLevels.first);
+                    _lowerLevelController.text = defaultLevels.first.toInt().toString();
                   }
                 });
               },
@@ -639,34 +708,48 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   ),
                   const Spacer(),
                   TextFormField(
-                    key: ValueKey('lower_${_lowerLevelEnabled}_$lowerValue'),
-                    initialValue: lowerValue,
+                    controller: _lowerLevelController,
                     enabled: _lowerLevelEnabled,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.numberWithOptions(signed: indicatorType == IndicatorType.williams),
-                    onChanged: (value) {
+                    inputFormatters: indicatorType == IndicatorType.williams
+                        ? [WprLevelInputFormatter()]
+                        : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                    validator: (value) {
+                      if (!_lowerLevelEnabled) return null;
+                      if (value == null || value.isEmpty) {
+                        return ' '; // Empty string to show red border only
+                      }
                       final lower = int.tryParse(value)?.toDouble();
-                      if (lower == null) return;
-                      
-                      // Validate range based on indicator type
+                      if (lower == null) {
+                        return ' '; // Empty string to show red border only
+                      }
                       final isWilliams = indicatorType == IndicatorType.williams;
-                      final minLevel = isWilliams ? -99.0 : 1.0;
-                      final maxLevel = isWilliams ? -1.0 : 99.0;
-                      
-                      if (lower >= minLevel && lower <= maxLevel) {
-                        // Check that lower level is below upper level (if both enabled)
-                        final upperLevel = _levels.length > 1 ? _levels[1] : null;
-                        if (_upperLevelEnabled && upperLevel != null && lower >= upperLevel) {
-                          return; // Lower level cannot be above or equal to upper level
+                      final minRange = isWilliams ? -99.0 : 1.0;
+                      final maxRange = isWilliams ? -1.0 : 99.0;
+                      if (lower < minRange || lower > maxRange) {
+                        return ' '; // Empty string to show red border only
+                      }
+                      // Check relation to upper level if both enabled
+                      if (_upperLevelEnabled && _upperLevelController.text.isNotEmpty) {
+                        final upper = int.tryParse(_upperLevelController.text)?.toDouble();
+                        if (upper != null && lower >= upper) {
+                          return ' '; // Empty string to show red border only
                         }
-                        
+                      }
+                      return null;
+                    },
+                    onChanged: (value) {
+                      if (value.isEmpty) return;
+                      final lower = int.tryParse(value)?.toDouble();
+                      if (lower != null) {
                         setState(() {
                           if (_levels.isEmpty) {
-                            _levels.add(lower.clamp(minLevel, maxLevel));
+                            _levels.add(lower);
                           } else {
-                            _levels[0] = lower.clamp(minLevel, maxLevel);
+                            _levels[0] = lower;
                           }
                         });
                       }
@@ -687,13 +770,17 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   _upperLevelEnabled = value ?? true;
                   if (!_upperLevelEnabled && _levels.length > 1) {
                     _levels.removeAt(1);
+                    _upperLevelController.clear();
                   } else if (_upperLevelEnabled && _levels.length < 2) {
-                    if (_levels.isEmpty) {
-                      _levels.add(defaultLevels.first);
+                    // Don't add default values - user must enter valid levels
+                    // Just initialize the controller if needed
+                    if (_upperLevelController.text.isEmpty) {
+                      final upperValue = defaultLevels.length > 1
+                          ? defaultLevels[1]
+                          : 100.0;
+                      _upperLevelController.text = upperValue.toInt().toString();
+                      _levels.add(upperValue);
                     }
-                    _levels.add(defaultLevels.length > 1
-                        ? defaultLevels[1]
-                        : 100.0);
                   }
                 });
               },
@@ -708,37 +795,52 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   ),
                   const Spacer(),
                   TextFormField(
-                    key: ValueKey('upper_${_upperLevelEnabled}_$upperValue'),
-                    initialValue: upperValue,
+                    controller: _upperLevelController,
                     enabled: _upperLevelEnabled,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.numberWithOptions(signed: indicatorType == IndicatorType.williams),
-                    onChanged: (value) {
+                    inputFormatters: indicatorType == IndicatorType.williams
+                        ? [WprLevelInputFormatter()]
+                        : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                    validator: (value) {
+                      if (!_upperLevelEnabled) return null;
+                      if (value == null || value.isEmpty) {
+                        return ' '; // Empty string to show red border only
+                      }
                       final upper = int.tryParse(value)?.toDouble();
-                      if (upper == null) return;
-                      
-                      // Validate range based on indicator type
+                      if (upper == null) {
+                        return ' '; // Empty string to show red border only
+                      }
                       final isWilliams = indicatorType == IndicatorType.williams;
-                      final minLevel = isWilliams ? -99.0 : 1.0;
-                      final maxLevel = isWilliams ? -1.0 : 99.0;
-                      
-                      if (upper >= minLevel && upper <= maxLevel) {
-                        // Check that upper level is above lower level (if both enabled)
-                        final lowerLevel = _levels.isNotEmpty ? _levels[0] : null;
-                        if (_lowerLevelEnabled && lowerLevel != null && upper <= lowerLevel) {
-                          return; // Upper level cannot be below or equal to lower level
+                      final minRange = isWilliams ? -99.0 : 1.0;
+                      final maxRange = isWilliams ? -1.0 : 99.0;
+                      if (upper < minRange || upper > maxRange) {
+                        return ' '; // Empty string to show red border only
+                      }
+                      // Check relation to lower level if both enabled
+                      if (_lowerLevelEnabled && _lowerLevelController.text.isNotEmpty) {
+                        final lower = int.tryParse(_lowerLevelController.text)?.toDouble();
+                        if (lower != null && upper <= lower) {
+                          return ' '; // Empty string to show red border only
                         }
-                        
+                      }
+                      return null;
+                    },
+                    onChanged: (value) {
+                      if (value.isEmpty) return;
+                      final upper = int.tryParse(value)?.toDouble();
+                      if (upper != null) {
                         setState(() {
                           if (_levels.length < 2) {
                             if (_levels.isEmpty) {
-                              _levels.add(defaultLevels.first);
+                              _levels.add(upper);
+                            } else {
+                              _levels.add(upper);
                             }
-                            _levels.add(upper.clamp(minLevel, maxLevel));
                           } else {
-                            _levels[1] = upper.clamp(minLevel, maxLevel);
+                            _levels[1] = upper;
                           }
                         });
                       }
@@ -781,6 +883,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   prefixIcon: Icon(Icons.timer),
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                 onChanged: (value) {
                   final cooldown = int.tryParse(value);
                   if (cooldown != null &&
@@ -974,12 +1077,25 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         }
       }
 
-      // Validate: at least one level must be enabled
+      // Read levels directly from controllers (validation already done by FormField validators)
       // Always send array with 2 elements: [lower, upper], where disabled level is null
-      final enabledLevels = <double?>[
-        (_lowerLevelEnabled && _levels.isNotEmpty) ? _levels[0] : null,
-        (_upperLevelEnabled && _levels.length > 1) ? _levels[1] : null,
-      ];
+      double? lowerLevel = null;
+      double? upperLevel = null;
+      
+      if (_lowerLevelEnabled && _lowerLevelController.text.isNotEmpty) {
+        lowerLevel = int.tryParse(_lowerLevelController.text)?.toDouble();
+        debugPrint('Creating alert: Lower level from controller: ${_lowerLevelController.text} -> $lowerLevel');
+      }
+      
+      if (_upperLevelEnabled && _upperLevelController.text.isNotEmpty) {
+        upperLevel = int.tryParse(_upperLevelController.text)?.toDouble();
+        debugPrint('Creating alert: Upper level from controller: ${_upperLevelController.text} -> $upperLevel');
+      }
+      
+      debugPrint('Creating alert: Enabled levels: $lowerLevel, $upperLevel');
+      debugPrint('Creating alert: _levels array: $_levels');
+      
+      final enabledLevels = <double?>[lowerLevel, upperLevel];
       
       if (enabledLevels[0] == null && enabledLevels[1] == null) {
         if (mounted) {
@@ -1025,8 +1141,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       await AlertSyncService.syncAlert(widget.isar, alert, 
         lowerLevelEnabled: _lowerLevelEnabled,
         upperLevelEnabled: _upperLevelEnabled,
-        lowerLevelValue: _levels.isNotEmpty ? _levels[0] : null,
-        upperLevelValue: _levels.length > 1 ? _levels[1] : null,
+        lowerLevelValue: lowerLevel,
+        upperLevelValue: upperLevel,
       );
 
       if (mounted) {

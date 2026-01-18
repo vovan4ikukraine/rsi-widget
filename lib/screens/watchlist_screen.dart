@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
-import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
@@ -27,17 +27,67 @@ class WatchlistScreen extends StatefulWidget {
 
 enum _RsiSortOrder { none, descending, ascending }
 
+// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
+class WprLevelInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String newText = newValue.text;
+
+    // Remove all non-digit characters
+    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // If trying to delete the minus sign from a non-empty field, prevent it
+    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
+      // Restore the old value if user is trying to delete the minus
+      return oldValue;
+    }
+
+    // Always prepend minus if there are digits
+    if (digitsOnly.isNotEmpty) {
+      newText = '-$digitsOnly';
+    } else {
+      // If empty, keep minus sign if it was there before
+      newText = oldValue.text.startsWith('-') ? '-' : '';
+    }
+
+    // Calculate cursor position
+    int cursorPosition = newValue.selection.baseOffset;
+    
+    // Adjust cursor if it's before or at the minus sign position (position 0)
+    if (newText.startsWith('-')) {
+      if (cursorPosition <= 0) {
+        // If cursor is before or at minus, move it after minus
+        cursorPosition = 1;
+      } else if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    } else {
+      if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    }
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursorPosition),
+    );
+  }
+}
+
 class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
-  late final WidgetService _widgetService;
 
   static const String _sortOrderPrefKey = 'watchlist_sort_order';
 
   List<WatchlistItem> _watchlistItems = [];
   final Map<String, _SymbolIndicatorData> _indicatorDataMap = {};
   bool _isLoading = false;
+  bool _isLoadingData = false; // Flag to prevent duplicate data loading calls
   bool _settingsExpanded = false;
   bool _isActionInProgress = false;
   _RsiSortOrder _currentSortOrder = _RsiSortOrder.none;
@@ -98,18 +148,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       TextEditingController();
   final TextEditingController _massAlertUpperLevelController =
       TextEditingController();
+  final TextEditingController _massAlertCooldownController =
+      TextEditingController();
 
   // Scroll controller for scrolling to focused fields
   final ScrollController _settingsScrollController = ScrollController();
   final GlobalKey _settingsKey = GlobalKey();
+  final GlobalKey<FormState> _massAlertFormKey = GlobalKey<FormState>();
 
   @override
   void initState() {
     super.initState();
-    _widgetService = WidgetService(
-      isar: widget.isar,
-      yahooService: _yahooService,
-    );
     WidgetsBinding.instance.addObserver(this);
     _updateControllerHints();
     _loadSavedState();
@@ -118,8 +167,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final previousIndicator = _previousIndicatorType;
     _appState = AppStateScope.of(context);
-    _previousIndicatorType = _appState?.selectedIndicator;
+    final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    
+    // Update previousIndicatorType if it's the first time or if it changed
+    if (_previousIndicatorType == null || _previousIndicatorType != currentIndicator) {
+      _previousIndicatorType = currentIndicator;
+      
+      // If indicator changed and we already have initial state loaded, trigger reload
+      if (previousIndicator != null && previousIndicator != currentIndicator) {
+        // Indicator changed - let _onIndicatorChanged handle it via listener
+      }
+    }
+    
     _appState?.addListener(_onIndicatorChanged);
   }
 
@@ -130,30 +191,48 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
-        // Save view settings
+        // Get current values from controllers to ensure we save the latest user input
+        final periodFromController = int.tryParse(_indicatorPeriodController.text);
+        final lowerFromController = int.tryParse(_lowerLevelController.text)?.toDouble();
+        final upperFromController = int.tryParse(_upperLevelController.text)?.toDouble();
+        
+        // Save view settings - use controller values if valid, otherwise use state variables
         await prefs.setInt(
           'watchlist_${_previousIndicatorType!.toJson()}_period',
-          _indicatorPeriod,
+          periodFromController ?? _indicatorPeriod,
         );
         await prefs.setDouble(
           'watchlist_${_previousIndicatorType!.toJson()}_lower_level',
-          _lowerLevel,
+          lowerFromController ?? _lowerLevel,
         );
         await prefs.setDouble(
           'watchlist_${_previousIndicatorType!.toJson()}_upper_level',
-          _upperLevel,
+          upperFromController ?? _upperLevel,
         );
-        if (_previousIndicatorType == IndicatorType.stoch && _stochDPeriod != null) {
-          await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
+        if (_previousIndicatorType == IndicatorType.stoch) {
+          final stochDFromController = int.tryParse(_stochDPeriodController.text);
+          await prefs.setInt('watchlist_stoch_d_period', stochDFromController ?? _stochDPeriod ?? 3);
         }
+        
+        // Get current mass alert values from controllers
+        final massAlertPeriodFromController = int.tryParse(_massAlertPeriodController.text);
+        final massAlertLowerFromController = int.tryParse(_massAlertLowerLevelController.text)?.toDouble();
+        final massAlertUpperFromController = int.tryParse(_massAlertUpperLevelController.text)?.toDouble();
         
         // Save mass alert settings for the previous indicator
         final previousIndicatorKey = _previousIndicatorType!.toJson();
-        await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', _massAlertPeriod);
-        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', _massAlertLowerLevel);
-        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', _massAlertUpperLevel);
+        await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', massAlertPeriodFromController ?? _massAlertPeriod);
+        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', massAlertLowerFromController ?? _massAlertLowerLevel);
+        await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', massAlertUpperFromController ?? _massAlertUpperLevel);
         await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_lower_level_enabled', _massAlertLowerLevelEnabled);
         await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_upper_level_enabled', _massAlertUpperLevelEnabled);
+        
+        if (_previousIndicatorType == IndicatorType.stoch) {
+          final massAlertStochDFromController = int.tryParse(_massAlertStochDPeriodController.text);
+          if (massAlertStochDFromController != null || _massAlertStochDPeriod != null) {
+            await prefs.setInt('watchlist_mass_alert_stoch_d_period', massAlertStochDFromController ?? _massAlertStochDPeriod ?? 3);
+          }
+        }
       }
 
       // Load saved view settings for the new indicator, or use defaults
@@ -220,10 +299,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             _massAlertStochDPeriod = null;
           }
 
-          // Update controllers
+          // Update controllers - for WPR levels, ensure minus sign is preserved
           _indicatorPeriodController.text = _indicatorPeriod.toString();
-          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
-          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          final lowerText = _lowerLevel.toStringAsFixed(0);
+          final upperText = _upperLevel.toStringAsFixed(0);
+          _lowerLevelController.text = lowerText;
+          _upperLevelController.text = upperText;
           if (_stochDPeriod != null) {
             _stochDPeriodController.text = _stochDPeriod.toString();
           } else {
@@ -237,8 +318,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           } else {
             _massAlertStochDPeriodController.clear();
           }
-          _massAlertLowerLevelController.text = _massAlertLowerLevel.toStringAsFixed(0);
-          _massAlertUpperLevelController.text = _massAlertUpperLevel.toStringAsFixed(0);
+          // For WPR levels, ensure minus sign is preserved in controllers
+          final massAlertLowerText = _massAlertLowerLevel.toStringAsFixed(0);
+          final massAlertUpperText = _massAlertUpperLevel.toStringAsFixed(0);
+          _massAlertLowerLevelController.text = massAlertLowerText;
+          _massAlertUpperLevelController.text = massAlertUpperText;
+          _massAlertCooldownController.text = _massAlertCooldownSec.toString();
         });
       }
 
@@ -247,19 +332,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Save loaded settings so widget can use them
       await _saveState();
-
-      // Update widget with new indicator
-      final indicatorParams =
-          indicatorType == IndicatorType.stoch && _stochDPeriod != null
-              ? {'dPeriod': _stochDPeriod}
-              : null;
-      unawaited(_widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      ));
 
       // Clear data and reload when indicator changes
       if (mounted) {
@@ -271,24 +343,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
   }
 
+  // Widget updates are handled in settings screen only, not from watchlist
+  // ignore: unused_element
+  @pragma('vm:entry-point')
   Future<void> _updateWidgetOrder(bool sortDescending) async {
-    try {
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-      final indicatorParams =
-          indicatorType == IndicatorType.stoch && _stochDPeriod != null
-              ? {'dPeriod': _stochDPeriod}
-              : null;
-      await _widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        sortDescending: sortDescending,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      );
-    } catch (e, stackTrace) {
-      debugPrint(
-          'WatchlistScreen: Failed to update widget order: $e\n$stackTrace');
-    }
+    // No-op: widget updates should only come from settings screen
+    // Parameter kept for compatibility with existing callers
+    // ignore: avoid_unused_constructor_parameters
+    sortDescending; // Suppress unused parameter warning
   }
 
   String _sortOrderToString(_RsiSortOrder order) {
@@ -427,9 +489,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
         _indicatorPeriod =
             widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
-        _lowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level') ??
-            indicatorType.defaultLevels.first;
-        _upperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level') ??
+        
+        // Load levels with validation to ensure they match the current indicator type
+        final savedLowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level');
+        final savedUpperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level');
+        
+        // Validate saved levels match the current indicator type
+        final savedLowerValid = savedLowerLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+        final savedUpperValid = savedUpperLevel != null &&
+            ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+             (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+        
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
             (indicatorType.defaultLevels.length > 1
                 ? indicatorType.defaultLevels[1]
                 : 100.0);
@@ -518,16 +592,31 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           }
         }
 
+        // Initialize controllers - for WPR levels, ensure minus sign is preserved
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        final lowerText = _lowerLevel.toStringAsFixed(0);
+        final upperText = _upperLevel.toStringAsFixed(0);
+        _lowerLevelController.text = lowerText;
+        _upperLevelController.text = upperText;
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
+
         // Initialize mass alert controllers
         _massAlertPeriodController.text = _massAlertPeriod.toString();
         if (_massAlertStochDPeriod != null) {
           _massAlertStochDPeriodController.text =
               _massAlertStochDPeriod.toString();
+        } else {
+          _massAlertStochDPeriodController.clear();
         }
-        _massAlertLowerLevelController.text =
-            _massAlertLowerLevel.toStringAsFixed(0);
-        _massAlertUpperLevelController.text =
-            _massAlertUpperLevel.toStringAsFixed(0);
+        final massAlertLowerText = _massAlertLowerLevel.toStringAsFixed(0);
+        final massAlertUpperText = _massAlertUpperLevel.toStringAsFixed(0);
+        _massAlertLowerLevelController.text = massAlertLowerText;
+        _massAlertUpperLevelController.text = massAlertUpperText;
+        _massAlertCooldownController.text = _massAlertCooldownSec.toString();
       });
     }
 
@@ -612,18 +701,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
     // If timeframe changed in widget, update it in app
     if (widgetTimeframe != null && widgetTimeframe != _timeframe) {
-      setState(() {
-        _timeframe = widgetTimeframe;
-      });
+      if (mounted) {
+        setState(() {
+          _timeframe = widgetTimeframe;
+        });
+      }
       _saveState();
       needsUpdate = true;
     }
 
     // If period changed in widget, update it in app
     if (widgetPeriod != null) {
-      setState(() {
-        _indicatorPeriod = widgetPeriod;
-      });
+      if (mounted) {
+        setState(() {
+          _indicatorPeriod = widgetPeriod;
+        });
+      }
       _saveState();
       needsUpdate = true;
     }
@@ -641,6 +734,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _appState?.removeListener(_onIndicatorChanged);
     _settingsScrollController.dispose();
     _indicatorPeriodController.dispose();
     _lowerLevelController.dispose();
@@ -650,6 +744,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _massAlertStochDPeriodController.dispose();
     _massAlertLowerLevelController.dispose();
     _massAlertUpperLevelController.dispose();
+    _massAlertCooldownController.dispose();
+    // Reset loading flag
+    _isLoadingData = false;
     super.dispose();
   }
 
@@ -715,19 +812,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Load indicator data for all symbols
       await _loadAllIndicatorData();
 
-      // Update widget after loading watchlist (use current watchlist settings)
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-      final indicatorParams =
-          indicatorType == IndicatorType.stoch && _stochDPeriod != null
-              ? {'dPeriod': _stochDPeriod}
-              : null;
-      unawaited(_widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      ));
     } catch (e, stackTrace) {
       debugPrint('WatchlistScreen: Error loading list: $e');
       debugPrint('WatchlistScreen: Stack trace: $stackTrace');
@@ -746,10 +830,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _loadAllIndicatorData() async {
     if (_watchlistItems.isEmpty) return;
+    
+    // Prevent duplicate loading calls for the same indicator
+    // But allow loading if indicator changed
+    if (_isLoadingData) {
+      debugPrint('WatchlistScreen: _loadAllIndicatorData already in progress, skipping duplicate call');
+      return;
+    }
 
-    setState(() {
-      _isLoading = true;
-    });
+    _isLoadingData = true;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       // Load data with limited parallelism (max 8 concurrent requests)
@@ -778,19 +872,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           _isLoading = false;
         });
       }
-      // Update widget after loading data (use current watchlist settings)
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-      final indicatorParams =
-          indicatorType == IndicatorType.stoch && _stochDPeriod != null
-              ? {'dPeriod': _stochDPeriod}
-              : null;
-      unawaited(_widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      ));
+      _isLoadingData = false;
     }
   }
 
@@ -975,19 +1057,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     } else {
       unawaited(DataSyncService.saveWatchlistToCache(widget.isar));
     }
-    // Update widget after deletion
-    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-    final indicatorParams =
-        indicatorType == IndicatorType.stoch && _stochDPeriod != null
-            ? {'dPeriod': _stochDPeriod}
-            : null;
-    unawaited(_widgetService.updateWidget(
-      timeframe: _timeframe,
-      rsiPeriod: _indicatorPeriod,
-      sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-      indicator: indicatorType,
-      indicatorParams: indicatorParams,
-    ));
   }
 
   Future<void> _applySettings() async {
@@ -1045,24 +1114,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _updateControllerHints();
 
       if (changed) {
-        // Save period for widget
+        // Save period for widget AND watchlist (ensure both are updated)
         if (period != null) {
           final prefs = await SharedPreferences.getInstance();
+          final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+          // Save to both rsi_widget_period AND watchlist_${indicator}_period
+          // This ensures widget refresh reads correct period
           await prefs.setInt('rsi_widget_period', _indicatorPeriod);
+          await prefs.setInt('watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
+          debugPrint('WatchlistScreen: Saved period $_indicatorPeriod to watchlist_${indicatorType.toJson()}_period');
         }
         _loadAllIndicatorData();
-        // Update widget with new period
-        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-        final indicatorParams =
-            indicatorType == IndicatorType.stoch && _stochDPeriod != null
-                ? {'dPeriod': _stochDPeriod}
-                : null;
-        unawaited(_widgetService.updateWidget(
-          rsiPeriod: _indicatorPeriod,
-          sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-          indicator: indicatorType,
-          indicatorParams: indicatorParams,
-        ));
       } else {
         if (mounted) {
           setState(() {});
@@ -1114,23 +1176,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       });
       _saveState();
-      // Save period for widget
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('rsi_widget_period', _indicatorPeriod);
       _updateControllerHints();
       _loadAllIndicatorData();
-      // Update widget
-      final indicatorParams =
-          indicatorType == IndicatorType.stoch && _stochDPeriod != null
-              ? {'dPeriod': _stochDPeriod}
-              : null;
-      unawaited(_widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        sortDescending: _currentSortOrder != _RsiSortOrder.ascending,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      ));
     } finally {
       if (mounted) {
         setState(() {
@@ -1140,6 +1187,27 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _isActionInProgress = false;
       }
     }
+  }
+
+  // Validate mass alert level based on indicator type
+  bool _isValidMassAlertLevel(double value, bool isLower, double? otherLevel) {
+    final indicatorType = _massAlertIndicator;
+    if (indicatorType == IndicatorType.williams) {
+      // WPR: -99 to -1, lower must be less than upper
+      if (value < -99 || value > -1) return false;
+      if (otherLevel != null) {
+        if (isLower && value >= otherLevel) return false;
+        if (!isLower && value <= otherLevel) return false;
+      }
+    } else {
+      // RSI/STOCH: 1 to 99, lower must be less than upper
+      if (value < 1 || value > 99) return false;
+      if (otherLevel != null) {
+        if (isLower && value >= otherLevel) return false;
+        if (!isLower && value <= otherLevel) return false;
+      }
+    }
+    return true;
   }
 
   // Scroll to settings when a field is focused and keyboard is open
@@ -1282,31 +1350,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         _timeframe = value;
                                       });
                                       _saveState();
-                                      // Save timeframe for widget
-                                      final prefs =
-                                          await SharedPreferences.getInstance();
-                                      await prefs.setString(
-                                          'rsi_widget_timeframe', _timeframe);
-                                      await prefs.setInt(
-                                          'rsi_widget_period', _indicatorPeriod);
                                       _loadAllIndicatorData(); // Automatically reload data when timeframe changes
-                                      // Update widget
-                                      final indicatorType =
-                                          _appState?.selectedIndicator ??
-                                              IndicatorType.rsi;
-                                      final indicatorParams =
-                                          indicatorType == IndicatorType.stoch &&
-                                                  _stochDPeriod != null
-                                              ? {'dPeriod': _stochDPeriod}
-                                              : null;
-                                      unawaited(_widgetService.updateWidget(
-                                        timeframe: _timeframe,
-                                        rsiPeriod: _indicatorPeriod,
-                                        sortDescending: _currentSortOrder !=
-                                            _RsiSortOrder.ascending,
-                                        indicator: indicatorType,
-                                        indicatorParams: indicatorParams,
-                                      ));
                                     }
                                       },
                                     ),
@@ -1369,6 +1413,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                               horizontal: 12, vertical: 8),
                                         ),
                                         keyboardType: TextInputType.number,
+                                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                         onTap: _scrollToSettings,
                                         onChanged: (value) {
                                           final dPeriod = int.tryParse(value);
@@ -1404,7 +1449,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         contentPadding: EdgeInsets.symmetric(
                                             horizontal: 12, vertical: 8),
                                       ),
-                                      keyboardType: TextInputType.number,
+                                      keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                                      inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                          ? [WprLevelInputFormatter()]
+                                          : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                       onTap: _scrollToSettings,
                                     ),
                                   ],
@@ -1428,7 +1476,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         contentPadding: EdgeInsets.symmetric(
                                             horizontal: 12, vertical: 8),
                                       ),
-                                      keyboardType: TextInputType.number,
+                                      keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                                      inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                          ? [WprLevelInputFormatter()]
+                                          : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                       onTap: _scrollToSettings,
                                     ),
                                   ],
@@ -1484,7 +1535,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                       _applySortOrder(
                                         targetOrder,
                                         persistPreference: true,
-                                        notifyWidget: true,
+                                        notifyWidget: false,
                                       );
                                     },
                             ),
@@ -1523,21 +1574,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           
           // Mass alerts section (always visible as separate block, fixed)
           _buildMassAlertsSection(context),
-
-          // Watchlist counter (e.g., "23/30") (fixed)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${_watchlistItems.length}/30',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-          ),
 
                 // Scrollable instruments list
                 ConstrainedBox(
@@ -1598,19 +1634,37 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               return ListView.builder(
                 key: ValueKey(
                     'watchlist_${_watchlistItems.length}'), // Key for forced update
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _watchlistItems.length,
+                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                itemCount: _watchlistItems.length + 1, // +1 for counter
                 itemBuilder: (context, index) {
-                  if (index >= _watchlistItems.length) {
+                  // First item is the counter
+                  if (index == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 4, bottom: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${_watchlistItems.length}/30',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  // Adjust index for watchlist items
+                  final itemIndex = index - 1;
+                  if (itemIndex >= _watchlistItems.length) {
                     debugPrint(
-                        'WatchlistScreen: ERROR! Index $index >= list length ${_watchlistItems.length}');
+                        'WatchlistScreen: ERROR! Index $itemIndex >= list length ${_watchlistItems.length}');
                     return const SizedBox.shrink();
                   }
 
-                  final item = _watchlistItems[index];
+                  final item = _watchlistItems[itemIndex];
                   debugPrint(
-                      'WatchlistScreen: Displaying item $index: ${item.symbol} (id: ${item.id})');
+                      'WatchlistScreen: Displaying item $itemIndex: ${item.symbol} (id: ${item.id})');
 
                   final indicatorData =
                       _indicatorDataMap[item.symbol] ??
@@ -1777,6 +1831,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         leading: Switch(
           value: _massAlertEnabled,
           onChanged: (value) async {
+            // If trying to enable, validate form first
+            if (value && _massAlertFormKey.currentState != null) {
+              if (!_massAlertFormKey.currentState!.validate()) {
+                // Validation failed, don't enable switch
+                return;
+              }
+            }
             setState(() {
               _massAlertEnabled = value; // Uses the setter which updates the map
             });
@@ -1790,11 +1851,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           },
         ),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              child: Column(
+          Form(
+            key: _massAlertFormKey,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1817,97 +1880,60 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           vertical: 8,
                         ),
                       ),
-                  items: const [
-                    DropdownMenuItem(value: '1m', child: Text('1m')),
-                    DropdownMenuItem(value: '5m', child: Text('5m')),
-                    DropdownMenuItem(value: '15m', child: Text('15m')),
-                    DropdownMenuItem(value: '1h', child: Text('1h')),
-                    DropdownMenuItem(value: '4h', child: Text('4h')),
-                    DropdownMenuItem(value: '1d', child: Text('1d')),
-                  ],
-                  onChanged: (value) async {
-                    if (value != null && value != _massAlertTimeframe) {
-                      debugPrint('Mass alert timeframe changed from $_massAlertTimeframe to $value, enabled: $_massAlertEnabled');
-                      setState(() {
-                        _massAlertTimeframe = value;
-                      });
-                      await _saveState();
-                      if (_massAlertEnabled) {
-                        debugPrint('Calling _updateMassAlerts after timeframe change');
-                        await _updateMassAlerts();
-                      } else {
-                        debugPrint('Mass alert not enabled, skipping update');
-                      }
-                    }
+                      items: const [
+                        DropdownMenuItem(value: '1m', child: Text('1m')),
+                        DropdownMenuItem(value: '5m', child: Text('5m')),
+                        DropdownMenuItem(value: '15m', child: Text('15m')),
+                        DropdownMenuItem(value: '1h', child: Text('1h')),
+                        DropdownMenuItem(value: '4h', child: Text('4h')),
+                        DropdownMenuItem(value: '1d', child: Text('1d')),
+                      ],
+                      onChanged: (value) async {
+                        if (value != null && value != _massAlertTimeframe) {
+                          debugPrint('Mass alert timeframe changed from $_massAlertTimeframe to $value, enabled: $_massAlertEnabled');
+                          setState(() {
+                            _massAlertTimeframe = value;
+                          });
+                          await _saveState();
+                          if (_massAlertEnabled) {
+                            debugPrint('Calling _updateMassAlerts after timeframe change');
+                            await _updateMassAlerts();
+                          } else {
+                            debugPrint('Mass alert not enabled, skipping update');
+                          }
+                        }
                       },
                     ),
                   ],
                 ),
                 // Note: Mass alerts use the indicator selected in the main interface (via IndicatorSelector above)
                 const SizedBox(height: 16),
-                // Period for alerts
-                            IntrinsicHeight(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            () {
-                              final indicator = _massAlertIndicator;
-                              switch (indicator) {
-                                case IndicatorType.stoch:
-                                  return loc.t('home_stoch_k_period_label');
-                                case IndicatorType.williams:
-                                  return loc.t('home_wpr_period_label');
-                                case IndicatorType.rsi:
-                                  return loc.t('home_rsi_period_label');
-                              }
-                            }(),
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const Spacer(),
-                          TextField(
-                            controller: _massAlertPeriodController,
-                            decoration: const InputDecoration(
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              final period = int.tryParse(value);
-                              if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
-                                setState(() {
-                                  _massAlertPeriod = period;
-                                });
-                                _saveState();
-                                if (_massAlertEnabled) {
-                                  unawaited(_updateMassAlerts());
-                                }
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_massAlertIndicator == IndicatorType.stoch) ...[
-                      const SizedBox(width: 8),
+                // Period and Cooldown in one row
+                IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      // Period
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              loc.t('home_stoch_d_period_label'),
+                              () {
+                                final indicator = _massAlertIndicator;
+                                switch (indicator) {
+                                  case IndicatorType.stoch:
+                                    return loc.t('home_stoch_k_period_label');
+                                  case IndicatorType.williams:
+                                    return loc.t('home_wpr_period_label');
+                                  case IndicatorType.rsi:
+                                    return loc.t('home_rsi_period_label');
+                                }
+                              }(),
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             const Spacer(),
                             TextField(
-                              controller: _massAlertStochDPeriodController,
+                              controller: _massAlertPeriodController,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
@@ -1917,14 +1943,97 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 ),
                               ),
                               keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                               onChanged: (value) {
-                                final dPeriod = int.tryParse(value);
-                                if (dPeriod != null &&
-                                    dPeriod >= 1 &&
-                                    dPeriod <= 100 &&
-                                    dPeriod != _massAlertStochDPeriod) {
+                                final period = int.tryParse(value);
+                                if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
                                   setState(() {
-                                    _massAlertStochDPeriod = dPeriod;
+                                    _massAlertPeriod = period;
+                                  });
+                                  _saveState();
+                                  if (_massAlertEnabled) {
+                                    unawaited(_updateMassAlerts());
+                                  }
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_massAlertIndicator == IndicatorType.stoch) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                loc.t('home_stoch_d_period_label'),
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const Spacer(),
+                              TextField(
+                                controller: _massAlertStochDPeriodController,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                                onChanged: (value) {
+                                  final dPeriod = int.tryParse(value);
+                                  if (dPeriod != null &&
+                                      dPeriod >= 1 &&
+                                      dPeriod <= 100 &&
+                                      dPeriod != _massAlertStochDPeriod) {
+                                    setState(() {
+                                      _massAlertStochDPeriod = dPeriod;
+                                    });
+                                    _saveState();
+                                    if (_massAlertEnabled) {
+                                      unawaited(_updateMassAlerts());
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      // Cooldown
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              loc.t('create_alert_cooldown_label'),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const Spacer(),
+                            TextField(
+                              controller: _massAlertCooldownController,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                              onChanged: (value) {
+                                final cooldown = int.tryParse(value);
+                                if (cooldown != null &&
+                                    cooldown >= 0 &&
+                                    cooldown <= 86400 &&
+                                    cooldown != _massAlertCooldownSec) {
+                                  setState(() {
+                                    _massAlertCooldownSec = cooldown;
                                   });
                                   _saveState();
                                   if (_massAlertEnabled) {
@@ -1937,9 +2046,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
                 const SizedBox(height: 16),
                 // Levels
                 Text(
@@ -1988,7 +2096,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             style: const TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                           const Spacer(),
-                          TextField(
+                          TextFormField(
                             controller: _massAlertLowerLevelController,
                             enabled: _massAlertLowerLevelEnabled,
                             decoration: const InputDecoration(
@@ -1999,26 +2107,39 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 vertical: 8,
                               ),
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
+                            keyboardType: TextInputType.numberWithOptions(signed: _massAlertIndicator == IndicatorType.williams),
+                            inputFormatters: _massAlertIndicator == IndicatorType.williams
+                                ? [WprLevelInputFormatter()]
+                                : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                            validator: (value) {
+                              if (!_massAlertLowerLevelEnabled) return null;
+                              if (value == null || value.isEmpty) {
+                                return ' '; // Empty string to show red border only
+                              }
                               final lower = int.tryParse(value)?.toDouble();
-                              if (lower == null) return;
-                              
-                              bool isValid = false;
-                              if (_massAlertIndicator == IndicatorType.williams) {
-                                // WPR: -99 to -1
-                                isValid = lower >= -99 && lower <= -1;
-                              } else {
-                                // RSI/STOCH: 1 to 99
-                                isValid = lower >= 1 && lower <= 99;
+                              if (lower == null) {
+                                return ' '; // Empty string to show red border only
                               }
-                              
-                              // Check that lower level is below upper level (if both enabled)
-                              if (isValid && _massAlertUpperLevelEnabled && lower >= _massAlertUpperLevel) {
-                                return; // Lower level cannot be above or equal to upper level
+                              final indicatorType = _massAlertIndicator;
+                              final isWilliams = indicatorType == IndicatorType.williams;
+                              final minRange = isWilliams ? -99.0 : 1.0;
+                              final maxRange = isWilliams ? -1.0 : 99.0;
+                              if (lower < minRange || lower > maxRange) {
+                                return ' '; // Empty string to show red border only
                               }
-                              
-                              if (isValid && lower != _massAlertLowerLevel) {
+                              // Check relation to upper level if both enabled
+                              if (_massAlertUpperLevelEnabled && _massAlertUpperLevelController.text.isNotEmpty) {
+                                final upper = int.tryParse(_massAlertUpperLevelController.text)?.toDouble();
+                                if (upper != null && lower >= upper) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                              }
+                              return null;
+                            },
+                            onChanged: (value) {
+                              if (value.isEmpty) return;
+                              final lower = int.tryParse(value)?.toDouble();
+                              if (lower != null && lower != _massAlertLowerLevel) {
                                 setState(() {
                                   _massAlertLowerLevel = lower;
                                 });
@@ -2068,7 +2189,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             style: const TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                           const Spacer(),
-                          TextField(
+                          TextFormField(
                             controller: _massAlertUpperLevelController,
                             enabled: _massAlertUpperLevelEnabled,
                             decoration: const InputDecoration(
@@ -2079,21 +2200,39 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 vertical: 8,
                               ),
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              final upper = int.tryParse(value)?.toDouble();
-                              if (upper == null) return;
-                              
-                              bool isValid = false;
-                              if (_massAlertIndicator == IndicatorType.williams) {
-                                // WPR: -99 to -1, and upper must be greater than lower
-                                isValid = upper >= -99 && upper <= -1 && upper > _massAlertLowerLevel;
-                              } else {
-                                // RSI/STOCH: 1 to 99, and upper must be greater than lower
-                                isValid = upper >= 1 && upper <= 99 && upper > _massAlertLowerLevel;
+                            keyboardType: TextInputType.numberWithOptions(signed: _massAlertIndicator == IndicatorType.williams),
+                            inputFormatters: _massAlertIndicator == IndicatorType.williams
+                                ? [WprLevelInputFormatter()]
+                                : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                            validator: (value) {
+                              if (!_massAlertUpperLevelEnabled) return null;
+                              if (value == null || value.isEmpty) {
+                                return ' '; // Empty string to show red border only
                               }
-                              
-                              if (isValid && upper != _massAlertUpperLevel) {
+                              final upper = int.tryParse(value)?.toDouble();
+                              if (upper == null) {
+                                return ' '; // Empty string to show red border only
+                              }
+                              final indicatorType = _massAlertIndicator;
+                              final isWilliams = indicatorType == IndicatorType.williams;
+                              final minRange = isWilliams ? -99.0 : 1.0;
+                              final maxRange = isWilliams ? -1.0 : 99.0;
+                              if (upper < minRange || upper > maxRange) {
+                                return ' '; // Empty string to show red border only
+                              }
+                              // Check relation to lower level if both enabled
+                              if (_massAlertLowerLevelEnabled && _massAlertLowerLevelController.text.isNotEmpty) {
+                                final lower = int.tryParse(_massAlertLowerLevelController.text)?.toDouble();
+                                if (lower != null && upper <= lower) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                              }
+                              return null;
+                            },
+                            onChanged: (value) {
+                              if (value.isEmpty) return;
+                              final upper = int.tryParse(value)?.toDouble();
+                              if (upper != null && upper != _massAlertUpperLevel) {
                                 setState(() {
                                   _massAlertUpperLevel = upper;
                                 });
@@ -2111,9 +2250,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   ),
                 ),
             ],
+                ),
+              ),
+            ),
           ),
-          ),
-        ),
         ],
       ),
     );
@@ -2142,7 +2282,56 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         indicatorParams = {'dPeriod': _massAlertStochDPeriod};
       }
 
-      // Only include enabled levels
+      // Validate levels before creating alerts
+      if (_massAlertLowerLevelEnabled && 
+          !_isValidMassAlertLevel(_massAlertLowerLevel, true, 
+              _massAlertUpperLevelEnabled ? _massAlertUpperLevel : null)) {
+        if (mounted) {
+          final loc = context.loc;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('create_alert_invalid_lower_level')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (_massAlertUpperLevelEnabled && 
+          !_isValidMassAlertLevel(_massAlertUpperLevel, false, 
+              _massAlertLowerLevelEnabled ? _massAlertLowerLevel : null)) {
+        if (mounted) {
+          final loc = context.loc;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('create_alert_invalid_upper_level')),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }    
+      // Additional validation: check relationship between levels when both are enabled
+      if (_massAlertLowerLevelEnabled && _massAlertUpperLevelEnabled) {
+        if (_massAlertLowerLevel >= _massAlertUpperLevel) {
+          if (mounted) {
+            final loc = context.loc;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(loc.t('create_alert_invalid_levels_relationship')),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Only include enabled and validated levels
       final levels = <double>[];
       if (_massAlertLowerLevelEnabled) {
         levels.add(_massAlertLowerLevel);
@@ -2384,12 +2573,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Update UI and show success message
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        String message =
-            'Watchlist Alert: ${createdAlerts.length} alert(s) created';
+        String message = '${loc.t('watchlist_title')} ${loc.t('create_alert_created')}: ${createdAlerts.length}';
         if (skippedSymbols.isNotEmpty) {
-          message +=
-              '\n${skippedSymbols.length} symbol(s) skipped (custom alerts exist with same parameters)';
+          message += '\n${skippedSymbols.length} symbol(s) skipped';
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2545,10 +2733,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Update UI immediately (don't wait for server sync)
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Watchlist Alert: ${alertsToDelete.length} alert(s) deleted',
+              '${loc.t('watchlist_title')} ${loc.t('create_alert_deleted')}: ${alertsToDelete.length}',
             ),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 2),
@@ -2597,7 +2786,30 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         indicatorParams = {'dPeriod': _massAlertStochDPeriod};
       }
 
-      // Only include enabled levels
+      // Validate levels before updating alerts
+      if (_massAlertLowerLevelEnabled && 
+          !_isValidMassAlertLevel(_massAlertLowerLevel, true, 
+              _massAlertUpperLevelEnabled ? _massAlertUpperLevel : null)) {
+        debugPrint('_updateMassAlerts: Invalid lower level $_massAlertLowerLevel');
+        return;
+      }
+      
+      if (_massAlertUpperLevelEnabled && 
+          !_isValidMassAlertLevel(_massAlertUpperLevel, false, 
+              _massAlertLowerLevelEnabled ? _massAlertLowerLevel : null)) {
+        debugPrint('_updateMassAlerts: Invalid upper level $_massAlertUpperLevel');
+        return;
+      }
+      
+      // Additional validation: check relationship between levels when both are enabled
+      if (_massAlertLowerLevelEnabled && _massAlertUpperLevelEnabled) {
+        if (_massAlertLowerLevel >= _massAlertUpperLevel) {
+          debugPrint('_updateMassAlerts: Invalid levels relationship - lower: $_massAlertLowerLevel, upper: $_massAlertUpperLevel');
+          return;
+        }
+      }
+
+      // Only include enabled and validated levels
       final levels = <double>[];
       if (_massAlertLowerLevelEnabled) {
         levels.add(_massAlertLowerLevel);

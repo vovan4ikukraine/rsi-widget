@@ -72,13 +72,44 @@ object WidgetDataService {
 
                 // Load widget settings
                 val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
-                // Use period from widget if set, otherwise from general settings
-                val rsiPeriod = prefs.getInt("rsi_widget_period",
-                    prefs.getInt("rsi_period", 14))
                 val indicator = prefs.getString("widget_indicator", "rsi") ?: "rsi"
-                val indicatorParamsJson = prefs.getString("widget_indicator_params", null)
+                
+                // CRITICAL: Read period for CURRENT indicator from watchlist/home settings
+                // Priority: watchlist_${indicator}_period > home_${indicator}_period > defaults
+                // DO NOT use rsi_widget_period as it may contain stale value from previous indicator
+                val watchlistPeriodKey = "watchlist_${indicator}_period"
+                val homePeriodKey = "home_${indicator}_period"
+                val watchlistPeriod = prefs.getInt(watchlistPeriodKey, -1)
+                val homePeriod = prefs.getInt(homePeriodKey, -1)
+                val widgetPeriod = prefs.getInt("rsi_widget_period", -1) // Only for logging
+                
+                // CRITICAL: Always prioritize watchlist_${indicator}_period and home_${indicator}_period
+                // Ignore rsi_widget_period as it may contain stale value from previous indicator
+                val rsiPeriod = when {
+                    watchlistPeriod != -1 -> watchlistPeriod
+                    homePeriod != -1 -> homePeriod
+                    else -> when (indicator.lowercase()) {
+                        "stoch" -> 6
+                        "wpr", "williams" -> 14
+                        else -> 14
+                    }
+                }
+                
+                // For STOCH, ALWAYS read %D period from watchlist/home settings (even if widget_indicator_params exists)
+                // This ensures that changes in watchlist STOCH %D period are reflected in widget
+                var indicatorParamsJson = prefs.getString("widget_indicator_params", null)
+                if (indicator.lowercase() == "stoch") {
+                    // Get %D period for STOCH from watchlist/home settings (priority: watchlist > home > default)
+                    val stochDPeriod = prefs.getInt("watchlist_stoch_d_period",
+                        prefs.getInt("home_stoch_d_period", 3))
+                    indicatorParamsJson = "{\"dPeriod\":$stochDPeriod}"
+                    // Always save the latest value from watchlist/home to widget_indicator_params
+                    prefs.edit().putString("widget_indicator_params", indicatorParamsJson).commit()
+                }
 
-                Log.d(TAG, "Loading data with timeframe: $timeframe, period: $rsiPeriod, indicator: $indicator")
+                Log.d(TAG, "WidgetDataService: Loading data with timeframe: $timeframe, indicator: $indicator")
+                Log.d(TAG, "WidgetDataService: Period sources - watchlist_${indicator}_period=$watchlistPeriod, home_${indicator}_period=$homePeriod, rsi_widget_period=$widgetPeriod (IGNORED) -> USING period=$rsiPeriod")
+                Log.d(TAG, "WidgetDataService: STOCH params: $indicatorParamsJson")
 
                 // Load data for each symbol
                 val widgetData = mutableListOf<WidgetItem>()
@@ -215,14 +246,27 @@ object WidgetDataService {
                 val highs = candles.map { it.high }
                 val lows = candles.map { it.low }
                 
+                // Parse indicatorParams for STOCH (dPeriod)
+                var dPeriod = 3 // Default for STOCH
+                if (indicator.lowercase() == "stoch" && indicatorParams != null) {
+                    try {
+                        val paramsJson = org.json.JSONObject(indicatorParams)
+                        if (paramsJson.has("dPeriod")) {
+                            dPeriod = paramsJson.getInt("dPeriod")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse indicatorParams for $symbol: ${e.message}, using default dPeriod=3")
+                    }
+                }
+                
                 val indicatorValues = when (indicator.lowercase()) {
                     "wpr", "williams" -> {
                         Log.d(TAG, "Calculating Williams %R for $symbol: ${closes.size} candles, period=$rsiPeriod")
                         calculateWilliams(highs, lows, closes, rsiPeriod)
                     }
                     "stoch" -> {
-                        Log.d(TAG, "Calculating Stochastic for $symbol: ${closes.size} candles, period=$rsiPeriod")
-                        calculateStochastic(highs, lows, closes, rsiPeriod)
+                        Log.d(TAG, "Calculating Stochastic for $symbol: ${closes.size} candles, kPeriod=$rsiPeriod, dPeriod=$dPeriod")
+                        calculateStochastic(highs, lows, closes, rsiPeriod, dPeriod)
                     }
                     else -> {
                         Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
@@ -298,32 +342,47 @@ object WidgetDataService {
     }
 
     /**
-     * Calculates Stochastic Oscillator (%K)
+     * Calculates Stochastic Oscillator (%K and %D)
+     * Returns %D values (smoothed %K), matching Flutter implementation
      */
-    private fun calculateStochastic(highs: List<Double>, lows: List<Double>, closes: List<Double>, period: Int): List<Double> {
-        if (closes.size < period) {
+    private fun calculateStochastic(highs: List<Double>, lows: List<Double>, closes: List<Double>, kPeriod: Int, dPeriod: Int): List<Double> {
+        // Need at least kPeriod candles for %K, and kPeriod + dPeriod - 1 for %D
+        if (closes.size < kPeriod + dPeriod - 1) {
             return emptyList()
         }
 
-        val stochValues = mutableListOf<Double>()
+        // Step 1: Calculate raw %K values
+        val kValues = mutableListOf<Double>()
 
-        for (i in (period - 1) until closes.size) {
-            val periodHighs = highs.subList(i - period + 1, i + 1)
-            val periodLows = lows.subList(i - period + 1, i + 1)
+        for (i in (kPeriod - 1) until closes.size) {
+            val periodHighs = highs.subList(i - kPeriod + 1, i + 1)
+            val periodLows = lows.subList(i - kPeriod + 1, i + 1)
             val close = closes[i]
 
             val highestHigh = periodHighs.maxOrNull() ?: 0.0
             val lowestLow = periodLows.minOrNull() ?: 0.0
 
-            val stoch = if (highestHigh == lowestLow) {
+            val k = if (highestHigh == lowestLow) {
                 50.0 // Neutral value to avoid division by zero
             } else {
                 ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0
             }
-            stochValues.add(stoch.coerceIn(0.0, 100.0))
+            kValues.add(k.coerceIn(0.0, 100.0))
         }
 
-        return stochValues
+        // Step 2: Calculate %D as SMA of %K
+        if (kValues.size < dPeriod) {
+            return emptyList()
+        }
+
+        val dValues = mutableListOf<Double>()
+        for (i in (dPeriod - 1) until kValues.size) {
+            val periodKValues = kValues.subList(i - dPeriod + 1, i + 1)
+            val d = periodKValues.average()
+            dValues.add(d.coerceIn(0.0, 100.0))
+        }
+
+        return dValues
     }
 
     /**

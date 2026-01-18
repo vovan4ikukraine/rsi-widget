@@ -73,7 +73,8 @@ class _MarketsScreenState extends State<MarketsScreen>
     }
     _tabController.addListener(_onTabChanged);
     _loadSymbols();
-    _loadSavedState();
+    // Don't load saved state here - _appState is not available yet
+    // Will be loaded in didChangeDependencies() after _appState is set
   }
 
   void _onTabChanged() {
@@ -86,36 +87,55 @@ class _MarketsScreenState extends State<MarketsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final previousIndicator = _previousIndicatorType;
     _appState = AppStateScope.of(context);
-    _previousIndicatorType = _appState?.selectedIndicator;
-    _appState?.addListener(_onIndicatorChanged);
-    // Update controllers if app state is available and we haven't loaded yet
-    if (_appState != null && _indicatorPeriodController.text.isEmpty) {
-      final indicatorType = _appState!.selectedIndicator;
-      setState(() {
-        _indicatorPeriod = indicatorType.defaultPeriod;
-        _lowerLevel = indicatorType.defaultLevels.first;
-        _upperLevel = indicatorType.defaultLevels.length > 1
-            ? indicatorType.defaultLevels[1]
-            : 100.0;
-        if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = 3;
-        }
-        // Update controllers
-        _indicatorPeriodController.text = _indicatorPeriod.toString();
-        _lowerLevelController.text = _lowerLevel.toInt().toString();
-        _upperLevelController.text = _upperLevel.toInt().toString();
-        if (_stochDPeriod != null) {
-          _stochDPeriodController.text = _stochDPeriod.toString();
+    final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    
+    debugPrint('MarketsScreen: didChangeDependencies called - previousIndicator: $previousIndicator, currentIndicator: $currentIndicator, _indicatorPeriod: $_indicatorPeriod, controller empty: ${_indicatorPeriodController.text.isEmpty}');
+    
+    // Always check if we need to reload settings when screen becomes visible
+    bool needsReload = false;
+    
+    if (_previousIndicatorType == null || _indicatorPeriodController.text.isEmpty) {
+      // First time opening screen or controllers not initialized
+      debugPrint('MarketsScreen: First time opening or controllers empty, loading saved state for $currentIndicator');
+      needsReload = true;
+    } else if (previousIndicator != currentIndicator) {
+      // Indicator changed - need to reload with new settings
+      debugPrint('MarketsScreen: Indicator changed from $previousIndicator to $currentIndicator, clearing cache');
+      needsReload = true;
+    }
+    
+    if (needsReload) {
+      _previousIndicatorType = currentIndicator;
+      // Clear cache first to ensure old data doesn't show
+      _loadedSymbols.clear();
+      _indicatorDataMap.clear();
+      // Load saved state for current indicator, then reload data
+      _loadSavedState().then((_) {
+        // After loading saved state, load data with correct parameters
+        if (mounted) {
+          debugPrint('MarketsScreen: Saved state loaded, now loading data with indicator=$currentIndicator, period=$_indicatorPeriod, stochD=$_stochDPeriod');
+          unawaited(_loadVisibleItems());
         }
       });
+    } else {
+      // Screen is already initialized - just update previous indicator type
+      _previousIndicatorType = currentIndicator;
+      // But still check if data needs to be reloaded if cache exists but with wrong parameters
+      if (_indicatorDataMap.isNotEmpty && _loadedSymbols.isNotEmpty) {
+        debugPrint('MarketsScreen: Screen already initialized with data, checking if reload needed');
+      }
     }
+    
+    _appState?.addListener(_onIndicatorChanged);
   }
 
   void _onIndicatorChanged() async {
-    if (_appState != null) {
+    if (_appState != null && mounted) {
       final prefs = await SharedPreferences.getInstance();
       final indicatorType = _appState!.selectedIndicator;
+      debugPrint('MarketsScreen: _onIndicatorChanged called for indicator: $indicatorType, previous: $_previousIndicatorType');
       
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
@@ -150,32 +170,34 @@ class _MarketsScreenState extends State<MarketsScreen>
           ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
            (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
       
-      setState(() {
-        // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
-        _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
-        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
-        _upperLevel = savedUpperValid ? savedUpperLevel :
-            (indicatorType.defaultLevels.length > 1
-                ? indicatorType.defaultLevels[1]
-                : 100.0);
+      if (mounted) {
+        setState(() {
+          // Only use saved values if they exist and are valid for this indicator, otherwise use defaults
+          _indicatorPeriod = savedPeriod ?? indicatorType.defaultPeriod;
+          _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+          _upperLevel = savedUpperValid ? savedUpperLevel :
+              (indicatorType.defaultLevels.length > 1
+                  ? indicatorType.defaultLevels[1]
+                  : 100.0);
 
-        // For Stochastic, load saved %D period or use default
-        if (indicatorType == IndicatorType.stoch) {
-          _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
-        } else {
-          _stochDPeriod = null;
-        }
+          // For Stochastic, load saved %D period or use default
+          if (indicatorType == IndicatorType.stoch) {
+            _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
+          } else {
+            _stochDPeriod = null;
+          }
 
-        // Update controllers
-        _indicatorPeriodController.text = _indicatorPeriod.toString();
-        _lowerLevelController.text = _lowerLevel.toInt().toString();
-        _upperLevelController.text = _upperLevel.toInt().toString();
-        if (_stochDPeriod != null) {
-          _stochDPeriodController.text = _stochDPeriod.toString();
-        } else {
-          _stochDPeriodController.clear();
-        }
-      });
+          // Update controllers
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toInt().toString();
+          _upperLevelController.text = _upperLevel.toInt().toString();
+          if (_stochDPeriod != null) {
+            _stochDPeriodController.text = _stochDPeriod.toString();
+          } else {
+            _stochDPeriodController.clear();
+          }
+        });
+      }
 
       // Update previous indicator type AFTER loading new settings
       _previousIndicatorType = indicatorType;
@@ -184,9 +206,12 @@ class _MarketsScreenState extends State<MarketsScreen>
       await _saveState();
 
       // Clear cache and reload visible items when indicator changes
+      debugPrint('MarketsScreen: Clearing cache and reloading data with indicator=$indicatorType, period=$_indicatorPeriod, stochD=$_stochDPeriod');
       _loadedSymbols.clear();
       _indicatorDataMap.clear();
-      unawaited(_loadVisibleItems());
+      if (mounted) {
+        unawaited(_loadVisibleItems());
+      }
     }
   }
 
@@ -366,37 +391,53 @@ class _MarketsScreenState extends State<MarketsScreen>
       ),
     ].take(20).toList();
 
-    // Load first batch of indicator data (lazy loading)
-    unawaited(_loadVisibleItems());
+    // Don't load indicator data here - wait until _loadSavedState() sets correct parameters
+    // Data will be loaded in didChangeDependencies() after settings are loaded
   }
 
   Future<void> _loadSavedState() async {
     final prefs = await SharedPreferences.getInstance();
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-    setState(() {
-      _timeframe = prefs.getString('markets_timeframe') ?? '15m';
-      _indicatorPeriod =
-          prefs.getInt('markets_${indicatorType.toJson()}_period') ??
-              indicatorType.defaultPeriod;
-      _lowerLevel =
-          prefs.getDouble('markets_${indicatorType.toJson()}_lower_level') ??
-              indicatorType.defaultLevels.first;
-      _upperLevel =
-          prefs.getDouble('markets_${indicatorType.toJson()}_upper_level') ??
-              (indicatorType.defaultLevels.length > 1
-                  ? indicatorType.defaultLevels[1]
-                  : 100.0);
-      if (indicatorType == IndicatorType.stoch) {
-        _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
-      }
-      // Initialize controllers
-      _indicatorPeriodController.text = _indicatorPeriod.toString();
-      _lowerLevelController.text = _lowerLevel.toInt().toString();
-      _upperLevelController.text = _upperLevel.toInt().toString();
-      if (_stochDPeriod != null) {
-        _stochDPeriodController.text = _stochDPeriod.toString();
-      }
-    });
+    
+    // Load levels with validation to ensure they match the current indicator type
+    final savedLowerLevel = prefs.getDouble('markets_${indicatorType.toJson()}_lower_level');
+    final savedUpperLevel = prefs.getDouble('markets_${indicatorType.toJson()}_upper_level');
+    
+    // Validate saved levels match the current indicator type
+    final savedLowerValid = savedLowerLevel != null &&
+        ((indicatorType == IndicatorType.williams && savedLowerLevel >= -100.0 && savedLowerLevel <= 0.0) ||
+         (indicatorType != IndicatorType.williams && savedLowerLevel >= 0.0 && savedLowerLevel <= 100.0));
+    final savedUpperValid = savedUpperLevel != null &&
+        ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
+         (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+    
+    if (mounted) {
+      setState(() {
+        _timeframe = prefs.getString('markets_timeframe') ?? '15m';
+        _indicatorPeriod =
+            prefs.getInt('markets_${indicatorType.toJson()}_period') ??
+                indicatorType.defaultPeriod;
+        _lowerLevel = savedLowerValid ? savedLowerLevel : indicatorType.defaultLevels.first;
+        _upperLevel = savedUpperValid ? savedUpperLevel :
+            (indicatorType.defaultLevels.length > 1
+                ? indicatorType.defaultLevels[1]
+                : 100.0);
+        if (indicatorType == IndicatorType.stoch) {
+          _stochDPeriod = prefs.getInt('markets_stoch_d_period') ?? 3;
+        } else {
+          _stochDPeriod = null;
+        }
+        // Initialize controllers
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+        _lowerLevelController.text = _lowerLevel.toInt().toString();
+        _upperLevelController.text = _upperLevel.toInt().toString();
+        if (_stochDPeriod != null) {
+          _stochDPeriodController.text = _stochDPeriod.toString();
+        } else {
+          _stochDPeriodController.clear();
+        }
+      });
+    }
   }
 
   Future<void> _saveState() async {
@@ -472,6 +513,16 @@ class _MarketsScreenState extends State<MarketsScreen>
 
     if (symbolsToLoad.isEmpty) return;
 
+    // Get current parameters once per batch to avoid repeated SharedPreferences reads
+    // This ensures we use correct values while optimizing performance
+    final prefs = await SharedPreferences.getInstance();
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final indicatorKey = indicatorType.toJson();
+    final currentPeriod = prefs.getInt('markets_${indicatorKey}_period') ?? indicatorType.defaultPeriod;
+    final currentStochD = indicatorType == IndicatorType.stoch 
+        ? (prefs.getInt('markets_stoch_d_period') ?? 3)
+        : null;
+
     // Load in smaller batches with delay to avoid overwhelming the server
     // Reduced batch size from 5 to 3 to prevent 500 errors
     const batchSize = 3;
@@ -480,7 +531,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     for (int i = 0; i < symbolsToLoad.length; i += batchSize) {
       final batch = symbolsToLoad.skip(i).take(batchSize).toList();
       await Future.wait(
-        batch.map((symbol) => _loadIndicatorData(symbol)),
+        batch.map((symbol) => _loadIndicatorData(symbol, currentPeriod, currentStochD)),
         eagerError: false, // Continue even if some fail
       );
 
@@ -506,7 +557,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     }
   }
 
-  Future<void> _loadIndicatorData(String symbol) async {
+  Future<void> _loadIndicatorData(String symbol, [int? periodParam, int? stochDParam]) async {
     // Skip if already loaded (unless cache was cleared)
     if (_loadedSymbols.contains(symbol) &&
         _indicatorDataMap.containsKey(symbol)) {
@@ -523,6 +574,13 @@ class _MarketsScreenState extends State<MarketsScreen>
     const maxRetries = 3;
     int attempt = 0;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    
+    // Use provided parameters if available, otherwise read from SharedPreferences
+    // This optimizes by reading once per batch instead of once per symbol
+    final currentPeriod = periodParam ?? _indicatorPeriod;
+    final currentStochD = stochDParam ?? _stochDPeriod;
+    
+    debugPrint('MarketsScreen: _loadIndicatorData for $symbol with indicator=$indicatorType, period=$currentPeriod (state period: $_indicatorPeriod), stochD=$currentStochD (state stochD: $_stochDPeriod)');
 
     while (attempt < maxRetries) {
       try {
@@ -560,14 +618,14 @@ class _MarketsScreenState extends State<MarketsScreen>
             .toList();
 
         final indicatorParams =
-            indicatorType == IndicatorType.stoch && _stochDPeriod != null
-                ? {'dPeriod': _stochDPeriod}
+            indicatorType == IndicatorType.stoch && currentStochD != null
+                ? {'dPeriod': currentStochD}
                 : null;
 
         final result = IndicatorService.calculateIndicatorHistory(
           candlesList,
           indicatorType,
-          _indicatorPeriod,
+          currentPeriod,
           indicatorParams,
         );
 
@@ -724,9 +782,11 @@ class _MarketsScreenState extends State<MarketsScreen>
                       ],
                       onChanged: (value) async {
                         if (value != null && value != _timeframe) {
-                          setState(() {
-                            _timeframe = value;
-                          });
+                          if (mounted) {
+                            setState(() {
+                              _timeframe = value;
+                            });
+                          }
                           await _saveState();
                           // Clear cache and reload when timeframe changes
                           _loadedSymbols.clear();
@@ -748,9 +808,11 @@ class _MarketsScreenState extends State<MarketsScreen>
               children: [
                 InkWell(
                   onTap: () {
-                    setState(() {
-                      _settingsExpanded = !_settingsExpanded;
-                    });
+                    if (mounted) {
+                      setState(() {
+                        _settingsExpanded = !_settingsExpanded;
+                      });
+                    }
                   },
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -812,9 +874,11 @@ class _MarketsScreenState extends State<MarketsScreen>
                                           period >= 1 &&
                                           period <= 100 &&
                                           period != _indicatorPeriod) {
-                                        setState(() {
-                                          _indicatorPeriod = period;
-                                        });
+                                        if (mounted) {
+                                          setState(() {
+                                            _indicatorPeriod = period;
+                                          });
+                                        }
                                         _saveState();
                                         // Clear cache and reload when period changes
                                         _loadedSymbols.clear();
@@ -852,9 +916,11 @@ class _MarketsScreenState extends State<MarketsScreen>
                                         if (dPeriod != null &&
                                             dPeriod >= 1 &&
                                             dPeriod <= 100) {
-                                          setState(() {
-                                            _stochDPeriod = dPeriod;
-                                          });
+                                          if (mounted) {
+                                            setState(() {
+                                              _stochDPeriod = dPeriod;
+                                            });
+                                          }
                                           _saveState();
                                           // Clear cache and reload when period changes
                                           _loadedSymbols.clear();
@@ -892,12 +958,16 @@ class _MarketsScreenState extends State<MarketsScreen>
                                           level >= 0 &&
                                           level <= 100 &&
                                           level != _lowerLevel) {
-                                        setState(() {
-                                          _lowerLevel = level;
-                                        });
+                                        if (mounted) {
+                                          setState(() {
+                                            _lowerLevel = level;
+                                          });
+                                        }
                                         _saveState();
                                         // Reload to update chart levels
-                                        setState(() {});
+                                        if (mounted) {
+                                          setState(() {});
+                                        }
                                       }
                                     },
                                   ),
@@ -929,12 +999,16 @@ class _MarketsScreenState extends State<MarketsScreen>
                                           level >= 0 &&
                                           level <= 100 &&
                                           level != _upperLevel) {
-                                        setState(() {
-                                          _upperLevel = level;
-                                        });
+                                        if (mounted) {
+                                          setState(() {
+                                            _upperLevel = level;
+                                          });
+                                        }
                                         _saveState();
                                         // Reload to update chart levels
-                                        setState(() {});
+                                        if (mounted) {
+                                          setState(() {});
+                                        }
                                       }
                                     },
                                   ),

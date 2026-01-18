@@ -66,13 +66,24 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             val watchlistArray = JSONArray(watchlistJson)
             Log.d(TAG, "Parsed JSON array with ${watchlistArray.length()} items")
             
+            // Read indicator from JSON items (as in cf7559e)
+            // The JSON contains the correct indicator type for each item
+            // Fallback to SharedPreferences if not found in JSON
+            
             for (i in 0 until watchlistArray.length()) {
                 try {
                     val item = watchlistArray.getJSONObject(i)
                     val symbol = item.getString("symbol")
                     val indicatorValue = item.optDouble("indicatorValue", item.optDouble("rsi", 0.0))
                     val rsi = item.optDouble("rsi", indicatorValue) // Keep for backward compatibility
-                    val indicator = item.optString("indicator", "rsi")
+                    // Get indicator from JSON item (as in cf7559e), fallback to prefs
+                    val indicator = item.optString("indicator", null)?.lowercase() 
+                        ?: try {
+                            val prefsForIndicator = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+                            prefsForIndicator.getString("widget_indicator", "rsi")?.lowercase() ?: "rsi"
+                        } catch (e: Exception) {
+                            "rsi"
+                        }
                     val price = item.optDouble("price", 0.0)
                     // Parse indicator values array for chart (can be rsiValues or indicatorValues)
                     val indicatorValuesArray = item.optJSONArray("indicatorValues") ?: item.optJSONArray("rsiValues")
@@ -95,11 +106,11 @@ class RSIWidgetViewsFactory(private val context: Context) : RemoteViewsService.R
             // For WPR: descending (high to low) - since values are negative, -20 > -80, so higher (less negative) first
             if (items.isNotEmpty()) {
                 // Determine sort direction based on indicator type
-                // Get indicator from first item, or try to get from prefs as fallback
+                // Get indicator from first item, or try to get from prefs as fallback (as in cf7559e)
                 val indicator = items.firstOrNull()?.indicator?.lowercase() 
                     ?: try {
-                        val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                        prefs.getString("widget_indicator", "rsi")?.lowercase() ?: "rsi"
+                        val prefsForIndicator = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+                        prefsForIndicator.getString("widget_indicator", "rsi")?.lowercase() ?: "rsi"
                     } catch (e: Exception) {
                         "rsi"
                     }

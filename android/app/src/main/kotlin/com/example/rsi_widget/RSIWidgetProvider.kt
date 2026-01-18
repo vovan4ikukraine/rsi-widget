@@ -120,18 +120,48 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 Log.d(TAG, "Changing timeframe to $newTimeframe for widget $appWidgetId")
                 
                 // Save new timeframe to SharedPreferences
+                // CRITICAL: Read period and params for CURRENT indicator, not generic rsi_widget_period
+                // This ensures STOCH uses correct %K period and %D period, not WPR/RSI periods
                 val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
-                // Use period from widget if set, otherwise from general settings
-                val rsiPeriod = prefs.getInt("rsi_widget_period", 
-                    prefs.getInt("rsi_period", 14))
+                val currentIndicator = prefs.getString("widget_indicator", "rsi") ?: "rsi"
+                
+                // Get period for current indicator: try watchlist/home settings first, then default
+                // DO NOT use rsi_widget_period as fallback as it may contain stale value from previous indicator
+                val watchlistPeriodKey = "watchlist_${currentIndicator}_period"
+                val homePeriodKey = "home_${currentIndicator}_period"
+                val watchlistPeriod = prefs.getInt(watchlistPeriodKey, -1)
+                val homePeriod = prefs.getInt(homePeriodKey, -1)
+                val rsiPeriod = when {
+                    watchlistPeriod != -1 -> watchlistPeriod
+                    homePeriod != -1 -> homePeriod
+                    else -> when (currentIndicator.lowercase()) {
+                        "stoch" -> 6
+                        "wpr", "williams" -> 14
+                        else -> 14
+                    }
+                }
+                
+                // For STOCH, ALWAYS read %D period from watchlist/home settings (even if widget_indicator_params exists)
+                // This ensures that changes in watchlist STOCH %D period are reflected in widget
+                var indicatorParamsJson = prefs.getString("widget_indicator_params", null)
+                if (currentIndicator.lowercase() == "stoch") {
+                    // Get %D period for STOCH from watchlist/home settings (priority: watchlist > home > default)
+                    val stochDPeriod = prefs.getInt("watchlist_stoch_d_period",
+                        prefs.getInt("home_stoch_d_period", 3))
+                    indicatorParamsJson = "{\"dPeriod\":$stochDPeriod}"
+                }
+                
                 prefs.edit().apply {
                     putString("timeframe", newTimeframe)
                     putString("rsi_widget_timeframe", newTimeframe)
-                    putInt("rsi_widget_period", rsiPeriod)
+                    putInt("rsi_widget_period", rsiPeriod) // Save for compatibility
+                    if (indicatorParamsJson != null) {
+                        putString("widget_indicator_params", indicatorParamsJson)
+                    }
                     commit() // Use commit for synchronous save
                 }
                 
-                Log.d(TAG, "Saved timeframe: $newTimeframe, period: $rsiPeriod")
+                Log.d(TAG, "Saved timeframe: $newTimeframe, indicator: $currentIndicator, period: $rsiPeriod, params: $indicatorParamsJson")
                 
                 // Immediately update widget UI with new timeframe
                 val appWidgetManager = AppWidgetManager.getInstance(context)
