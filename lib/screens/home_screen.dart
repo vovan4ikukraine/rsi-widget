@@ -542,14 +542,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final loc = context.loc;
 
     try {
-      // Optimized limits based on actual usage (calculation needs + chart display)
-      // RSI/Stochastic/Williams need max ~112 candles for period=100, charts show 60-100 points
-      int limit = 120; // For 1m, 5m, 15m, 1h - sufficient for calculation + chart (100 points)
-      if (_selectedTimeframe == '4h') {
-        limit = 180; // For 4h - sufficient for calculation + chart (60 points)
-      } else if (_selectedTimeframe == '1d') {
-        limit = 180; // For 1d - sufficient for calculation + chart (90 points)
+      // Calculate optimal candle limit based on timeframe and period (same logic as CRON)
+      // Minimum candles required: period + buffer (20 for smoothing and charts)
+      final periodBuffer = _indicatorPeriod + 20;
+      
+      // Base minimums per timeframe
+      int baseMinimum;
+      switch (_selectedTimeframe) {
+        case '4h':
+          baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+          break;
+        case '1d':
+          baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+          break;
+        default:
+          // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+          baseMinimum = 100;
+          break;
       }
+      
+      // Return max of period requirement and base minimum
+      final limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
 
       final (candles, dataSource) = await _yahooService.fetchCandlesWithSource(
         requestedSymbol,

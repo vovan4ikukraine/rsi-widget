@@ -883,14 +883,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
     while (attempt < maxRetries) {
       try {
-        // Optimized limits based on actual usage (calculation needs + chart display)
-        // RSI/Stochastic/Williams need max ~112 candles for period=100, charts show 50 points
-        int limit = 120; // For 1m, 5m, 15m, 1h - sufficient for calculation + chart (50 points)
-        if (_timeframe == '4h') {
-          limit = 180; // For 4h - sufficient for calculation + chart (50 points)
-        } else if (_timeframe == '1d') {
-          limit = 180; // For 1d - sufficient for calculation + chart (50 points)
-        }
+        // Use same candle limit calculation as CRON (ensures consistency)
+        final limit = _candlesLimitForTimeframe(_timeframe, _indicatorPeriod);
 
         final candles = await _yahooService.fetchCandles(
           symbol,
@@ -2457,7 +2451,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           final candles = await _yahooService.fetchCandles(
             item.symbol,
             _massAlertTimeframe,
-            limit: _candlesLimitForTimeframe(_massAlertTimeframe),
+            limit: _candlesLimitForTimeframe(_massAlertTimeframe, _massAlertPeriod),
           );
 
           if (candles.isNotEmpty) {
@@ -2604,15 +2598,29 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
   }
 
-  int _candlesLimitForTimeframe(String timeframe) {
+  /// Calculate optimal candle limit based on timeframe and period
+  /// Ensures we have enough candles for indicator calculation + buffer for charts
+  int _candlesLimitForTimeframe(String timeframe, [int? period]) {
+    // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
+    final periodBuffer = period != null ? period + 20 : 34; // Default: 14 + 20 = 34
+    
+    // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
+    int baseMinimum;
     switch (timeframe) {
       case '4h':
-        return 500;
+        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        break;
       case '1d':
-        return 730;
+        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        break;
       default:
-        return 100;
+        // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+        baseMinimum = 100;
+        break;
     }
+    
+    // Return max of period requirement and base minimum
+    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
   }
 
   /// Check if two level lists are equal

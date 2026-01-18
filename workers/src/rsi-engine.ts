@@ -148,17 +148,53 @@ export class IndicatorEngine {
             // If no cache or cache miss, fetch from Yahoo
             if (candles.length === 0) {
                 try {
-                    // Optimized limit: max ~112 candles needed for indicators (period=100),
-                    // using 250 for safety margin and historical context
+                    // Use same candle limit calculation as UI (_candlesLimitForTimeframe)
+                    // This ensures RSI values match between UI and CRON
+                    // Calculate optimal candle limit based on timeframe and max period
+                    
+                    // Check max period across all rules for this symbol/timeframe
+                    let maxPeriod = 0;  // Start from 0 to find actual max
+                    for (const rule of rules) {
+                        const rulePeriod = rule.period || rule.rsi_period || 14;
+                        if (rulePeriod > maxPeriod) {
+                            maxPeriod = rulePeriod;
+                        }
+                    }
+                    // Fallback to 14 if no valid periods found
+                    if (maxPeriod === 0) {
+                        maxPeriod = 14;
+                    }
+                    
+                    // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
+                    const periodBuffer = maxPeriod + 20;
+                    
+                    // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
+                    let baseMinimum: number;
+                    switch (timeframe) {
+                        case '4h':
+                            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+                            break;
+                        case '1d':
+                            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+                            break;
+                        default:
+                            // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+                            baseMinimum = 100;
+                            break;
+                    }
+                    
+                    // Return max of period requirement and base minimum
+                    const candleLimit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+                    
                     candles = await this.yahooService.getCandles(symbol, timeframe, {
-                        limit: 250
+                        limit: candleLimit
                     });
 
                     // Save to D1 cache for future use (much cheaper than KV)
                     if (candles.length > 0) {
                         await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.db);
                         lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
-                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles in D1 for ${symbol} ${timeframe}`);
+                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles (limit=${candleLimit}, period=${maxPeriod}) in D1 for ${symbol} ${timeframe}`);
                     }
                 } catch (error: any) {
                     // If rate limited (429), rethrow to trigger backoff in caller
@@ -181,8 +217,10 @@ export class IndicatorEngine {
                 // Check if we already processed this candle by checking alert states
                 // Process sequentially to avoid CPU burst from parallel DB queries
                 let allProcessed = true;
+                const ruleStates: Array<{ rule: AlertRule, state: any }> = [];
                 for (const rule of rules) {
                     const state = await this.getAlertState(rule.id);
+                    ruleStates.push({ rule, state });
                     if (state.last_bar_ts !== currentLastTimestamp) {
                         allProcessed = false;
                         break;
@@ -190,7 +228,18 @@ export class IndicatorEngine {
                 }
 
                 if (allProcessed) {
+                    // Log current indicator values for debugging/comparison with UI
+                    const indicatorValuesLog: string[] = [];
+                    for (const { rule, state } of ruleStates) {
+                        const indicator = rule.indicator || 'rsi';
+                        const period = rule.period || rule.rsi_period || 14;
+                        const currentValue = state.last_indicator_value ?? state.last_rsi ?? 'N/A';
+                        indicatorValuesLog.push(`Rule ${rule.id}: ${indicator.toUpperCase()}(${period})=${currentValue}`);
+                    }
                     console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
+                    if (indicatorValuesLog.length > 0) {
+                        console.log(`RSI Engine: Current values for skipped rules: ${indicatorValuesLog.join(', ')}`);
+                    }
                     return { triggers, cacheHit };
                 }
             }
@@ -239,7 +288,7 @@ export class IndicatorEngine {
             const currentValue = indicatorData[indicatorData.length - 1].value;
             const isFirstCheck = state.last_indicator_value === undefined && state.last_rsi === undefined;
             const previousValue = state.last_indicator_value ?? state.last_rsi ?? indicatorData[indicatorData.length - 2].value;
-            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) ${indicator.toUpperCase()}=${currentValue.toFixed(2)}, previous=${previousValue.toFixed(2)}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}, firstCheck=${isFirstCheck}`);
+            console.log(`Rule ${rule.id} (${rule.symbol} ${rule.timeframe}) ${indicator.toUpperCase()}(${period})=${currentValue.toFixed(2)}, previous=${previousValue.toFixed(2)}, candles=${candles.length}, levels=${rule.levels}, mode=${rule.mode}, cooldown=${rule.cooldown_sec}, firstCheck=${isFirstCheck}`);
 
             // On first check, don't send notifications - just initialize the state
             // This prevents spam notifications when alerts are first created

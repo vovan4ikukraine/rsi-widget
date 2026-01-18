@@ -584,14 +584,27 @@ class _MarketsScreenState extends State<MarketsScreen>
 
     while (attempt < maxRetries) {
       try {
-        // Optimized limits based on actual usage (calculation needs + chart display)
-        // RSI/Stochastic/Williams need max ~112 candles for period=100
-        int limit = 120; // For 1m, 5m, 15m, 1h - sufficient for calculation
-        if (_timeframe == '4h') {
-          limit = 180; // For 4h - sufficient for calculation
-        } else if (_timeframe == '1d') {
-          limit = 180; // For 1d - sufficient for calculation
+        // Calculate optimal candle limit based on timeframe and period (same logic as CRON)
+        // Minimum candles required: period + buffer (20 for smoothing and charts)
+        final periodBuffer = currentPeriod + 20;
+        
+        // Base minimums per timeframe
+        int baseMinimum;
+        switch (_timeframe) {
+          case '4h':
+            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+            break;
+          case '1d':
+            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+            break;
+          default:
+            // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+            baseMinimum = 100;
+            break;
         }
+        
+        // Return max of period requirement and base minimum
+        final limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
 
         final candles = await _yahooService.fetchCandles(
           symbol,

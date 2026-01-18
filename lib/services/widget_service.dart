@@ -82,7 +82,7 @@ class WidgetService {
           final candles = await yahooService.fetchCandles(
             item.symbol,
             finalTimeframe,
-            limit: _candlesLimitForTimeframe(finalTimeframe),
+            limit: _candlesLimitForTimeframe(finalTimeframe, finalPeriod),
           );
 
           if (candles.isEmpty) continue;
@@ -211,14 +211,28 @@ class WidgetService {
     }
   }
 
-  int _candlesLimitForTimeframe(String timeframe) {
+  /// Calculate optimal candle limit based on timeframe and period
+  /// Ensures we have enough candles for indicator calculation + buffer for charts
+  int _candlesLimitForTimeframe(String timeframe, [int? period]) {
+    // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
+    final periodBuffer = period != null ? period + 20 : 34; // Default: 14 + 20 = 34
+    
+    // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
+    int baseMinimum;
     switch (timeframe) {
       case '4h':
-        return 500;
+        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        break;
       case '1d':
-        return 730;
+        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        break;
       default:
-        return 100;
+        // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+        baseMinimum = 100;
+        break;
     }
+    
+    // Return max of period requirement and base minimum
+    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
   }
 }

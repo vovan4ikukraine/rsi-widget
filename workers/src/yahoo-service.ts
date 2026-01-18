@@ -61,26 +61,63 @@ export class YahooService {
             const interval = this.getYahooInterval(timeframe);
 
             // Use period1 and period2 for explicit period specification
-            // This guarantees getting sufficient number of trading days
+            // Optimize period1 based on limit to avoid fetching excessive data
             const now = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
             let period1: number;
             let period2: number = now;
 
-            if (timeframe === '4h') {
-                // For 4h need at least 15 candles
-                // In a trading day usually 1-2 4h candles (depends on open/close time)
-                // Take 2 years ago to guarantee getting sufficient number of trading days
-                // 2 years = ~730 calendar days = ~500 trading days = more than enough
-                period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
-            } else if (timeframe === '1d') {
-                // For 1d need at least 15 trading days
-                // Take 2 years ago to guarantee (about 500 trading days)
-                period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
-            } else if (timeframe === '1h') {
-                period1 = now - (60 * 24 * 60 * 60); // 60 days ago
+            // If limit is specified, optimize period1 to fetch approximately that many candles
+            // This avoids fetching 979 candles when we only need 100
+            if (options.limit && options.limit > 0) {
+                // Get timeframe duration in seconds
+                let timeframeSeconds: number;
+                switch (timeframe) {
+                    case '1m':
+                        timeframeSeconds = 60;
+                        break;
+                    case '5m':
+                        timeframeSeconds = 5 * 60;
+                        break;
+                    case '15m':
+                        timeframeSeconds = 15 * 60;
+                        break;
+                    case '1h':
+                        timeframeSeconds = 60 * 60;
+                        break;
+                    case '4h':
+                        timeframeSeconds = 4 * 60 * 60;
+                        break;
+                    case '1d':
+                        timeframeSeconds = 24 * 60 * 60;
+                        break;
+                    default:
+                        timeframeSeconds = 60 * 60; // Default to 1h
+                        break;
+                }
+
+                // Calculate period needed: limit * timeframe duration
+                // Add buffer (1.5x) to account for weekends/holidays (trading days only)
+                // For 4h/1d add more buffer as trading days are fewer
+                const buffer = (timeframe === '4h' || timeframe === '1d') ? 2.5 : 1.5;
+                const periodSeconds = Math.ceil(options.limit * timeframeSeconds * buffer);
+
+                // Cap maximum period to reasonable limits (max 2 years = ~730 days)
+                const maxPeriodSeconds = 730 * 24 * 60 * 60; // 2 years max
+                const optimizedPeriodSeconds = Math.min(periodSeconds, maxPeriodSeconds);
+
+                period1 = now - optimizedPeriodSeconds;
             } else {
-                // For minute timeframes use short period
-                period1 = now - (5 * 24 * 60 * 60); // 5 days ago
+                // If no limit specified, use conservative defaults (for backward compatibility)
+                if (timeframe === '4h') {
+                    period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
+                } else if (timeframe === '1d') {
+                    period1 = now - (730 * 24 * 60 * 60); // 730 days ago (2 years)
+                } else if (timeframe === '1h') {
+                    period1 = now - (60 * 24 * 60 * 60); // 60 days ago
+                } else {
+                    // For minute timeframes use short period
+                    period1 = now - (5 * 24 * 60 * 60); // 5 days ago
+                }
             }
 
             // Build URL with period1 and period2
