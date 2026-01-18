@@ -407,19 +407,38 @@ export class IndicatorEngine {
 
     /**
      * Calculate Stochastic Oscillator (%K and %D)
+     * Supports Slow Stochastic with slowPeriod and smoothPeriod (like Flutter UI)
      */
     calculateStochastic(candles: any[], kPeriod: number, params?: any): Array<{ value: number, state?: any }> {
-        const dPeriod = params?.dPeriod || 3;
-        if (candles.length < kPeriod + dPeriod - 1) {
+        // Use defaultParams like Flutter UI does (IndicatorType.stoch.defaultParams)
+        // Default: slowPeriod=3, dPeriod=6, smoothPeriod=3
+        const defaultParams = {
+            slowPeriod: 3,
+            dPeriod: 6,
+            smoothPeriod: 3
+        };
+        
+        const dPeriod = params?.dPeriod ?? defaultParams.dPeriod;
+        const slowPeriod = params?.slowPeriod ?? defaultParams.slowPeriod; // %K smoothing period for Slow Stochastic
+        const smoothPeriod = params?.smoothPeriod ?? defaultParams.smoothPeriod; // %D smoothing period
+        
+        // Use Slow Stochastic if slowPeriod is provided and > 1
+        const useSlowStochastic = slowPeriod != null && slowPeriod > 1;
+        const slowPeriodValue = slowPeriod ?? 1;
+        const minDataRequired = useSlowStochastic
+            ? kPeriod + slowPeriodValue + dPeriod - 2
+            : kPeriod + dPeriod - 1;
+
+        if (candles.length < minDataRequired) {
             return [];
         }
 
         const highs = candles.map(c => c.high);
         const lows = candles.map(c => c.low);
         const closes = candles.map(c => c.close);
-        const kValues: number[] = [];
-
-        // Calculate %K values
+        
+        // Step 1: Calculate raw %K values (Fast Stochastic %K)
+        const rawKValues: number[] = [];
         for (let i = kPeriod - 1; i < candles.length; i++) {
             const periodHighs = highs.slice(i - kPeriod + 1, i + 1);
             const periodLows = lows.slice(i - kPeriod + 1, i + 1);
@@ -429,10 +448,27 @@ export class IndicatorEngine {
             const close = closes[i];
 
             if (highestHigh === lowestLow) {
-                kValues.push(50.0);
+                rawKValues.push(50.0);
             } else {
                 const k = ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0;
-                kValues.push(Math.max(0, Math.min(100, k)));
+                rawKValues.push(Math.max(0, Math.min(100, k)));
+            }
+        }
+
+        if (rawKValues.length === 0) {
+            return [];
+        }
+
+        // Step 2: Apply Slow Stochastic smoothing if needed
+        // Smooth %K with SMA(slowPeriod) to get Slow Stochastic %K
+        let kValues: number[] = rawKValues;
+        if (useSlowStochastic) {
+            kValues = [];
+            // Calculate SMA of rawKValues with period slowPeriodValue
+            for (let i = slowPeriodValue - 1; i < rawKValues.length; i++) {
+                const periodValues = rawKValues.slice(i - slowPeriodValue + 1, i + 1);
+                const smoothedK = periodValues.reduce((a, b) => a + b, 0) / slowPeriodValue;
+                kValues.push(Math.max(0, Math.min(100, smoothedK)));
             }
         }
 
@@ -440,23 +476,55 @@ export class IndicatorEngine {
             return [];
         }
 
-        // Calculate %D (smoothed %K) and return %K values
-        const result: Array<{ value: number, state?: any }> = [];
-        for (let i = 0; i < kValues.length; i++) {
-            const k = kValues[i];
-            let d: number | undefined;
+        // Step 3: Calculate %D values as SMA of (smoothed) %K
+        let dValues: number[] = [];
+        for (let i = dPeriod - 1; i < kValues.length; i++) {
+            const dPeriodValues = kValues.slice(i - dPeriod + 1, i + 1);
+            const d = dPeriodValues.reduce((a, b) => a + b, 0) / dPeriod;
+            dValues.push(Math.max(0, Math.min(100, d)));
+        }
 
-            if (i >= dPeriod - 1) {
-                const dPeriodValues = kValues.slice(i - dPeriod + 1, i + 1);
-                d = dPeriodValues.reduce((a, b) => a + b, 0) / dPeriod;
-            } else {
-                const availableValues = kValues.slice(0, i + 1);
-                d = availableValues.reduce((a, b) => a + b, 0) / availableValues.length;
+        // Step 4: Apply additional smoothing to %D if smoothPeriod is provided
+        if (smoothPeriod != null && smoothPeriod > 1) {
+            const smoothedDValues: number[] = [];
+            for (let i = smoothPeriod - 1; i < dValues.length; i++) {
+                const periodValues = dValues.slice(i - smoothPeriod + 1, i + 1);
+                const smoothedD = periodValues.reduce((a, b) => a + b, 0) / smoothPeriod;
+                smoothedDValues.push(Math.max(0, Math.min(100, smoothedD)));
             }
+            dValues = smoothedDValues;
+        }
+
+        if (dValues.length === 0) {
+            return [];
+        }
+
+        // Step 5: Build results aligned with candles
+        // Calculate offsets to align with candle indices
+        const slowOffset = useSlowStochastic ? (slowPeriodValue - 1) : 0;
+        const smoothOffset = (smoothPeriod != null && smoothPeriod > 1) ? (smoothPeriod - 1) : 0;
+        const firstCandleIndex = kPeriod + slowOffset + dPeriod - 1 + smoothOffset;
+
+        const result: Array<{ value: number, state?: any }> = [];
+        for (let i = 0; i < dValues.length; i++) {
+            const candleIndex = firstCandleIndex + i;
+            if (candleIndex >= candles.length) break;
+
+            // The %K value that corresponds to this %D value
+            const kIndexInSmoothed = dPeriod - 1 + smoothOffset + i;
+            if (kIndexInSmoothed >= kValues.length) break;
+
+            // For display, use smoothed %K for Slow Stochastic (which is what Yahoo Finance shows)
+            // For Fast Stochastic, use raw %K
+            const displayK = useSlowStochastic 
+                ? kValues[kIndexInSmoothed]  // Use smoothed %K for Slow Stochastic
+                : (kIndexInSmoothed < rawKValues.length 
+                    ? rawKValues[kIndexInSmoothed] 
+                    : kValues[kIndexInSmoothed]);
 
             result.push({
-                value: k,  // Use %K as main value
-                state: { k, d }  // Store both %K and %D in state
+                value: displayK,  // Use %K as main value (same as Flutter UI)
+                state: { k: displayK, d: dValues[i] }  // Store both %K and %D in state
             });
         }
 
