@@ -41,11 +41,25 @@ class MainActivity: FlutterActivity() {
                             putString("timeframe", timeframe)
                             putInt("rsi_period", rsiPeriod)
                             putInt("rsi_widget_period", rsiPeriod) // Also save to widget period for consistency
+                            // CRITICAL: Save period to watchlist_${indicator}_period so WidgetDataService and updateAppWidget can read it
+                            putInt("watchlist_${indicator}_period", rsiPeriod)
                             putString("widget_indicator", indicator) // CRITICAL: must be saved synchronously
                             if (indicatorParams != null) {
                                 putString("widget_indicator_params", indicatorParams)
                             } else {
                                 remove("widget_indicator_params")
+                            }
+                            // For STOCH, also save dPeriod to watchlist_stoch_d_period
+                            if (indicator.lowercase() == "stoch" && indicatorParams != null) {
+                                try {
+                                    val paramsJson = org.json.JSONObject(indicatorParams)
+                                    if (paramsJson.has("dPeriod")) {
+                                        val dPeriod = paramsJson.getInt("dPeriod")
+                                        putInt("watchlist_stoch_d_period", dPeriod)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to parse indicatorParams for STOCH: ${e.message}")
+                                }
                             }
                             watchlistSymbols?.let {
                                 putString("watchlist_symbols", JSONArray(it).toString())

@@ -225,10 +225,32 @@ class RSIWidgetProvider : AppWidgetProvider() {
             val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
             val watchlistJson = prefs.getString("watchlist_data", "[]")
             val timeframe = prefs.getString("timeframe", "15m") ?: "15m"
-            // Use widget period first, fallback to rsi_period, then default to 14
-            val rsiPeriod = prefs.getInt("rsi_widget_period",
-                prefs.getInt("rsi_period", 14))
             val indicator = prefs.getString("widget_indicator", "rsi") ?: "rsi"
+            
+            // CRITICAL: Read period for CURRENT indicator from watchlist/home settings
+            // Priority: watchlist_${indicator}_period > home_${indicator}_period > defaults
+            // DO NOT use rsi_widget_period as it may contain stale value from previous indicator
+            val watchlistPeriodKey = "watchlist_${indicator}_period"
+            val homePeriodKey = "home_${indicator}_period"
+            val watchlistPeriod = prefs.getInt(watchlistPeriodKey, -1)
+            val homePeriod = prefs.getInt(homePeriodKey, -1)
+            val rsiPeriod = when {
+                watchlistPeriod != -1 -> watchlistPeriod
+                homePeriod != -1 -> homePeriod
+                else -> when (indicator.lowercase()) {
+                    "stoch" -> 6
+                    "wpr", "williams" -> 14
+                    else -> 14
+                }
+            }
+            
+            // For STOCH, read %D period for display
+            var stochDPeriod: Int? = null
+            if (indicator.lowercase() == "stoch") {
+                stochDPeriod = prefs.getInt("watchlist_stoch_d_period",
+                    prefs.getInt("home_stoch_d_period", 3))
+            }
+            
             val isLoading = prefs.getBoolean(PREF_IS_LOADING, false)
             
             Log.d(TAG, "Updating widget $appWidgetId")
@@ -265,7 +287,14 @@ class RSIWidgetProvider : AppWidgetProvider() {
             } else {
                 // Has data - show list
                 val indicatorName = indicator.uppercase()
-                views.setTextViewText(R.id.widget_title, "Watchlist ($timeframe, $indicatorName($rsiPeriod))")
+                // For STOCH, show both kPeriod and dPeriod: STOCH(kPeriod, dPeriod)
+                // For other indicators, show single period: RSI(14) or WPR(14)
+                val periodText = if (indicator.lowercase() == "stoch" && stochDPeriod != null) {
+                    "$rsiPeriod, $stochDPeriod"
+                } else {
+                    rsiPeriod.toString()
+                }
+                views.setTextViewText(R.id.widget_title, "Watchlist ($timeframe, $indicatorName($periodText))")
                 views.setViewVisibility(R.id.widget_empty_text, View.GONE)
                 views.setViewVisibility(R.id.widget_list, View.VISIBLE)
                 views.setViewVisibility(R.id.widget_timeframe_selector, View.VISIBLE)

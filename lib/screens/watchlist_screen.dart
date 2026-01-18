@@ -15,6 +15,7 @@ import '../services/alert_sync_service.dart';
 import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+import '../services/widget_service.dart';
 
 class WatchlistScreen extends StatefulWidget {
   final Isar isar;
@@ -81,6 +82,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+  late final WidgetService _widgetService;
 
   static const String _sortOrderPrefKey = 'watchlist_sort_order';
 
@@ -160,6 +162,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _widgetService = WidgetService(
+      isar: widget.isar,
+      yahooService: _yahooService,
+    );
     _updateControllerHints();
     _loadSavedState();
   }
@@ -678,6 +684,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         'watchlist_mass_alert_cooldown_sec', _massAlertCooldownSec);
     await prefs.setBool(
         'watchlist_mass_alert_repeatable', _massAlertRepeatable);
+    
+    // Update widget with current indicator settings from watchlist
+    try {
+      final indicatorParams = indicatorType == IndicatorType.stoch && _stochDPeriod != null
+          ? {'dPeriod': _stochDPeriod}
+          : null;
+      await _widgetService.updateWidget(
+        timeframe: _timeframe,
+        rsiPeriod: _indicatorPeriod,
+        indicator: indicatorType,
+        indicatorParams: indicatorParams,
+      );
+    } catch (e) {
+      // Ignore errors - widget update is non-critical
+      debugPrint('Error updating widget from watchlist: $e');
+    }
   }
 
   // Reload list when app returns from background
