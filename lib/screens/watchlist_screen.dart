@@ -177,6 +177,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _appState = AppStateScope.of(context);
     final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
     
+    // Remove old listener before adding new one to prevent duplicate listeners
+    // This prevents _onIndicatorChanged from being called multiple times
+    final oldAppState = _appState;
+    if (oldAppState != null) {
+      oldAppState.removeListener(_onIndicatorChanged);
+    }
+    
     // Update previousIndicatorType if it's the first time or if it changed
     if (_previousIndicatorType == null || _previousIndicatorType != currentIndicator) {
       _previousIndicatorType = currentIndicator;
@@ -187,6 +194,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
     }
     
+    // Add listener only once per didChangeDependencies call
     _appState?.addListener(_onIndicatorChanged);
   }
 
@@ -482,19 +490,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   Future<void> _loadSavedState() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load widget period first (if it was set), then fallback to watchlist period
-    final widgetPeriod = prefs.getInt('rsi_widget_period');
-    final watchlistPeriod = prefs.getInt('watchlist_rsi_period');
-    final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
+    // Load watchlist settings (widget settings are independent and NOT used here)
     final watchlistTimeframe = prefs.getString('watchlist_timeframe');
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final watchlistPeriod = prefs.getInt('watchlist_${indicatorType.toJson()}_period');
 
     if (mounted) {
       setState(() {
-        // Use widget settings if available, otherwise use watchlist settings
-        _timeframe = widgetTimeframe ?? watchlistTimeframe ?? '15m';
-        final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-        _indicatorPeriod =
-            widgetPeriod ?? watchlistPeriod ?? indicatorType.defaultPeriod;
+        // Use watchlist settings, or defaults if not set
+        _timeframe = watchlistTimeframe ?? '15m';
+        _indicatorPeriod = watchlistPeriod ?? indicatorType.defaultPeriod;
         
         // Load levels with validation to ensure they match the current indicator type
         final savedLowerLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_lower_level');
@@ -626,11 +631,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       });
     }
 
-    // Save period and timeframe for widget to ensure consistency
-    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-    await prefs.setInt('rsi_widget_period', _indicatorPeriod);
-    await prefs.setString('rsi_widget_timeframe', _timeframe);
-    // Also save to watchlist settings for consistency
+    // Save watchlist settings (widget settings are independent and managed separately)
+    // indicatorType is already defined at line 495, reuse it
     await prefs.setInt(
         'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
     await prefs.setString('watchlist_timeframe', _timeframe);
@@ -649,9 +651,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
       await prefs.setInt('watchlist_stoch_d_period', _stochDPeriod!);
     }
-    // Also save to widget settings to keep them in sync
-    await prefs.setInt('rsi_widget_period', _indicatorPeriod);
-    await prefs.setString('rsi_widget_timeframe', _timeframe);
+    // NOTE: Widget settings are managed separately and should NOT be synced from watchlist
+    // Widget indicator/period/timeframe should only be changed from widget settings screen
+    // This allows users to have different indicators in watchlist and widget
 
     // Save mass alert settings (independent from view settings)
     // Save enabled state for each indicator separately
@@ -685,21 +687,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setBool(
         'watchlist_mass_alert_repeatable', _massAlertRepeatable);
     
-    // Update widget with current indicator settings from watchlist
-    try {
-      final indicatorParams = indicatorType == IndicatorType.stoch && _stochDPeriod != null
-          ? {'dPeriod': _stochDPeriod}
-          : null;
-      await _widgetService.updateWidget(
-        timeframe: _timeframe,
-        rsiPeriod: _indicatorPeriod,
-        indicator: indicatorType,
-        indicatorParams: indicatorParams,
-      );
-    } catch (e) {
-      // Ignore errors - widget update is non-critical
-      debugPrint('Error updating widget from watchlist: $e');
-    }
+    // NOTE: Widget is NOT updated here - only in _applySettings() when user explicitly applies changes
+    // This prevents widget from changing when indicator is switched in AppState
   }
 
   // Reload list when app returns from background
@@ -1089,6 +1078,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final period = int.tryParse(_indicatorPeriodController.text);
       final lower = int.tryParse(_lowerLevelController.text)?.toDouble();
       final upper = int.tryParse(_upperLevelController.text)?.toDouble();
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      final stochDPeriod = indicatorType == IndicatorType.stoch 
+          ? int.tryParse(_stochDPeriodController.text)
+          : null;
 
       bool changed = false;
 
@@ -1098,11 +1091,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           period != _indicatorPeriod) {
         _indicatorPeriod = period;
         changed = true;
-        _saveState();
+      }
+
+      // For Stochastic, check if %D period changed
+      if (indicatorType == IndicatorType.stoch && stochDPeriod != null &&
+          stochDPeriod >= 1 && stochDPeriod <= 100 &&
+          stochDPeriod != _stochDPeriod) {
+        _stochDPeriod = stochDPeriod;
+        changed = true;
       }
 
       // Validate levels based on indicator type
-      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       // For Williams %R, allow -100 to 0; for others, allow 0 to 100
       final minAllowed = indicatorType == IndicatorType.williams ? -100.0 : 0.0;
       final maxAllowed = indicatorType == IndicatorType.williams ? 0.0 : 100.0;
@@ -1114,7 +1113,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           lower != _lowerLevel) {
         _lowerLevel = lower;
         changed = true;
-        _saveState();
       }
 
       if (upper != null &&
@@ -1124,22 +1122,34 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           upper != _upperLevel) {
         _upperLevel = upper;
         changed = true;
+      }
+
+      // Save state only if something changed
+      if (changed) {
         _saveState();
+        
+        // Update widget with view settings from watchlist (period only, NOT timeframe)
+        // Widget uses its own timeframe selector - don't change it from watchlist
+        // Indicator type in widget is managed separately (only from widget settings)
+        try {
+          final indicatorParams = indicatorType == IndicatorType.stoch && _stochDPeriod != null
+              ? {'dPeriod': _stochDPeriod}
+              : null;
+          await _widgetService.updateWidget(
+            timeframe: null, // Don't change widget timeframe - widget has its own selector
+            rsiPeriod: _indicatorPeriod,
+            indicator: indicatorType,
+            indicatorParams: indicatorParams,
+          );
+        } catch (e) {
+          // Ignore errors - widget update is non-critical
+          debugPrint('Error updating widget from watchlist: $e');
+        }
       }
 
       _updateControllerHints();
 
       if (changed) {
-        // Save period for widget AND watchlist (ensure both are updated)
-        if (period != null) {
-          final prefs = await SharedPreferences.getInstance();
-          final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-          // Save to both rsi_widget_period AND watchlist_${indicator}_period
-          // This ensures widget refresh reads correct period
-          await prefs.setInt('rsi_widget_period', _indicatorPeriod);
-          await prefs.setInt('watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
-          debugPrint('WatchlistScreen: Saved period $_indicatorPeriod to watchlist_${indicatorType.toJson()}_period');
-        }
         _loadAllIndicatorData();
       } else {
         if (mounted) {
@@ -1366,6 +1376,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         _timeframe = value;
                                       });
                                       _saveState();
+                                      // Don't update widget timeframe - widget has its own timeframe selector
                                       _loadAllIndicatorData(); // Automatically reload data when timeframe changes
                                     }
                                       },
@@ -1431,17 +1442,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                         keyboardType: TextInputType.number,
                                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                         onTap: _scrollToSettings,
-                                        onChanged: (value) {
-                                          final dPeriod = int.tryParse(value);
-                                          if (dPeriod != null &&
-                                              dPeriod >= 1 &&
-                                              dPeriod <= 100) {
-                                            setState(() {
-                                              _stochDPeriod = dPeriod;
-                                            });
-                                            _saveState();
-                                          }
-                                        },
+                                        // Don't save on change - only save when apply button is pressed
                                       ),
                                     ],
                                   ),
