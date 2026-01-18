@@ -702,25 +702,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _checkWidgetTimeframe() async {
-    // Load timeframe and period from widget (if changed in widget)
+    // Load period from widget (if changed in widget)
+    // NOTE: Timeframe should NOT be synced from widget - watchlist has its own timeframe selector
+    // Widget timeframe and watchlist timeframe are independent
     final prefs = await SharedPreferences.getInstance();
-    final widgetTimeframe = prefs.getString('rsi_widget_timeframe');
     final widgetPeriod = prefs.getInt('rsi_widget_period');
     final widgetNeedsRefresh = prefs.getBool('widget_needs_refresh') ?? false;
 
     bool needsUpdate = false;
 
-    // If timeframe changed in widget, update it in app
-    if (widgetTimeframe != null && widgetTimeframe != _timeframe) {
-      if (mounted) {
-        setState(() {
-          _timeframe = widgetTimeframe;
-        });
-      }
-      _saveState();
-      needsUpdate = true;
-    }
-
+    // Only sync period from widget, NOT timeframe
     // If period changed in widget, update it in app
     if (widgetPeriod != null) {
       if (mounted) {

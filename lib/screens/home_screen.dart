@@ -949,6 +949,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(height: 4),
                       Autocomplete<SymbolInfo>(
                     optionsBuilder: (TextEditingValue textEditingValue) async {
+                      // Check mounted before starting any async work
+                      if (!mounted) {
+                        return const Iterable<SymbolInfo>.empty();
+                      }
+
                       final query = textEditingValue.text.trim();
 
                       if (query.isEmpty) {
@@ -956,11 +961,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           try {
                             final popular =
                                 await _symbolSearchService.getPopularSymbols();
-                            if (mounted) {
-                              setState(() {
-                                _popularSymbols = popular;
-                              });
+                            if (!mounted) {
+                              return const Iterable<SymbolInfo>.empty();
                             }
+                            setState(() {
+                              _popularSymbols = popular;
+                            });
                             return popular.take(40);
                           } catch (_) {
                             return const Iterable<SymbolInfo>.empty();
@@ -975,14 +981,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           try {
                             final popular =
                                 await _symbolSearchService.getPopularSymbols();
-                            if (mounted) {
-                              setState(() {
-                                _popularSymbols = popular;
-                              });
+                            if (!mounted) {
+                              return const Iterable<SymbolInfo>.empty();
                             }
+                            setState(() {
+                              _popularSymbols = popular;
+                            });
                           } catch (_) {
                             return const Iterable<SymbolInfo>.empty();
                           }
+                        }
+                        if (!mounted) {
+                          return const Iterable<SymbolInfo>.empty();
                         }
                         return _popularSymbols
                             .where((symbol) => _matchesSymbol(symbol, upper))
@@ -1028,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ) {
                       // Sync controller with selected symbol only once during initialization
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (textEditingController.text !=
+                        if (mounted && textEditingController.text !=
                             _symbolController.text) {
                           textEditingController.text = _symbolController.text;
                         }
@@ -1046,18 +1056,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           }
                         },
                         onFieldSubmitted: (String value) async {
+                          if (!mounted) return;
                           // Allow direct symbol input even if it's not in the list
                           final trimmedValue = value.trim().toUpperCase();
                           if (trimmedValue.isNotEmpty) {
                             final normalized = trimmedValue.toUpperCase();
                             _syncSymbolFieldText(normalized);
-                            if (normalized != _selectedSymbol) {
+                            if (normalized != _selectedSymbol && mounted) {
                               await _loadIndicatorData(symbol: normalized);
                             }
                           }
                           // Remove focus on submit
-                          focusNode.unfocus();
-                          onFieldSubmitted();
+                          if (mounted) {
+                            focusNode.unfocus();
+                            onFieldSubmitted();
+                          }
                         },
                         decoration: InputDecoration(
                           hintText: loc.t('home_symbol_hint'),
@@ -1076,18 +1089,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               : null,
                         ),
                         onChanged: (value) {
-                          _symbolController.text = value;
+                          // Don't update _symbolController here to avoid triggering
+                          // Autocomplete internal updates that may access context after unmount
+                          // The controller will be synced when selection is made via onSelected
                         },
                       );
                     },
                     onSelected: (SymbolInfo selection) async {
+                      if (!mounted) return;
                       final normalized = selection.symbol.toUpperCase();
                       _syncSymbolFieldText(normalized);
-                      if (normalized != _selectedSymbol) {
+                      if (normalized != _selectedSymbol && mounted) {
                         await _loadIndicatorData(symbol: normalized);
                       }
                       // Remove focus after selection
-                      FocusScope.of(context).unfocus();
+                      if (mounted) {
+                        FocusScope.of(context).unfocus();
+                      }
                     },
                     optionsViewBuilder: (
                       BuildContext context,
