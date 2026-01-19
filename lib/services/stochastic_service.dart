@@ -203,9 +203,10 @@ class StochasticService {
     final smoothOffset = (smoothPeriod != null && smoothPeriod > 1) ? (smoothPeriod - 1) : 0;
     
     // First candle index that has both %K and %D
-    // For Slow Stochastic: kPeriod + slowOffset + dPeriod - 1 + smoothOffset
-    // For Fast Stochastic: kPeriod + dPeriod - 1
-    final firstCandleIndex = kPeriod + slowOffset + dPeriod - 1 + smoothOffset;
+    // For Fast Stochastic: dValues[0] corresponds to rawKValues[dPeriod - 1], which corresponds to candle at index (kPeriod - 1) + (dPeriod - 1) = kPeriod + dPeriod - 2
+    // For Slow Stochastic: add slowOffset and smoothOffset for smoothing delays
+    // Note: Previously used kPeriod + dPeriod - 1, but that was off by 1. Correct value is kPeriod + dPeriod - 2.
+    final firstCandleIndex = kPeriod + slowOffset + dPeriod - 2 + smoothOffset;
 
     for (int i = 0; i < dValues.length; i++) {
       final candleIndex = firstCandleIndex + i;
