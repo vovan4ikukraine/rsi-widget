@@ -1038,13 +1038,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       FocusNode focusNode,
                       VoidCallback onFieldSubmitted,
                     ) {
-                      // Sync controller with selected symbol only once during initialization
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted && textEditingController.text !=
-                            _symbolController.text) {
-                          textEditingController.text = _symbolController.text;
-                        }
-                      });
+                      // Sync controller with selected symbol, but only if field is empty or matches
+                      // This prevents clearing user input when typing, but shows current symbol when not editing
+                      if (textEditingController.text.isEmpty || 
+                          textEditingController.text == _symbolController.text) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && textEditingController.text == _symbolController.text || 
+                              (textEditingController.text.isEmpty && _symbolController.text.isNotEmpty)) {
+                            if (textEditingController.text != _symbolController.text) {
+                              textEditingController.text = _symbolController.text;
+                            }
+                          }
+                        });
+                      }
 
                       return TextFormField(
                         controller: textEditingController,
@@ -1091,9 +1097,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               : null,
                         ),
                         onChanged: (value) {
-                          // Don't update _symbolController here to avoid triggering
-                          // Autocomplete internal updates that may access context after unmount
-                          // The controller will be synced when selection is made via onSelected
+                          // Update _symbolController to keep it in sync
+                          // This allows showing current symbol when not editing
+                          if (value != _symbolController.text) {
+                            _symbolController.text = value;
+                          }
                         },
                       );
                     },

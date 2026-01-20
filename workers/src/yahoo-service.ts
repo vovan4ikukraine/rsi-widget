@@ -66,21 +66,17 @@ export class YahooService {
             let period1: number;
             let period2: number = now;
 
-            // If limit is specified, optimize period1 to fetch approximately that many candles
-            // This avoids fetching 979 candles when we only need 100
-            if (options.limit && options.limit > 0) {
+            // Use fixed periods for minute timeframes (1m, 5m, 15m) to ensure reliable data
+            // Yahoo Finance may not return complete data for very short periods on some symbols
+            // For other timeframes, optimize period1 based on limit to avoid fetching excessive data
+            if (timeframe === '1m' || timeframe === '5m' || timeframe === '15m') {
+                // Always use 5 days for minute timeframes (proven to work reliably)
+                period1 = now - (5 * 24 * 60 * 60); // 5 days ago
+            } else if (options.limit && options.limit > 0) {
+                // For hourly+ timeframes, optimize period1 based on limit
                 // Get timeframe duration in seconds
                 let timeframeSeconds: number;
                 switch (timeframe) {
-                    case '1m':
-                        timeframeSeconds = 60;
-                        break;
-                    case '5m':
-                        timeframeSeconds = 5 * 60;
-                        break;
-                    case '15m':
-                        timeframeSeconds = 15 * 60;
-                        break;
                     case '1h':
                         timeframeSeconds = 60 * 60;
                         break;
@@ -115,7 +111,7 @@ export class YahooService {
                 } else if (timeframe === '1h') {
                     period1 = now - (60 * 24 * 60 * 60); // 60 days ago
                 } else {
-                    // For minute timeframes use short period
+                    // For minute timeframes use short period (shouldn't reach here due to check above)
                     period1 = now - (5 * 24 * 60 * 60); // 5 days ago
                 }
             }
@@ -143,8 +139,31 @@ export class YahooService {
             }
 
             const result = data.chart.result[0];
+            
+            // Check if result exists and has required fields
+            if (!result) {
+                throw new Error('No result data in Yahoo Finance API response');
+            }
+            
+            // Check if timestamp and quote data exist (same as in d4c7a5f)
+            // If they don't exist, Yahoo may have returned incomplete data - this should not happen with proper period
             const timestamps = result.timestamp;
-            const quotes = result.indicators.quote[0];
+            const quotes = result.indicators?.quote?.[0];
+            
+            if (!timestamps || !quotes) {
+                throw new Error('Invalid data format from Yahoo Finance API - missing timestamp or quote data');
+            }
+
+            // Ensure timestamps is an array before accessing .length
+            if (!Array.isArray(timestamps) || timestamps.length === 0) {
+                throw new Error('No timestamps available in response');
+            }
+
+            // Safely check if quotes arrays exist
+            if (!Array.isArray(quotes.open) || !Array.isArray(quotes.close) || 
+                !Array.isArray(quotes.high) || !Array.isArray(quotes.low)) {
+                throw new Error('Invalid quote data format - arrays missing');
+            }
 
             const candles: CandleData[] = [];
 
