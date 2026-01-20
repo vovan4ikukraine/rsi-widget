@@ -270,6 +270,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _appState?.removeListener(_onIndicatorChanged);
+    // Clean up method channel handler to prevent memory leaks
+    _channel.setMethodCallHandler(null);
     _indicatorPeriodController.dispose();
     _lowerLevelController.dispose();
     _upperLevelController.dispose();
