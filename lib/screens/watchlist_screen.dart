@@ -1171,13 +1171,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     try {
       final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
       setState(() {
-        _timeframe = '15m';
+        // Don't reset timeframe - keep user's selected timeframe
+        // _timeframe = '15m'; // Removed - keep current timeframe
         _indicatorPeriod = indicatorType.defaultPeriod;
         _lowerLevel = indicatorType.defaultLevels.first;
         _upperLevel = indicatorType.defaultLevels.length > 1
             ? indicatorType.defaultLevels[1]
             : 100.0;
         if (indicatorType == IndicatorType.stoch) {
+          // Use default dPeriod = 3 (not 6 from defaultParams, as user expects 3)
           _stochDPeriod = 3;
         } else {
           _stochDPeriod = null;
@@ -1193,6 +1195,24 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       });
       _saveState();
+      
+      // Update widget with reset settings immediately (same as _applySettings)
+      // This ensures widget reflects reset values without needing to press apply button
+      try {
+        final indicatorParams = indicatorType == IndicatorType.stoch && _stochDPeriod != null
+            ? {'dPeriod': _stochDPeriod}
+            : null;
+        await _widgetService.updateWidget(
+          timeframe: null, // Don't change widget timeframe - widget has its own selector
+          rsiPeriod: _indicatorPeriod,
+          indicator: indicatorType,
+          indicatorParams: indicatorParams,
+        );
+      } catch (e) {
+        // Ignore errors - widget update is non-critical
+        debugPrint('Error updating widget from reset settings: $e');
+      }
+      
       _updateControllerHints();
       _loadAllIndicatorData();
     } finally {
