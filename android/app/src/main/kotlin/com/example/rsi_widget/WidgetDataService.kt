@@ -97,12 +97,14 @@ object WidgetDataService {
                 
                 // For STOCH, ALWAYS read %D period from watchlist/home settings (even if widget_indicator_params exists)
                 // This ensures that changes in watchlist STOCH %D period are reflected in widget
+                // Also include slowPeriod and smoothPeriod to match Watchlist Slow Stochastic implementation
                 var indicatorParamsJson = prefs.getString("widget_indicator_params", null)
                 if (indicator.lowercase() == "stoch") {
                     // Get %D period for STOCH from watchlist/home settings (priority: watchlist > home > default)
                     val stochDPeriod = prefs.getInt("watchlist_stoch_d_period",
-                        prefs.getInt("home_stoch_d_period", 3))
-                    indicatorParamsJson = "{\"dPeriod\":$stochDPeriod}"
+                        prefs.getInt("home_stoch_d_period", 6))
+                    // Use Slow Stochastic defaults to match Watchlist: slowPeriod=3, smoothPeriod=3
+                    indicatorParamsJson = "{\"dPeriod\":$stochDPeriod,\"slowPeriod\":3,\"smoothPeriod\":3}"
                     // Always save the latest value from watchlist/home to widget_indicator_params
                     prefs.edit().putString("widget_indicator_params", indicatorParamsJson).commit()
                 }
@@ -246,16 +248,25 @@ object WidgetDataService {
                 val highs = candles.map { it.high }
                 val lows = candles.map { it.low }
                 
-                // Parse indicatorParams for STOCH (dPeriod)
-                var dPeriod = 3 // Default for STOCH
+                // Parse indicatorParams for STOCH (dPeriod, slowPeriod, smoothPeriod)
+                // Match Watchlist implementation: Slow Stochastic with slowPeriod=3, smoothPeriod=3 by default
+                var dPeriod = 6 // Default for STOCH (matches Watchlist)
+                var slowPeriod = 3 // Default Slow Stochastic smoothing (matches Watchlist)
+                var smoothPeriod = 3 // Default %D smoothing (matches Watchlist)
                 if (indicator.lowercase() == "stoch" && indicatorParams != null) {
                     try {
                         val paramsJson = org.json.JSONObject(indicatorParams)
                         if (paramsJson.has("dPeriod")) {
                             dPeriod = paramsJson.getInt("dPeriod")
                         }
+                        if (paramsJson.has("slowPeriod")) {
+                            slowPeriod = paramsJson.getInt("slowPeriod")
+                        }
+                        if (paramsJson.has("smoothPeriod")) {
+                            smoothPeriod = paramsJson.getInt("smoothPeriod")
+                        }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to parse indicatorParams for $symbol: ${e.message}, using default dPeriod=3")
+                        Log.w(TAG, "Failed to parse indicatorParams for $symbol: ${e.message}, using defaults")
                     }
                 }
                 
@@ -265,8 +276,8 @@ object WidgetDataService {
                         calculateWilliams(highs, lows, closes, rsiPeriod)
                     }
                     "stoch" -> {
-                        Log.d(TAG, "Calculating Stochastic for $symbol: ${closes.size} candles, kPeriod=$rsiPeriod, dPeriod=$dPeriod")
-                        calculateStochastic(highs, lows, closes, rsiPeriod, dPeriod)
+                        Log.d(TAG, "Calculating Stochastic for $symbol: ${closes.size} candles, kPeriod=$rsiPeriod, dPeriod=$dPeriod, slowPeriod=$slowPeriod, smoothPeriod=$smoothPeriod")
+                        calculateStochastic(highs, lows, closes, rsiPeriod, dPeriod, slowPeriod, smoothPeriod)
                     }
                     else -> {
                         Log.d(TAG, "Calculating RSI for $symbol: ${closes.size} closes, period=$rsiPeriod")
@@ -343,16 +354,26 @@ object WidgetDataService {
 
     /**
      * Calculates Stochastic Oscillator (%K and %D)
-     * Returns %D values (smoothed %K), matching Flutter implementation
+     * Matches Watchlist implementation: Slow Stochastic with optional smoothing
+     * Returns %D values (smoothed %K with additional %D smoothing), matching Flutter implementation
      */
-    private fun calculateStochastic(highs: List<Double>, lows: List<Double>, closes: List<Double>, kPeriod: Int, dPeriod: Int): List<Double> {
-        // Need at least kPeriod candles for %K, and kPeriod + dPeriod - 1 for %D
-        if (closes.size < kPeriod + dPeriod - 1) {
+    private fun calculateStochastic(highs: List<Double>, lows: List<Double>, closes: List<Double>, kPeriod: Int, dPeriod: Int, slowPeriod: Int = 3, smoothPeriod: Int = 3): List<Double> {
+        val useSlowStochastic = slowPeriod > 1
+        val useSmoothPeriod = smoothPeriod > 1
+        
+        // Calculate minimum data required
+        val minDataRequired = if (useSlowStochastic) {
+            kPeriod + slowPeriod + dPeriod - 2 + if (useSmoothPeriod) (smoothPeriod - 1) else 0
+        } else {
+            kPeriod + dPeriod - 1 + if (useSmoothPeriod) (smoothPeriod - 1) else 0
+        }
+        
+        if (closes.size < minDataRequired) {
             return emptyList()
         }
 
-        // Step 1: Calculate raw %K values
-        val kValues = mutableListOf<Double>()
+        // Step 1: Calculate raw %K values (Fast Stochastic %K)
+        val rawKValues = mutableListOf<Double>()
 
         for (i in (kPeriod - 1) until closes.size) {
             val periodHighs = highs.subList(i - kPeriod + 1, i + 1)
@@ -367,10 +388,26 @@ object WidgetDataService {
             } else {
                 ((close - lowestLow) / (highestHigh - lowestLow)) * 100.0
             }
-            kValues.add(k.coerceIn(0.0, 100.0))
+            rawKValues.add(k.coerceIn(0.0, 100.0))
         }
 
-        // Step 2: Calculate %D as SMA of %K
+        // Step 2: Apply Slow Stochastic smoothing if needed
+        val kValues = if (useSlowStochastic) {
+            if (rawKValues.size < slowPeriod) {
+                return emptyList()
+            }
+            val smoothedK = mutableListOf<Double>()
+            for (i in (slowPeriod - 1) until rawKValues.size) {
+                val periodKValues = rawKValues.subList(i - slowPeriod + 1, i + 1)
+                val smoothed = periodKValues.average()
+                smoothedK.add(smoothed.coerceIn(0.0, 100.0))
+            }
+            smoothedK
+        } else {
+            rawKValues
+        }
+
+        // Step 3: Calculate %D as SMA of (smoothed) %K
         if (kValues.size < dPeriod) {
             return emptyList()
         }
@@ -380,6 +417,20 @@ object WidgetDataService {
             val periodKValues = kValues.subList(i - dPeriod + 1, i + 1)
             val d = periodKValues.average()
             dValues.add(d.coerceIn(0.0, 100.0))
+        }
+
+        // Step 4: Apply additional smoothing to %D if smoothPeriod is provided
+        if (useSmoothPeriod) {
+            if (dValues.size < smoothPeriod) {
+                return emptyList()
+            }
+            val smoothedD = mutableListOf<Double>()
+            for (i in (smoothPeriod - 1) until dValues.size) {
+                val periodDValues = dValues.subList(i - smoothPeriod + 1, i + 1)
+                val smoothed = periodDValues.average()
+                smoothedD.add(smoothed.coerceIn(0.0, 100.0))
+            }
+            return smoothedD
         }
 
         return dValues

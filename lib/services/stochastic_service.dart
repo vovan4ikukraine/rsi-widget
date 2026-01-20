@@ -270,10 +270,11 @@ class StochasticResult {
   });
 
   /// Convert to IndicatorResult format
-  /// Yahoo Finance typically shows %K as the main line
+  /// Use %D as main value - it's smoother and provides clearer signals
+  /// %D is the signal line (SMA of %K) and is commonly used as the primary indicator
   IndicatorResult toIndicatorResult() {
     return IndicatorResult(
-      value: k, // Use %K as main value (Yahoo Finance shows %K)
+      value: d, // Use %D as main value - smoother signal line
       state: IndicatorState({'k': k, 'd': d}),
       timestamp: timestamp,
       close: close,
