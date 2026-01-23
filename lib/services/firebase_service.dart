@@ -237,6 +237,14 @@ class FirebaseService {
   /// Handle messages in background
   static Future<void> _firebaseMessagingBackgroundHandler(
       RemoteMessage message) async {
+    // Filter out stale notifications (older than 10 minutes)
+    if (!_isNotificationFresh(message)) {
+      if (kDebugMode) {
+        print('Skipping stale background notification: ${message.messageId}');
+      }
+      return;
+    }
+
     if (kDebugMode) {
       print('Handling message in background: ${message.messageId}');
     }
@@ -251,6 +259,14 @@ class FirebaseService {
 
   /// Handle messages in foreground
   static void _handleForegroundMessage(RemoteMessage message) {
+    // Filter out stale notifications (older than 10 minutes)
+    if (!_isNotificationFresh(message)) {
+      if (kDebugMode) {
+        print('Skipping stale notification: ${message.messageId}');
+      }
+      return;
+    }
+
     // Show local notification via NotificationService
     final notification = message.notification;
     final data = message.data;
@@ -269,6 +285,14 @@ class FirebaseService {
 
   /// Handle notification tap
   static void _handleNotificationTap(RemoteMessage message) {
+    // Filter out stale notifications (older than 10 minutes)
+    if (!_isNotificationFresh(message)) {
+      if (kDebugMode) {
+        print('Skipping stale notification tap: ${message.messageId}');
+      }
+      return;
+    }
+
     final data = message.data;
 
     if (data.containsKey('alert_id')) {
@@ -277,6 +301,35 @@ class FirebaseService {
     } else if (data.containsKey('symbol')) {
       // Navigate to symbol
       _navigateToSymbol(data['symbol']);
+    }
+  }
+
+  /// Check if notification is fresh (not older than maxAgeMinutes)
+  static bool _isNotificationFresh(RemoteMessage message, {int maxAgeMinutes = 10}) {
+    final data = message.data;
+    final timestampStr = data['timestamp'];
+    
+    if (timestampStr == null) {
+      // If no timestamp, assume it's fresh (backward compatibility)
+      return true;
+    }
+
+    try {
+      final timestamp = int.tryParse(timestampStr.toString());
+      if (timestamp == null) {
+        return true; // Assume fresh if can't parse
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final age = now - timestamp;
+      final maxAgeMs = maxAgeMinutes * 60 * 1000;
+
+      return age <= maxAgeMs;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error checking notification freshness: $e');
+      }
+      return true; // Assume fresh on error
     }
   }
 

@@ -10,10 +10,12 @@ export interface FcmV1Message {
         };
         android?: {
             priority: 'normal' | 'high';
+            collapse_key?: string;
         };
         apns?: {
             headers: {
                 'apns-priority': string;
+                'apns-collapse-id'?: string;
             };
         };
     };
@@ -212,9 +214,20 @@ export class FcmService {
 
     /**
      * Send alert via FCM V1 API
+     * Only sends if notification is recent (not older than maxAgeMinutes)
      */
-    async sendAlert(trigger: any): Promise<void> {
+    async sendAlert(trigger: any, maxAgeMinutes: number = 10): Promise<void> {
         try {
+            // Check if notification is still relevant (not too old)
+            const now = Date.now();
+            const triggerAge = now - trigger.timestamp;
+            const maxAgeMs = maxAgeMinutes * 60 * 1000;
+
+            if (triggerAge > maxAgeMs) {
+                console.log(`Skipping stale notification for rule ${trigger.ruleId}: age=${Math.round(triggerAge / 1000)}s (max=${maxAgeMinutes * 60}s)`);
+                return;
+            }
+
             // Get user FCM tokens
             const tokens = await this.getUserFcmTokens(trigger.userId, this.db);
 
@@ -228,7 +241,7 @@ export class FcmService {
                 await this.sendToDevice(token, trigger);
             }
 
-            console.log(`Alert sent to ${tokens.length} devices for user ${trigger.userId}`);
+            console.log(`Alert sent to ${tokens.length} devices for user ${trigger.userId} (age=${Math.round(triggerAge / 1000)}s)`);
         } catch (error) {
             console.error('Error sending FCM alert:', error);
         }
@@ -251,6 +264,10 @@ export class FcmService {
         const accessToken = await this.getAccessToken();
         const endpoint = `https://fcm.googleapis.com/v1/projects/${this.projectId}/messages:send`;
 
+        // Use collapse_key to replace old notifications with new ones for the same rule
+        // This prevents accumulation of stale notifications when device is offline
+        const collapseKey = `alert_${trigger.ruleId}`;
+
         const message: FcmV1Message = {
             message: {
                 token: token,
@@ -269,10 +286,12 @@ export class FcmService {
                 },
                 android: {
                     priority: 'high',
+                    collapse_key: collapseKey,
                 },
                 apns: {
                     headers: {
                         'apns-priority': '10',
+                        'apns-collapse-id': collapseKey,
                     },
                 },
             }
