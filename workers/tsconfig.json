@@ -22,7 +22,7 @@
         "moduleDetection": "force",
         "resolveJsonModule": true,
         "isolatedModules": true,
-        "verbatimModuleSyntax": true,
+        "verbatimModuleSyntax": false,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "types": [
