@@ -122,7 +122,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   bool _massAlertUpperLevelEnabled = true;
   int _massAlertCooldownSec = 600;
   bool _massAlertRepeatable = true;
-  
+  bool _massAlertOnClose = false;
+
   // Helper getter for current indicator (from AppState)
   IndicatorType get _massAlertIndicator => _appState?.selectedIndicator ?? IndicatorType.rsi;
   
@@ -580,6 +581,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? 600;
         _massAlertRepeatable =
             prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
+        _massAlertOnClose =
+            prefs.getBool('watchlist_mass_alert_on_close') ?? false;
         
         // Load level enabled state (if not saved, check existing alerts to determine state)
         final savedLowerEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled');
@@ -686,7 +689,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         'watchlist_mass_alert_cooldown_sec', _massAlertCooldownSec);
     await prefs.setBool(
         'watchlist_mass_alert_repeatable', _massAlertRepeatable);
-    
+    await prefs.setBool(
+        'watchlist_mass_alert_on_close', _massAlertOnClose);
+
     // NOTE: Widget is NOT updated here - only in _applySettings() when user explicitly applies changes
     // This prevents widget from changing when indicator is switched in AppState
   }
@@ -2277,6 +2282,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   ],
                   ),
                 ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: Text(loc.t('create_alert_on_close')),
+                  subtitle: Text(loc.t('create_alert_on_close_sub')),
+                  value: _massAlertOnClose,
+                  onChanged: (value) async {
+                    setState(() {
+                      _massAlertOnClose = value;
+                    });
+                    await _saveState();
+                    if (_massAlertEnabled) {
+                      unawaited(_updateMassAlerts());
+                    }
+                  },
+                ),
             ],
                 ),
               ),
@@ -2564,6 +2584,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..active = true
             ..repeatable = _massAlertRepeatable
             ..soundEnabled = true
+            ..alertOnClose = _massAlertOnClose
             ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
             ..createdAt = createdAt;
 
@@ -2913,6 +2934,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             alert.mode = 'cross'; // Always use cross mode with one-way crossing
             alert.cooldownSec = _massAlertCooldownSec;
             alert.repeatable = _massAlertRepeatable;
+            alert.alertOnClose = _massAlertOnClose;
 
             await widget.isar.alertRules.put(alert);
             alertsToSync.add(alert);
@@ -2984,10 +3006,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ..mode = 'cross' // Always use cross mode with one-way crossing
               ..cooldownSec = _massAlertCooldownSec
               ..active = true
-            ..repeatable = _massAlertRepeatable
-            ..soundEnabled = true
-            ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
-            ..createdAt = createdAt;
+              ..repeatable = _massAlertRepeatable
+              ..soundEnabled = true
+              ..alertOnClose = _massAlertOnClose
+              ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
+              ..createdAt = createdAt;
 
             await widget.isar.alertRules.put(alert);
             unawaited(AlertSyncService.syncAlert(

@@ -94,6 +94,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   int _cooldownSec = 600;
   bool _repeatable = true;
   bool _soundEnabled = true;
+  bool _alertOnClose = false;
   bool _isLoading = false;
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
@@ -150,6 +151,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _cooldownSec = alert.cooldownSec;
     _repeatable = alert.repeatable;
     _soundEnabled = alert.soundEnabled;
+    _alertOnClose = alert.alertOnClose;
 
     // Load indicator-specific parameters
     if (alert.indicatorParams != null) {
@@ -916,6 +918,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 });
               },
             ),
+            SwitchListTile(
+              title: Text(loc.t('create_alert_on_close')),
+              subtitle: Text(loc.t('create_alert_on_close_sub')),
+              value: _alertOnClose,
+              onChanged: (value) {
+                setState(() {
+                  _alertOnClose = value;
+                });
+              },
+            ),
           ],
         ),
       ),
@@ -1126,6 +1138,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       alert.active = true;
       alert.repeatable = _repeatable;
       alert.soundEnabled = _soundEnabled;
+      alert.alertOnClose = _alertOnClose;
       alert.description = _descriptionController.text.isEmpty
           ? null
           : _descriptionController.text;

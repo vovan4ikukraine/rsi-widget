@@ -63,6 +63,9 @@ class AlertRule {
 
   String? description;
 
+  /// When true, alert only on candle close (no forming candle). When false, alert on crossing (incl. forming).
+  bool alertOnClose = false;
+
   // Additional settings
   bool repeatable = true;
   bool soundEnabled = true;

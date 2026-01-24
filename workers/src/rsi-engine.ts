@@ -1,4 +1,4 @@
-import { YahooService } from './yahoo-service';
+import { DataProviderService } from './data-provider-service';
 
 export interface AlertRule {
     id: number;
@@ -15,6 +15,7 @@ export interface AlertRule {
     cooldown_sec: number;
     active: number;
     created_at: number;
+    alert_on_close?: boolean;  // true = only closed candles, false = crossing (incl. forming)
 }
 
 export interface AlertState {
@@ -49,10 +50,24 @@ export interface CheckSymbolTimeframeResult {
     cacheHit: boolean;  // true if data came from cache, false if fetched from Yahoo
 }
 
+/** Timeframe duration in milliseconds (for excluding forming candle). */
+function getTimeframeMs(tf: string): number {
+    const m: Record<string, number> = {
+        '1m': 60 * 1000,
+        '5m': 5 * 60 * 1000,
+        '15m': 15 * 60 * 1000,
+        '30m': 30 * 60 * 1000,
+        '1h': 60 * 60 * 1000,
+        '4h': 4 * 60 * 60 * 1000,
+        '1d': 24 * 60 * 60 * 1000,
+    };
+    return m[tf] ?? 60 * 60 * 1000;
+}
+
 export class IndicatorEngine {
     constructor(
         private db: D1Database,
-        private yahooService: YahooService
+        private dataProviderService: DataProviderService
     ) { }
 
     /**
@@ -97,7 +112,8 @@ export class IndicatorEngine {
                 mode: row.mode || 'cross',
                 cooldown_sec: row.cooldown_sec || 600,
                 active: row.active !== undefined ? row.active : 1,
-                created_at: row.created_at || Date.now()
+                created_at: row.created_at || Date.now(),
+                alert_on_close: row.alert_on_close === 1 || row.alert_on_close === true,
             };
         }) as any[];
     }
@@ -132,70 +148,63 @@ export class IndicatorEngine {
         let cacheHit = false;
 
         try {
-            // Get candles - try D1 cache first (much cheaper than KV), then Yahoo
+            // Get candles - use DataProviderService (handles cache, Binance for crypto, Yahoo fallback)
             let candles: any[] = [];
-            let lastCandleTimestamp: number | null = null;
 
-            // Use D1 database for candles cache (much cheaper than KV)
-            const cached = await this.yahooService.getCachedCandles(symbol, timeframe, this.db);
-            if (cached && cached.length > 0) {
-                candles = cached;
-                lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
+            // Use same candle limit calculation as UI (_candlesLimitForTimeframe)
+            // This ensures RSI values match between UI and CRON
+            // Calculate optimal candle limit based on timeframe and max period
+            
+            // Check max period across all rules for this symbol/timeframe
+            let maxPeriod = 0;  // Start from 0 to find actual max
+            for (const rule of rules) {
+                const rulePeriod = rule.period || rule.rsi_period || 14;
+                if (rulePeriod > maxPeriod) {
+                    maxPeriod = rulePeriod;
+                }
+            }
+            // Fallback to 14 if no valid periods found
+            if (maxPeriod === 0) {
+                maxPeriod = 14;
+            }
+            
+            // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
+            const periodBuffer = maxPeriod + 20;
+            
+            // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
+            let baseMinimum: number;
+            switch (timeframe) {
+                case '4h':
+                    baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+                    break;
+                case '1d':
+                    baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+                    break;
+                default:
+                    // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
+                    baseMinimum = 100;
+                    break;
+            }
+            
+            // Return max of period requirement and base minimum
+            const candleLimit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+
+            // Check cache first
+            const cached = await this.dataProviderService.getCachedCandles(symbol, timeframe);
+            if (cached && cached.candles.length > 0) {
+                candles = cached.candles;
                 cacheHit = true;
-                console.log(`RSI Engine: Using cached candles from D1 for ${symbol} ${timeframe} (${candles.length} candles)`);
+                console.log(`RSI Engine: Using cached candles from D1 for ${symbol} ${timeframe} (${candles.length} candles, provider=${cached.provider})`);
             }
 
-            // If no cache or cache miss, fetch from Yahoo
+            // If no cache or cache miss, fetch from provider (Binance for crypto, Yahoo otherwise)
             if (candles.length === 0) {
                 try {
-                    // Use same candle limit calculation as UI (_candlesLimitForTimeframe)
-                    // This ensures RSI values match between UI and CRON
-                    // Calculate optimal candle limit based on timeframe and max period
-                    
-                    // Check max period across all rules for this symbol/timeframe
-                    let maxPeriod = 0;  // Start from 0 to find actual max
-                    for (const rule of rules) {
-                        const rulePeriod = rule.period || rule.rsi_period || 14;
-                        if (rulePeriod > maxPeriod) {
-                            maxPeriod = rulePeriod;
-                        }
-                    }
-                    // Fallback to 14 if no valid periods found
-                    if (maxPeriod === 0) {
-                        maxPeriod = 14;
-                    }
-                    
-                    // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
-                    const periodBuffer = maxPeriod + 20;
-                    
-                    // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
-                    let baseMinimum: number;
-                    switch (timeframe) {
-                        case '4h':
-                            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
-                            break;
-                        case '1d':
-                            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
-                            break;
-                        default:
-                            // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
-                            baseMinimum = 100;
-                            break;
-                    }
-                    
-                    // Return max of period requirement and base minimum
-                    const candleLimit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
-                    
-                    candles = await this.yahooService.getCandles(symbol, timeframe, {
+                    const result = await this.dataProviderService.getCandles(symbol, timeframe, {
                         limit: candleLimit
                     });
-
-                    // Save to D1 cache for future use (much cheaper than KV)
-                    if (candles.length > 0) {
-                        await this.yahooService.setCachedCandles(symbol, timeframe, candles, this.db);
-                        lastCandleTimestamp = candles[candles.length - 1]?.timestamp || null;
-                        console.log(`RSI Engine: Fetched and cached ${candles.length} candles (limit=${candleLimit}, period=${maxPeriod}) in D1 for ${symbol} ${timeframe}`);
-                    }
+                    candles = result.candles;
+                    console.log(`RSI Engine: Fetched and cached ${candles.length} candles (limit=${candleLimit}, period=${maxPeriod}, provider=${result.provider}) in D1 for ${symbol} ${timeframe}`);
                 } catch (error: any) {
                     // If rate limited (429), rethrow to trigger backoff in caller
                     if (error?.message?.includes('429') || error?.status === 429) {
@@ -210,14 +219,26 @@ export class IndicatorEngine {
                 return { triggers, cacheHit };
             }
 
-            // Smart check: only process alerts if last candle timestamp has changed
-            // This avoids unnecessary calculations when data hasn't updated
-            const currentLastTimestamp = candles[candles.length - 1]?.timestamp;
-            if (currentLastTimestamp && lastCandleTimestamp !== null && currentLastTimestamp === lastCandleTimestamp) {
-                // Check if we already processed this candle by checking alert states
-                // Process sequentially to avoid CPU burst from parallel DB queries
+            // Build closed-only set for "alert on close" rules. Others use full candles (incl. forming).
+            const tfMs = getTimeframeMs(timeframe);
+            const lastTs = candles[candles.length - 1]?.timestamp ?? 0;
+            const isForming = lastTs + tfMs > Date.now();
+            const candlesClosed = isForming && candles.length > 2
+                ? candles.slice(0, -1)
+                : candles;
+            if (isForming && candlesClosed.length < 2) {
+                console.log(`Not enough closed candles for ${symbol} ${timeframe} (dropped forming)`);
+                return { triggers, cacheHit };
+            }
+
+            const anyCrossing = rules.some((r: any) => !r.alert_on_close);
+            const currentLastTimestamp = candlesClosed[candlesClosed.length - 1]?.timestamp;
+
+            // Skip only when ALL rules are "alert on close" and we've already processed this closed candle.
+            // If any rule uses crossing (forming), we never skip — process every run.
+            if (!anyCrossing && currentLastTimestamp) {
                 let allProcessed = true;
-                const ruleStates: Array<{ rule: AlertRule, state: any }> = [];
+                const ruleStates: Array<{ rule: AlertRule; state: any }> = [];
                 for (const rule of rules) {
                     const state = await this.getAlertState(rule.id);
                     ruleStates.push({ rule, state });
@@ -226,30 +247,27 @@ export class IndicatorEngine {
                         break;
                     }
                 }
-
                 if (allProcessed) {
-                    // Log current indicator values for debugging/comparison with UI
                     const indicatorValuesLog: string[] = [];
                     for (const { rule, state } of ruleStates) {
-                        const indicator = rule.indicator || 'rsi';
-                        const period = rule.period || rule.rsi_period || 14;
-                        const currentValue = state.last_indicator_value ?? state.last_rsi ?? 'N/A';
-                        indicatorValuesLog.push(`Rule ${rule.id}: ${indicator.toUpperCase()}(${period})=${currentValue}`);
+                        const ind = rule.indicator || 'rsi';
+                        const per = rule.period || rule.rsi_period || 14;
+                        const v = state.last_indicator_value ?? state.last_rsi ?? 'N/A';
+                        indicatorValuesLog.push(`Rule ${rule.id}: ${ind.toUpperCase()}(${per})=${v}`);
                     }
-                    console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last candle already processed (timestamp: ${currentLastTimestamp})`);
+                    console.log(`RSI Engine: Skipping ${symbol} ${timeframe} - last closed candle already processed (ts: ${currentLastTimestamp})`);
                     if (indicatorValuesLog.length > 0) {
-                        console.log(`RSI Engine: Current values for skipped rules: ${indicatorValuesLog.join(', ')}`);
+                        console.log(`RSI Engine: Current values: ${indicatorValuesLog.join(', ')}`);
                     }
                     return { triggers, cacheHit };
                 }
             }
 
-            // Check each rule sequentially to avoid CPU burst from parallel calculations
-            // Even with same candles, processing many rules can create microtask bursts
-            // Sequential processing already prevents burst without additional delays
             for (const rule of rules) {
                 try {
-                    const ruleTriggers = await this.checkRule(rule, candles);
+                    const useClosed = !!(rule as any).alert_on_close;
+                    const candleSet = useClosed ? candlesClosed : candles;
+                    const ruleTriggers = await this.checkRule(rule, candleSet);
                     triggers.push(...ruleTriggers);
                 } catch (error) {
                     console.error(`Error checking rule ${rule.id}:`, error);

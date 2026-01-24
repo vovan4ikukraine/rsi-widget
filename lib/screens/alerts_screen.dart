@@ -595,6 +595,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         ..mode = alert.mode
         ..cooldownSec = alert.cooldownSec
         ..active = true
+        ..alertOnClose = alert.alertOnClose
         ..createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000
         ..description = '${alert.description ?? ''} (copy)';
 

@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { IndicatorEngine } from './rsi-engine';
 import { FcmService } from './fcm-service';
 import { YahooService } from './yahoo-service';
+import { BinanceService } from './binance-service';
+import { DataProviderService } from './data-provider-service';
 import { Logger } from './logger';
 import { adminAuthMiddleware } from './admin/auth';
 import { getAdminStats, getUsers } from './admin/stats';
@@ -90,6 +92,15 @@ async function ensureTables(db: D1Database, env?: any) {
     } catch (e: any) {
         if (!e.message?.includes('duplicate column')) {
             Logger.warn('Migration: description column may already exist', env);
+        }
+    }
+
+    // Migration: Add alert_on_close column (0 = crossing / 1 = on candle close only)
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN alert_on_close INTEGER DEFAULT 0`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: alert_on_close column may already exist', env);
         }
     }
 
@@ -227,6 +238,22 @@ async function ensureTables(db: D1Database, env?: any) {
       )
     `).run();
 
+    // Migration: Add provider column if it doesn't exist
+    try {
+        await db.prepare(`ALTER TABLE candles_cache ADD COLUMN provider TEXT DEFAULT 'yahoo'`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: provider column may already exist', env);
+        }
+    }
+
+    // Migration: Set default provider for existing records
+    await db.prepare(`
+      UPDATE candles_cache 
+      SET provider = 'yahoo'
+      WHERE provider IS NULL
+    `).run();
+
     // Create indexes for candles cache
     try {
         await db.prepare(`CREATE INDEX IF NOT EXISTS idx_candles_cache_symbol_timeframe ON candles_cache(symbol, timeframe)`).run();
@@ -313,7 +340,7 @@ app.get('/', (c) => {
     });
 });
 
-// Proxy for Yahoo Finance
+// Proxy for Yahoo Finance (with Binance fallback for crypto)
 app.get('/yf/candles', async (c) => {
     try {
         const { symbol, tf, since, limit, userId } = c.req.query();
@@ -322,8 +349,10 @@ app.get('/yf/candles', async (c) => {
             return c.json({ error: 'Missing symbol or timeframe' }, 400);
         }
 
-        const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
         const db = c.env?.DB as D1Database;
+        const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
+        const binanceService = new BinanceService();
+        const dataProviderService = new DataProviderService(yahooService, binanceService, db);
 
         // Update device activity if userId is provided (user opening app/refreshing data)
         // Use fire-and-forget to not block the response
@@ -334,52 +363,28 @@ app.get('/yf/candles', async (c) => {
             });
         }
 
-        // Try to get from D1 cache first (much cheaper than KV)
-        if (db) {
-            const cachedCandles = await yahooService.getCachedCandles(symbol, tf, db);
-            if (cachedCandles) {
-                Logger.cacheHit(symbol, tf, cachedCandles.length, c.env);
+        // Use DataProviderService (handles cache, Binance for crypto, Yahoo fallback)
+        // Check cache first to determine if it's a cache hit
+        const cached = await dataProviderService.getCachedCandles(symbol, tf);
+        const isCacheHit = cached !== null && cached.candles.length > 0;
 
-                // Apply limit if specified (for cached data)
-                let result = cachedCandles;
-                if (limit) {
-                    const limitNum = parseInt(limit);
-                    result = cachedCandles.slice(-limitNum);
-                }
-
-                // Add debug info if requested
-                const debug = c.req.query('debug') === 'true';
-                if (debug) {
-                    const timestamp = new Date().toISOString();
-                    return c.json({
-                        data: result,
-                        meta: {
-                            source: 'cache',
-                            symbol: symbol,
-                            timeframe: tf,
-                            count: result.length,
-                            timestamp: timestamp,
-                        }
-                    });
-                }
-
-                // Set header to indicate cache hit
-                c.header('X-Data-Source', 'cache');
-                return c.json(result);
-            }
-        }
-
-        // Cache miss or no DB - fetch from Yahoo
-        Logger.cacheMiss(symbol, tf, c.env);
-
-        const candles = await yahooService.getCandles(symbol, tf, {
+        const { candles, provider } = await dataProviderService.getCandles(symbol, tf, {
             since: since ? parseInt(since) : undefined,
             limit: limit ? parseInt(limit) : 1000,
         });
 
-        // Save to D1 cache for future requests (much cheaper than KV)
-        if (db && candles.length > 0) {
-            await yahooService.setCachedCandles(symbol, tf, candles, db);
+        // Apply limit if specified (for cached data that might exceed limit)
+        let result = candles;
+        if (limit) {
+            const limitNum = parseInt(limit);
+            result = candles.slice(-limitNum);
+        }
+
+        // Log cache hit/miss
+        if (isCacheHit) {
+            Logger.cacheHit(symbol, tf, result.length, c.env);
+        } else {
+            Logger.cacheMiss(symbol, tf, c.env);
             Logger.cacheSave(symbol, tf, candles.length, c.env);
         }
 
@@ -388,27 +393,29 @@ app.get('/yf/candles', async (c) => {
         if (debug) {
             const timestamp = new Date().toISOString();
             return c.json({
-                data: candles,
+                data: result,
                 meta: {
-                    source: 'yahoo',
+                    source: isCacheHit ? 'cache' : provider,
+                    provider: provider,
                     symbol: symbol,
                     timeframe: tf,
-                    count: candles.length,
+                    count: result.length,
                     timestamp: timestamp,
                 }
             });
         }
 
-        // Set header to indicate Yahoo fetch
-        c.header('X-Data-Source', 'yahoo');
-        return c.json(candles);
+        // Set header to indicate data source
+        c.header('X-Data-Source', isCacheHit ? 'cache' : provider);
+        c.header('X-Data-Provider', provider);
+        return c.json(result);
     } catch (error) {
         Logger.error('Error fetching candles:', error, c.env);
         return c.json({ error: 'Failed to fetch candles' }, 500);
     }
 });
 
-// Get current price
+// Get current price (with Binance for crypto)
 app.get('/yf/quote', async (c) => {
     try {
         const { symbol } = c.req.query();
@@ -417,9 +424,15 @@ app.get('/yf/quote', async (c) => {
             return c.json({ error: 'Missing symbol' }, 400);
         }
 
+        const db = c.env?.DB as D1Database;
         const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
-        const quote = await yahooService.getQuote(symbol);
+        const binanceService = new BinanceService();
+        const dataProviderService = new DataProviderService(yahooService, binanceService, db);
 
+        const { quote, provider } = await dataProviderService.getQuote(symbol);
+
+        // Set header to indicate provider
+        c.header('X-Data-Provider', provider);
         return c.json(quote);
     } catch (error) {
         Logger.error('Error fetching quote:', error, c.env);
@@ -427,7 +440,7 @@ app.get('/yf/quote', async (c) => {
     }
 });
 
-// Symbol information
+// Symbol information (with Binance for crypto)
 app.get('/yf/info', async (c) => {
     try {
         const { symbol } = c.req.query();
@@ -436,9 +449,15 @@ app.get('/yf/info', async (c) => {
             return c.json({ error: 'Missing symbol' }, 400);
         }
 
+        const db = c.env?.DB as D1Database;
         const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
-        const info = await yahooService.getSymbolInfo(symbol);
+        const binanceService = new BinanceService();
+        const dataProviderService = new DataProviderService(yahooService, binanceService, db);
 
+        const { info, provider } = await dataProviderService.getSymbolInfo(symbol);
+
+        // Set header to indicate provider
+        c.header('X-Data-Provider', provider);
         return c.json(info);
     } catch (error) {
         Logger.error('Error fetching symbol info:', error, c.env);
@@ -505,7 +524,8 @@ app.post('/alerts/create', async (c) => {
             levels,
             mode,
             cooldownSec,
-            description  // Optional description (used for watchlist alerts: "WATCHLIST:")
+            description,  // Optional description (used for watchlist alerts: "WATCHLIST:")
+            alertOnClose  // Optional: true = alert only on candle close, false = on crossing (default)
         } = await c.req.json();
 
         if (!userId || !symbol || !timeframe || !levels) {
@@ -593,19 +613,21 @@ app.post('/alerts/create', async (c) => {
             return c.json({ error: 'Invalid cooldown: must be between 0 and 86400 seconds (24 hours)' }, 400);
         }
 
+        const alertOnCloseVal = alertOnClose === true || alertOnClose === 1 ? 1 : 0;
+
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
         const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
-        cooldown_sec, active, created_at, description
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        cooldown_sec, active, created_at, description, alert_on_close
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `).bind(
             userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
             indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
             JSON.stringify(validLevels), alertMode,
-            cooldown, Date.now(), description || null
+            cooldown, Date.now(), description || null, alertOnCloseVal
         ).run();
 
         // Update device activity (user action)
@@ -763,6 +785,10 @@ app.put('/alerts/:ruleId', async (c) => {
             }
         }
 
+        if (updates.alert_on_close !== undefined) {
+            updates.alert_on_close = (updates.alert_on_close === true || updates.alert_on_close === 1) ? 1 : 0;
+        }
+
         const fields = Object.keys(updates)
             .filter(key => key !== 'id' && key !== 'user_id')
             .map(key => `${key} = ?`)
@@ -901,7 +927,10 @@ const worker: ExportedHandler<Env> = {
             }
 
             await ensureTables(db);
-            const indicatorEngine = new IndicatorEngine(db, new YahooService(env.YAHOO_ENDPOINT));
+            const yahooService = new YahooService(env.YAHOO_ENDPOINT);
+            const binanceService = new BinanceService();
+            const dataProviderService = new DataProviderService(yahooService, binanceService, db);
+            const indicatorEngine = new IndicatorEngine(db, dataProviderService);
             const fcmService = new FcmService(env.FCM_SERVICE_ACCOUNT_JSON, env.FCM_PROJECT_ID, env.KV, env.DB);
 
             // Check regular alerts (custom alerts created by users)

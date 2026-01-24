@@ -228,6 +228,7 @@ class AlertSyncService {
               ..createdAt = ruleData['created_at'] as int? ??
                   DateTime.now().millisecondsSinceEpoch
               ..description = ruleData['description'] as String?
+              ..alertOnClose = (ruleData['alert_on_close'] as int? ?? 0) == 1
               ..repeatable = true
               ..soundEnabled = true;
 
@@ -261,7 +262,10 @@ class AlertSyncService {
               ..mode = ruleData['mode'] as String? ?? 'cross'
               ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
               ..active = (ruleData['active'] as int? ?? 1) == 1
-              ..description = ruleData['description'] as String? ?? existing.description;
+              ..description = ruleData['description'] as String? ?? existing.description
+              ..alertOnClose = ruleData['alert_on_close'] != null
+                  ? (ruleData['alert_on_close'] as int? ?? 0) == 1
+                  : existing.alertOnClose;
 
             await isar.alertRules.put(existing);
             if (kDebugMode) {
@@ -365,6 +369,7 @@ class AlertSyncService {
       'mode': alert.mode,
       'cooldownSec': alert.cooldownSec,
       if (alert.description != null && alert.description!.isNotEmpty) 'description': alert.description,
+      'alertOnClose': alert.alertOnClose,
     };
 
     if (kDebugMode) {
@@ -459,6 +464,7 @@ class AlertSyncService {
       'mode': alert.mode,
       'cooldown_sec': alert.cooldownSec,
       'active': alert.active ? 1 : 0,
+      'alert_on_close': alert.alertOnClose,
     };
 
     final response = await http.put(
