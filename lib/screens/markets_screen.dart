@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/indicator_type.dart';
@@ -12,6 +13,56 @@ import '../localization/app_localizations.dart';
 import '../data/popular_symbols.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+
+// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
+class WprLevelInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String newText = newValue.text;
+
+    // Remove all non-digit characters
+    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // If trying to delete the minus sign from a non-empty field, prevent it
+    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
+      // Restore the old value if user is trying to delete the minus
+      return oldValue;
+    }
+
+    // Always prepend minus if there are digits
+    if (digitsOnly.isNotEmpty) {
+      newText = '-$digitsOnly';
+    } else {
+      // If empty, keep minus sign if it was there before
+      newText = oldValue.text.startsWith('-') ? '-' : '';
+    }
+
+    // Calculate cursor position
+    int cursorPosition = newValue.selection.baseOffset;
+    
+    // Adjust cursor if it's before or at the minus sign position (position 0)
+    if (newText.startsWith('-')) {
+      if (cursorPosition <= 0) {
+        // If cursor is before or at minus, move it after minus
+        cursorPosition = 1;
+      } else if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    } else {
+      if (cursorPosition > newText.length) {
+        cursorPosition = newText.length;
+      }
+    }
+
+    return TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursorPosition),
+    );
+  }
+}
 
 class MarketsScreen extends StatefulWidget {
   final Isar isar;
@@ -59,6 +110,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   // Track which symbols have been loaded at least once (for cache check)
   final Set<String> _loadedSymbols = {};
   bool _isLoading = false;
+  bool _isActionInProgress = false;
 
   // Scroll controllers for each tab to detect visible items
   final Map<int, ScrollController> _scrollControllers = {};
@@ -455,6 +507,179 @@ class _MarketsScreenState extends State<MarketsScreen>
     }
   }
 
+  Future<void> _applySettings() async {
+    if (_isLoading || _isActionInProgress) return;
+    if (mounted) {
+      setState(() {
+        _isActionInProgress = true;
+      });
+    } else {
+      _isActionInProgress = true;
+    }
+
+    try {
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      final period = int.tryParse(_indicatorPeriodController.text);
+      
+      // Parse levels - handle negative values for Williams %R
+      double? lower;
+      double? upper;
+      final lowerText = _lowerLevelController.text.trim();
+      final upperText = _upperLevelController.text.trim();
+      
+      if (lowerText.isNotEmpty) {
+        // Try parsing as double first (handles negative values)
+        lower = double.tryParse(lowerText);
+        // If that fails, try as int
+        if (lower == null) {
+          lower = int.tryParse(lowerText)?.toDouble();
+        }
+      }
+      
+      if (upperText.isNotEmpty) {
+        // Try parsing as double first (handles negative values)
+        upper = double.tryParse(upperText);
+        // If that fails, try as int
+        if (upper == null) {
+          upper = int.tryParse(upperText)?.toDouble();
+        }
+      }
+      
+      final stochDPeriod = indicatorType == IndicatorType.stoch 
+          ? int.tryParse(_stochDPeriodController.text)
+          : null;
+
+      bool changed = false;
+
+      if (period != null &&
+          period >= 2 &&
+          period <= 100 &&
+          period != _indicatorPeriod) {
+        _indicatorPeriod = period;
+        changed = true;
+      }
+
+      // For Stochastic, check if %D period changed
+      if (indicatorType == IndicatorType.stoch && stochDPeriod != null &&
+          stochDPeriod >= 1 && stochDPeriod <= 100 &&
+          stochDPeriod != _stochDPeriod) {
+        _stochDPeriod = stochDPeriod;
+        changed = true;
+      }
+
+      // Validate levels based on indicator type
+      // For Williams %R, allow -100 to 0; for others, allow 0 to 100
+      final minAllowed = indicatorType == IndicatorType.williams ? -100.0 : 0.0;
+      final maxAllowed = indicatorType == IndicatorType.williams ? 0.0 : 100.0;
+
+      if (lower != null &&
+          lower >= minAllowed &&
+          lower <= maxAllowed &&
+          lower < _upperLevel &&
+          lower != _lowerLevel) {
+        _lowerLevel = lower;
+        changed = true;
+      }
+
+      if (upper != null &&
+          upper >= minAllowed &&
+          upper <= maxAllowed &&
+          upper > _lowerLevel &&
+          upper != _upperLevel) {
+        _upperLevel = upper;
+        changed = true;
+      }
+
+      // Save state only if something changed
+      if (changed) {
+        await _saveState();
+        
+        // Clear cache and reload when settings change
+        _loadedSymbols.clear();
+        _indicatorDataMap.clear();
+        await _loadVisibleItems();
+      }
+
+      // Update controllers with current values after applying settings
+      if (mounted) {
+        setState(() {
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          if (indicatorType == IndicatorType.stoch) {
+            if (_stochDPeriod != null) {
+              _stochDPeriodController.text = _stochDPeriod.toString();
+            } else {
+              _stochDPeriodController.clear();
+            }
+          } else {
+            _stochDPeriodController.clear();
+          }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      } else {
+        _isActionInProgress = false;
+      }
+    }
+  }
+
+  Future<void> _resetSettings() async {
+    if (_isLoading || _isActionInProgress) return;
+    if (mounted) {
+      setState(() {
+        _isActionInProgress = true;
+      });
+    } else {
+      _isActionInProgress = true;
+    }
+
+    try {
+      final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+      if (mounted) {
+        setState(() {
+          _indicatorPeriod = indicatorType.defaultPeriod;
+          _lowerLevel = indicatorType.defaultLevels.first;
+          _upperLevel = indicatorType.defaultLevels.length > 1
+              ? indicatorType.defaultLevels[1]
+              : 100.0;
+          if (indicatorType == IndicatorType.stoch) {
+            _stochDPeriod = 3;
+          } else {
+            _stochDPeriod = null;
+          }
+          // Update controllers to show reset values
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          if (_stochDPeriod != null) {
+            _stochDPeriodController.text = _stochDPeriod.toString();
+          } else {
+            _stochDPeriodController.clear();
+          }
+        });
+      }
+      await _saveState();
+      
+      // Clear cache and reload with reset values
+      _loadedSymbols.clear();
+      _indicatorDataMap.clear();
+      await _loadVisibleItems();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      } else {
+        _isActionInProgress = false;
+      }
+    }
+  }
+
   Future<void> _loadAllIndicatorData() async {
     // Clear cache when refreshing manually
     final currentSymbols = _getCurrentTabSymbols();
@@ -824,6 +1049,18 @@ class _MarketsScreenState extends State<MarketsScreen>
                     if (mounted) {
                       setState(() {
                         _settingsExpanded = !_settingsExpanded;
+                        // When expanding, fill fields with current values
+                        if (_settingsExpanded) {
+                          final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+                          _indicatorPeriodController.text = _indicatorPeriod.toString();
+                          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+                          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+                          if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
+                            _stochDPeriodController.text = _stochDPeriod.toString();
+                          } else {
+                            _stochDPeriodController.clear();
+                          }
+                        }
                       });
                     }
                   },
@@ -881,24 +1118,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                                           horizontal: 12, vertical: 8),
                                     ),
                                     keyboardType: TextInputType.number,
-                                    onChanged: (value) {
-                                      final period = int.tryParse(value);
-                                      if (period != null &&
-                                          period >= 1 &&
-                                          period <= 100 &&
-                                          period != _indicatorPeriod) {
-                                        if (mounted) {
-                                          setState(() {
-                                            _indicatorPeriod = period;
-                                          });
-                                        }
-                                        _saveState();
-                                        // Clear cache and reload when period changes
-                                        _loadedSymbols.clear();
-                                        _indicatorDataMap.clear();
-                                        unawaited(_loadVisibleItems());
-                                      }
-                                    },
+                                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                   ),
                                 ],
                               ),
@@ -924,23 +1144,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                                             horizontal: 12, vertical: 8),
                                       ),
                                       keyboardType: TextInputType.number,
-                                      onChanged: (value) {
-                                        final dPeriod = int.tryParse(value);
-                                        if (dPeriod != null &&
-                                            dPeriod >= 1 &&
-                                            dPeriod <= 100) {
-                                          if (mounted) {
-                                            setState(() {
-                                              _stochDPeriod = dPeriod;
-                                            });
-                                          }
-                                          _saveState();
-                                          // Clear cache and reload when period changes
-                                          _loadedSymbols.clear();
-                                          _indicatorDataMap.clear();
-                                          unawaited(_loadVisibleItems());
-                                        }
-                                      },
+                                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                     ),
                                   ],
                                 ),
@@ -964,25 +1168,10 @@ class _MarketsScreenState extends State<MarketsScreen>
                                       contentPadding: EdgeInsets.symmetric(
                                           horizontal: 12, vertical: 8),
                                     ),
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (value) {
-                                      final level = int.tryParse(value)?.toDouble();
-                                      if (level != null &&
-                                          level >= 0 &&
-                                          level <= 100 &&
-                                          level != _lowerLevel) {
-                                        if (mounted) {
-                                          setState(() {
-                                            _lowerLevel = level;
-                                          });
-                                        }
-                                        _saveState();
-                                        // Reload to update chart levels
-                                        if (mounted) {
-                                          setState(() {});
-                                        }
-                                      }
-                                    },
+                                    keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                                    inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                        ? [WprLevelInputFormatter()]
+                                        : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                   ),
                                 ],
                               ),
@@ -1005,31 +1194,43 @@ class _MarketsScreenState extends State<MarketsScreen>
                                       contentPadding: EdgeInsets.symmetric(
                                           horizontal: 12, vertical: 8),
                                     ),
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (value) {
-                                      final level = int.tryParse(value)?.toDouble();
-                                      if (level != null &&
-                                          level >= 0 &&
-                                          level <= 100 &&
-                                          level != _upperLevel) {
-                                        if (mounted) {
-                                          setState(() {
-                                            _upperLevel = level;
-                                          });
-                                        }
-                                        _saveState();
-                                        // Reload to update chart levels
-                                        if (mounted) {
-                                          setState(() {});
-                                        }
-                                      }
-                                    },
+                                    keyboardType: TextInputType.numberWithOptions(signed: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams),
+                                    inputFormatters: (_appState?.selectedIndicator ?? IndicatorType.rsi) == IndicatorType.williams
+                                        ? [WprLevelInputFormatter()]
+                                        : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                                   ),
                                 ],
                               ),
                             ),
                           ],
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.refresh, size: 18),
+                              tooltip: loc.t('watchlist_reset'),
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : _resetSettings,
+                              color: Colors.blue,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.check, size: 18),
+                              tooltip: loc.t('watchlist_apply'),
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : _applySettings,
+                              color: Colors.green,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
                         ),
                       ],
                     ),

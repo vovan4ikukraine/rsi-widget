@@ -1143,14 +1143,56 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       }
 
-      _updateControllerHints();
+      // Update controllers with current values after applying settings
+      // This ensures fields show the actual applied values, not empty
+      if (mounted) {
+        setState(() {
+          // Always update controllers with current state values
+          // This makes sure fields are not empty after applying
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          if (indicatorType == IndicatorType.stoch) {
+            if (_stochDPeriod != null) {
+              _stochDPeriodController.text = _stochDPeriod.toString();
+            } else {
+              _stochDPeriodController.clear();
+            }
+          } else {
+            // Clear stochDPeriod controller if not using Stochastic
+            _stochDPeriodController.clear();
+          }
+        });
+      }
+
+      // Don't call _updateControllerHints() here - it clears the controllers
+      // We want to keep the values visible after applying
 
       if (changed) {
-        _loadAllIndicatorData();
+        await _loadAllIndicatorData();
       } else {
         if (mounted) {
           setState(() {});
         }
+      }
+
+      // Ensure controllers are updated after all operations
+      // This is important because _loadAllIndicatorData might trigger rebuilds
+      if (mounted) {
+        setState(() {
+          _indicatorPeriodController.text = _indicatorPeriod.toString();
+          _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+          _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+          if (indicatorType == IndicatorType.stoch) {
+            if (_stochDPeriod != null) {
+              _stochDPeriodController.text = _stochDPeriod.toString();
+            } else {
+              _stochDPeriodController.clear();
+            }
+          } else {
+            _stochDPeriodController.clear();
+          }
+        });
       }
     } finally {
       if (mounted) {

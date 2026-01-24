@@ -1547,8 +1547,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _saveState();
     }
 
-    // Clear input fields
-    _clearControllers();
+    // Update controllers with new values (don't clear them)
+    setState(() {
+      _indicatorPeriodController.text = _indicatorPeriod.toString();
+      _lowerLevelController.text = _lowerLevel.toStringAsFixed(0);
+      _upperLevelController.text = _upperLevel.toStringAsFixed(0);
+      if (_stochDPeriod != null) {
+        _stochDPeriodController.text = _stochDPeriod.toString();
+      } else {
+        _stochDPeriodController.clear();
+      }
+    });
 
     // Recalculate indicator if period changed
     if (changed && period != null) {
