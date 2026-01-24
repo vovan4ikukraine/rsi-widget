@@ -626,7 +626,7 @@ const Map<String, SymbolInfo> _fallbackMap = {
     exchange: 'Crypto',
   ),
   'ARB': SymbolInfo(
-    symbol: 'ARB-USD',
+    symbol: 'ARB11841-USD',
     name: 'Arbitrum',
     type: 'crypto',
     currency: 'USD',

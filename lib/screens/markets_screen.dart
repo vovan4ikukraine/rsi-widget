@@ -64,6 +64,8 @@ class WprLevelInputFormatter extends TextInputFormatter {
   }
 }
 
+enum _MarketsSortOrder { none, descending, ascending }
+
 class MarketsScreen extends StatefulWidget {
   final Isar isar;
 
@@ -115,6 +117,15 @@ class _MarketsScreenState extends State<MarketsScreen>
   // Scroll controllers for each tab to detect visible items
   final Map<int, ScrollController> _scrollControllers = {};
 
+  // Sorting
+  static const String _sortOrderPrefKey = 'markets_sort_order';
+  _MarketsSortOrder _currentSortOrder = _MarketsSortOrder.none;
+  // Map to store indicator values for sorting per tab (tabIndex -> symbol -> indicator value)
+  final Map<int, Map<String, double>> _indicatorValuesForSorting = {};
+  // Track which symbols have indicator values loaded for sorting per tab
+  final Map<int, Set<String>> _indicatorValuesLoaded = {};
+  bool _isLoadingIndicatorValues = false;
+
   @override
   void initState() {
     super.initState();
@@ -131,8 +142,22 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) {
-      // Load first batch of items when switching tabs
-      _loadVisibleItems();
+      // Don't clear values - keep them per tab for faster switching
+      // Just trigger rebuild to show new tab's symbols immediately
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild to show symbols immediately
+        });
+      }
+      
+      // Load data in background (don't block UI)
+      // If sorting by indicator value, load values first
+      if (_currentSortOrder == _MarketsSortOrder.descending || 
+          _currentSortOrder == _MarketsSortOrder.ascending) {
+        unawaited(_loadIndicatorValuesOnly());
+      } else {
+        unawaited(_loadVisibleItems());
+      }
     }
   }
 
@@ -163,12 +188,21 @@ class _MarketsScreenState extends State<MarketsScreen>
       // Clear cache first to ensure old data doesn't show
       _loadedSymbols.clear();
       _indicatorDataMap.clear();
+      // Clear indicator values for sorting (all tabs)
+      _indicatorValuesForSorting.clear();
+      _indicatorValuesLoaded.clear();
       // Load saved state for current indicator, then reload data
       _loadSavedState().then((_) {
         // After loading saved state, load data with correct parameters
         if (mounted) {
           debugPrint('MarketsScreen: Saved state loaded, now loading data with indicator=$currentIndicator, period=$_indicatorPeriod, stochD=$_stochDPeriod');
-          unawaited(_loadVisibleItems());
+          // If sorting by indicator value, load values first
+          if (_currentSortOrder == _MarketsSortOrder.descending || 
+              _currentSortOrder == _MarketsSortOrder.ascending) {
+            unawaited(_loadIndicatorValuesOnly());
+          } else {
+            unawaited(_loadVisibleItems());
+          }
         }
       });
     } else {
@@ -261,8 +295,18 @@ class _MarketsScreenState extends State<MarketsScreen>
       debugPrint('MarketsScreen: Clearing cache and reloading data with indicator=$indicatorType, period=$_indicatorPeriod, stochD=$_stochDPeriod');
       _loadedSymbols.clear();
       _indicatorDataMap.clear();
+      // Clear indicator values for sorting when indicator changes (all tabs)
+      _indicatorValuesForSorting.clear();
+      _indicatorValuesLoaded.clear();
+      
       if (mounted) {
-        unawaited(_loadVisibleItems());
+        // If sorting by indicator value, load values first
+        if (_currentSortOrder == _MarketsSortOrder.descending || 
+            _currentSortOrder == _MarketsSortOrder.ascending) {
+          unawaited(_loadIndicatorValuesOnly());
+        } else {
+          unawaited(_loadVisibleItems());
+        }
       }
     }
   }
@@ -290,16 +334,15 @@ class _MarketsScreenState extends State<MarketsScreen>
     _cryptoSymbols =
         allSymbols.where((s) => s.type == 'crypto').take(100).toList();
 
-    // Indexes: top 10
+    // Indexes: all available indices (popular in prop firms)
     _indexSymbols =
-        allSymbols.where((s) => s.type == 'index').take(10).toList();
+        allSymbols.where((s) => s.type == 'index').toList();
 
-    // Forex: top 20 most popular pairs
+    // Forex: all available forex pairs (popular in prop firms)
     _forexSymbols =
-        allSymbols.where((s) => s.type == 'currency').take(20).toList();
+        allSymbols.where((s) => s.type == 'currency').toList();
 
-    // Commodities: top 20 (will need to add more symbols to popular_symbols)
-    // For now, use a hardcoded list of popular commodities
+    // Commodities: popular in prop firms (FTMO, 5ers, Funding Pips)
     _commoditySymbols = [
       SymbolInfo(
         symbol: 'GC=F',
@@ -372,25 +415,11 @@ class _MarketsScreenState extends State<MarketsScreen>
         exchange: 'ICE',
       ),
       SymbolInfo(
-        symbol: 'CT=F',
-        name: 'Cotton Futures',
-        type: 'commodity',
-        currency: 'USD',
-        exchange: 'ICE',
-      ),
-      SymbolInfo(
         symbol: 'CC=F',
         name: 'Cocoa Futures',
         type: 'commodity',
         currency: 'USD',
         exchange: 'ICE',
-      ),
-      SymbolInfo(
-        symbol: 'LBS=F',
-        name: 'Lumber Futures',
-        type: 'commodity',
-        currency: 'USD',
-        exchange: 'CME',
       ),
       SymbolInfo(
         symbol: 'PL=F',
@@ -441,7 +470,35 @@ class _MarketsScreenState extends State<MarketsScreen>
         currency: 'USD',
         exchange: 'CBOT',
       ),
-    ].take(20).toList();
+      SymbolInfo(
+        symbol: 'ZM=F',
+        name: 'Soybean Meal Futures',
+        type: 'commodity',
+        currency: 'USD',
+        exchange: 'CBOT',
+      ),
+      SymbolInfo(
+        symbol: 'LE=F',
+        name: 'Live Cattle Futures',
+        type: 'commodity',
+        currency: 'USD',
+        exchange: 'CME',
+      ),
+      SymbolInfo(
+        symbol: 'HE=F',
+        name: 'Lean Hogs Futures',
+        type: 'commodity',
+        currency: 'USD',
+        exchange: 'CME',
+      ),
+      SymbolInfo(
+        symbol: 'ZR=F',
+        name: 'Rough Rice Futures',
+        type: 'commodity',
+        currency: 'USD',
+        exchange: 'CBOT',
+      ),
+    ];
 
     // Don't load indicator data here - wait until _loadSavedState() sets correct parameters
     // Data will be loaded in didChangeDependencies() after settings are loaded
@@ -462,6 +519,9 @@ class _MarketsScreenState extends State<MarketsScreen>
     final savedUpperValid = savedUpperLevel != null &&
         ((indicatorType == IndicatorType.williams && savedUpperLevel >= -100.0 && savedUpperLevel <= 0.0) ||
          (indicatorType != IndicatorType.williams && savedUpperLevel >= 0.0 && savedUpperLevel <= 100.0));
+    
+    // Load saved sort order
+    final savedSortOrder = prefs.getString(_sortOrderPrefKey);
     
     if (mounted) {
       setState(() {
@@ -488,7 +548,74 @@ class _MarketsScreenState extends State<MarketsScreen>
         } else {
           _stochDPeriodController.clear();
         }
+        
+        // Load sort order
+        if (savedSortOrder != null) {
+          _currentSortOrder = _sortOrderFromString(savedSortOrder);
+        } else {
+          _currentSortOrder = _MarketsSortOrder.none;
+        }
       });
+    }
+  }
+
+  String _sortOrderToString(_MarketsSortOrder order) {
+    switch (order) {
+      case _MarketsSortOrder.ascending:
+        return 'ascending';
+      case _MarketsSortOrder.descending:
+        return 'descending';
+      case _MarketsSortOrder.none:
+        return 'none';
+    }
+  }
+
+  _MarketsSortOrder _sortOrderFromString(String? value) {
+    switch (value) {
+      case 'ascending':
+        return _MarketsSortOrder.ascending;
+      case 'descending':
+        return _MarketsSortOrder.descending;
+      default:
+        return _MarketsSortOrder.none;
+    }
+  }
+
+  Future<void> _saveSortOrderPreference(_MarketsSortOrder order) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sortOrderPrefKey, _sortOrderToString(order));
+  }
+
+  Future<void> _applySortOrder(_MarketsSortOrder order) async {
+    if (_isLoading || _isActionInProgress) return;
+
+    setState(() {
+      _currentSortOrder = order;
+    });
+
+    await _saveSortOrderPreference(order);
+
+    // If sorting by indicator value, load values first
+    if (order == _MarketsSortOrder.descending || order == _MarketsSortOrder.ascending) {
+      // Clear existing values for current tab if indicator changed
+      final tabIndex = _tabController.index;
+      _indicatorValuesForSorting[tabIndex]?.clear();
+      _indicatorValuesLoaded[tabIndex]?.clear();
+      
+      // Trigger immediate rebuild to show symbols
+      if (mounted) {
+        setState(() {
+          // Show symbols immediately
+        });
+      }
+      
+      // Load indicator values for all symbols in background
+      unawaited(_loadIndicatorValuesOnly());
+    } else {
+      // For none sorting, just reload visible items
+      _loadedSymbols.clear();
+      _indicatorDataMap.clear();
+      unawaited(_loadVisibleItems());
     }
   }
 
@@ -597,7 +724,17 @@ class _MarketsScreenState extends State<MarketsScreen>
         // Clear cache and reload when settings change
         _loadedSymbols.clear();
         _indicatorDataMap.clear();
-        await _loadVisibleItems();
+        // Clear indicator values for sorting when settings change (all tabs)
+        _indicatorValuesForSorting.clear();
+        _indicatorValuesLoaded.clear();
+        
+        // If sorting by indicator value, load values first
+        if (_currentSortOrder == _MarketsSortOrder.descending || 
+            _currentSortOrder == _MarketsSortOrder.ascending) {
+          await _loadIndicatorValuesOnly();
+        } else {
+          await _loadVisibleItems();
+        }
       }
 
       // Update controllers with current values after applying settings
@@ -694,6 +831,20 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   /// Load indicator data for visible items and a few ahead
   Future<void> _loadVisibleItems() async {
+    // If sorting by indicator value, ensure values are loaded first
+    if (_currentSortOrder == _MarketsSortOrder.descending || 
+        _currentSortOrder == _MarketsSortOrder.ascending) {
+      final tabIndex = _tabController.index;
+      final loadedForTab = _indicatorValuesLoaded[tabIndex] ?? {};
+      final currentSymbols = _getCurrentTabSymbols();
+      if (!_isLoadingIndicatorValues && 
+          loadedForTab.length < currentSymbols.length) {
+        // Still loading indicator values, start loading but don't wait
+        unawaited(_loadIndicatorValuesOnly());
+        // Continue loading visible items anyway (they'll be sorted as values arrive)
+      }
+    }
+    
     final currentSymbols = _getCurrentTabSymbols();
     if (currentSymbols.isEmpty) return;
 
@@ -768,17 +919,230 @@ class _MarketsScreenState extends State<MarketsScreen>
   }
 
   List<SymbolInfo> _getCurrentTabSymbols() {
+    List<SymbolInfo> symbols;
     switch (_tabController.index) {
       case 0:
-        return _cryptoSymbols;
+        symbols = List.from(_cryptoSymbols);
+        break;
       case 1:
-        return _indexSymbols;
+        symbols = List.from(_indexSymbols);
+        break;
       case 2:
-        return _forexSymbols;
+        symbols = List.from(_forexSymbols);
+        break;
       case 3:
-        return _commoditySymbols;
+        symbols = List.from(_commoditySymbols);
+        break;
       default:
         return [];
+    }
+
+    // Apply sorting if needed
+    if (_currentSortOrder != _MarketsSortOrder.none) {
+      return _applySortingToSymbols(symbols);
+    }
+    return symbols;
+  }
+
+  List<SymbolInfo> _applySortingToSymbols(List<SymbolInfo> symbols) {
+    final sorted = List<SymbolInfo>.from(symbols);
+    final tabIndex = _tabController.index;
+    final valuesForTab = _indicatorValuesForSorting[tabIndex] ?? {};
+    
+    switch (_currentSortOrder) {
+      case _MarketsSortOrder.descending:
+        sorted.sort((a, b) {
+          final valueA = valuesForTab[a.symbol] ?? double.negativeInfinity;
+          final valueB = valuesForTab[b.symbol] ?? double.negativeInfinity;
+          final comparison = valueB.compareTo(valueA);
+          if (comparison != 0) return comparison;
+          // If values are equal, maintain original order
+          final indexA = symbols.indexWhere((s) => s.symbol == a.symbol);
+          final indexB = symbols.indexWhere((s) => s.symbol == b.symbol);
+          return indexA.compareTo(indexB);
+        });
+        break;
+      case _MarketsSortOrder.ascending:
+        sorted.sort((a, b) {
+          final valueA = valuesForTab[a.symbol] ?? double.infinity;
+          final valueB = valuesForTab[b.symbol] ?? double.infinity;
+          final comparison = valueA.compareTo(valueB);
+          if (comparison != 0) return comparison;
+          // If values are equal, maintain original order
+          final indexA = symbols.indexWhere((s) => s.symbol == a.symbol);
+          final indexB = symbols.indexWhere((s) => s.symbol == b.symbol);
+          return indexA.compareTo(indexB);
+        });
+        break;
+      case _MarketsSortOrder.none:
+        // No sorting
+        break;
+    }
+    
+    return sorted;
+  }
+
+  /// Load only indicator values for all symbols (for sorting purposes)
+  /// This is lighter than full data load as it doesn't need full candle history
+  Future<void> _loadIndicatorValuesOnly() async {
+    if (_isLoadingIndicatorValues) return;
+    
+    // Check if we need to load values for sorting
+    if (_currentSortOrder != _MarketsSortOrder.descending &&
+        _currentSortOrder != _MarketsSortOrder.ascending) {
+      // Not sorting by indicator value, no need to load
+      return;
+    }
+
+    final tabIndex = _tabController.index;
+    
+    // Get original symbols list (not sorted) for current tab
+    List<SymbolInfo> originalSymbols;
+    switch (tabIndex) {
+      case 0:
+        originalSymbols = _cryptoSymbols;
+        break;
+      case 1:
+        originalSymbols = _indexSymbols;
+        break;
+      case 2:
+        originalSymbols = _forexSymbols;
+        break;
+      case 3:
+        originalSymbols = _commoditySymbols;
+        break;
+      default:
+        return;
+    }
+    
+    if (originalSymbols.isEmpty) return;
+
+    // Initialize maps for this tab if needed
+    _indicatorValuesForSorting[tabIndex] ??= {};
+    _indicatorValuesLoaded[tabIndex] ??= {};
+
+    // Filter symbols that don't have values loaded yet for this tab
+    final loadedForTab = _indicatorValuesLoaded[tabIndex] ?? <String>{};
+    final symbolsToLoad = originalSymbols
+        .where((s) => !loadedForTab.contains(s.symbol))
+        .map((s) => s.symbol)
+        .toList();
+
+    if (symbolsToLoad.isEmpty) return;
+
+    _isLoadingIndicatorValues = true;
+
+    final prefs = await SharedPreferences.getInstance();
+    final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    final indicatorKey = indicatorType.toJson();
+    final currentPeriod = prefs.getInt('markets_${indicatorKey}_period') ?? indicatorType.defaultPeriod;
+    final currentStochD = indicatorType == IndicatorType.stoch 
+        ? (prefs.getInt('markets_stoch_d_period') ?? 3)
+        : null;
+
+    // Load in batches to avoid overwhelming the server
+    const batchSize = 5;
+    const delayBetweenBatches = Duration(milliseconds: 300);
+
+    for (int i = 0; i < symbolsToLoad.length; i += batchSize) {
+      final batch = symbolsToLoad.skip(i).take(batchSize).toList();
+      await Future.wait(
+        batch.map((symbol) => _loadSingleIndicatorValue(
+          symbol,
+          indicatorType,
+          currentPeriod,
+          currentStochD,
+        )),
+        eagerError: false, // Continue even if some fail
+      );
+
+      // Add delay between batches
+      if (i + batchSize < symbolsToLoad.length) {
+        await Future.delayed(delayBetweenBatches);
+      }
+    }
+
+    _isLoadingIndicatorValues = false;
+
+    // After loading values, apply sorting and reload visible items
+    if (mounted) {
+      setState(() {
+        // Trigger rebuild with sorted list
+      });
+      // Load visible items in background, don't wait
+      unawaited(_loadVisibleItems());
+    }
+  }
+
+  /// Load only the latest indicator value for a single symbol (lightweight)
+  Future<void> _loadSingleIndicatorValue(
+    String symbol,
+    IndicatorType indicatorType,
+    int period,
+    int? stochD,
+  ) async {
+    final tabIndex = _tabController.index;
+    final loadedForTab = _indicatorValuesLoaded[tabIndex] ?? <String>{};
+    if (loadedForTab.contains(symbol)) return;
+
+    try {
+      // Calculate minimum candles needed (period + small buffer)
+      final periodBuffer = period + 20;
+      final limit = periodBuffer > 50 ? periodBuffer : 50;
+
+      final candles = await _yahooService.fetchCandles(
+        symbol,
+        _timeframe,
+        limit: limit,
+      );
+
+      if (candles.isEmpty) {
+        final tabIndex = _tabController.index;
+        _indicatorValuesLoaded[tabIndex] ??= <String>{};
+        _indicatorValuesLoaded[tabIndex]!.add(symbol);
+        return;
+      }
+
+      // Convert candles to format expected by IndicatorService
+      final candlesList = candles
+          .map(
+            (c) => {
+              'open': c.open,
+              'high': c.high,
+              'low': c.low,
+              'close': c.close,
+              'timestamp': c.timestamp,
+            },
+          )
+          .toList();
+
+      final indicatorParams =
+          indicatorType == IndicatorType.stoch && stochD != null
+              ? {'dPeriod': stochD}
+              : null;
+
+      final result = IndicatorService.calculateIndicatorHistory(
+        candlesList,
+        indicatorType,
+        period,
+        indicatorParams,
+      );
+
+      if (result.isNotEmpty) {
+        final currentValue = result.last.value;
+        final tabIndex = _tabController.index;
+        _indicatorValuesForSorting[tabIndex] ??= {};
+        _indicatorValuesForSorting[tabIndex]![symbol] = currentValue;
+      }
+
+      final tabIndex = _tabController.index;
+      _indicatorValuesLoaded[tabIndex] ??= {};
+      _indicatorValuesLoaded[tabIndex]!.add(symbol);
+    } catch (e) {
+      debugPrint('MarketsScreen: Error loading indicator value for $symbol: $e');
+      final tabIndex = _tabController.index;
+      _indicatorValuesLoaded[tabIndex] ??= {};
+      _indicatorValuesLoaded[tabIndex]!.add(symbol); // Mark as loaded to avoid retrying
     }
   }
 
@@ -972,8 +1336,20 @@ class _MarketsScreenState extends State<MarketsScreen>
           controller: _tabController,
           isScrollable: true,
           onTap: (index) {
-            // Load visible items when switching tabs
-            unawaited(_loadVisibleItems());
+            // Trigger immediate rebuild to show symbols
+            if (mounted) {
+              setState(() {
+                // Show symbols immediately
+              });
+            }
+            // Load data in background (don't block UI)
+            // If sorting by indicator value, load values first
+            if (_currentSortOrder == _MarketsSortOrder.descending || 
+                _currentSortOrder == _MarketsSortOrder.ascending) {
+              unawaited(_loadIndicatorValuesOnly());
+            } else {
+              unawaited(_loadVisibleItems());
+            }
           },
           tabs: [
             Tab(text: loc.t('markets_crypto')),
@@ -1207,8 +1583,55 @@ class _MarketsScreenState extends State<MarketsScreen>
                         ),
                         const SizedBox(height: 12),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            IconButton(
+                              icon: Icon(
+                                () {
+                                  switch (_currentSortOrder) {
+                                    case _MarketsSortOrder.descending:
+                                      return Icons.north;
+                                    case _MarketsSortOrder.ascending:
+                                      return Icons.south;
+                                    case _MarketsSortOrder.none:
+                                      return Icons.unfold_more;
+                                  }
+                                }(),
+                                color: () {
+                                  switch (_currentSortOrder) {
+                                    case _MarketsSortOrder.descending:
+                                      return Colors.green;
+                                    case _MarketsSortOrder.ascending:
+                                      return Colors.red;
+                                    case _MarketsSortOrder.none:
+                                      return Colors.grey[600];
+                                  }
+                                }(),
+                              ),
+                              tooltip: () {
+                                switch (_currentSortOrder) {
+                                  case _MarketsSortOrder.descending:
+                                    return loc.t('watchlist_sort_desc');
+                                  case _MarketsSortOrder.ascending:
+                                    return loc.t('watchlist_sort_asc');
+                                  case _MarketsSortOrder.none:
+                                    return loc.t('watchlist_sort_desc');
+                                }
+                              }(),
+                              onPressed: (_isLoading || _isActionInProgress)
+                                  ? null
+                                  : () {
+                                      final currentSymbols = _getCurrentTabSymbols();
+                                      if (currentSymbols.isEmpty) return;
+                                      // Cycle: none -> descending -> ascending -> descending
+                                      final targetOrder = _currentSortOrder ==
+                                              _MarketsSortOrder.descending
+                                          ? _MarketsSortOrder.ascending
+                                          : _MarketsSortOrder.descending;
+                                      _applySortOrder(targetOrder);
+                                    },
+                            ),
+                            const Spacer(),
+                            const SizedBox(width: 8),
                             IconButton(
                               icon: const Icon(Icons.refresh, size: 18),
                               tooltip: loc.t('watchlist_reset'),
@@ -1245,10 +1668,10 @@ class _MarketsScreenState extends State<MarketsScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildSymbolList(_cryptoSymbols, loc),
-                _buildSymbolList(_indexSymbols, loc),
-                _buildSymbolList(_forexSymbols, loc),
-                _buildSymbolList(_commoditySymbols, loc),
+                _buildSymbolList(loc),
+                _buildSymbolList(loc),
+                _buildSymbolList(loc),
+                _buildSymbolList(loc),
               ],
             ),
           ),
@@ -1257,13 +1680,15 @@ class _MarketsScreenState extends State<MarketsScreen>
     );
   }
 
-  Widget _buildSymbolList(List<SymbolInfo> symbols, AppLocalizations loc) {
+  Widget _buildSymbolList(AppLocalizations loc) {
     if (_isLoading && _indicatorDataMap.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final tabIndex = _tabController.index;
     final scrollController = _scrollControllers[tabIndex];
+    // Get sorted symbols for current tab
+    final symbols = _getCurrentTabSymbols();
 
     return RefreshIndicator(
       onRefresh: _loadAllIndicatorData,
