@@ -28,12 +28,15 @@ export type DataProvider = 'yahoo' | 'binance';
  * DataProviderService: Facade for selecting data provider
  * 
  * Logic:
- * - For crypto: Try Binance first, fallback to Yahoo on error
+ * - TEMPORARILY: Using only Yahoo (Binance disabled until proxy is set up)
+ * - FUTURE: For crypto: Try Binance first, fallback to Yahoo on error
  * - For non-crypto: Always use Yahoo
  * 
  * Cache key: Always uses Yahoo format (BTC-USD) for consistency
  */
 export class DataProviderService {
+    // Temporary flag to disable Binance until proxy is ready
+    private static readonly USE_BINANCE = false;
     constructor(
         private yahooService: YahooService,
         private binanceService: BinanceService,
@@ -65,7 +68,9 @@ export class DataProviderService {
         // Determine if crypto
         const isCrypto = SymbolMapper.isCrypto(symbol);
 
-        if (isCrypto) {
+        // TEMPORARILY DISABLED: Binance until proxy is set up
+        // Uncomment this block when proxy is ready and set USE_BINANCE = true
+        if (isCrypto && DataProviderService.USE_BINANCE) {
             // Try Binance first for crypto
             const binanceSymbol = SymbolMapper.yahooToBinance(symbol);
             if (binanceSymbol) {
@@ -84,7 +89,7 @@ export class DataProviderService {
             }
         }
 
-        // Use Yahoo (for non-crypto or as fallback for crypto)
+        // Use Yahoo (for all symbols while Binance is disabled)
         try {
             console.log(`DataProvider: Using Yahoo for ${symbol}`);
             const candles = await this.yahooService.getCandles(symbol, timeframe, options);
@@ -105,7 +110,8 @@ export class DataProviderService {
     async getQuote(symbol: string): Promise<{ quote: QuoteData; provider: DataProvider }> {
         const isCrypto = SymbolMapper.isCrypto(symbol);
 
-        if (isCrypto) {
+        // TEMPORARILY DISABLED: Binance until proxy is set up
+        if (isCrypto && DataProviderService.USE_BINANCE) {
             const binanceSymbol = SymbolMapper.yahooToBinance(symbol);
             if (binanceSymbol) {
                 try {
@@ -130,7 +136,8 @@ export class DataProviderService {
     async getSymbolInfo(symbol: string): Promise<{ info: SymbolInfo; provider: DataProvider }> {
         const isCrypto = SymbolMapper.isCrypto(symbol);
 
-        if (isCrypto) {
+        // TEMPORARILY DISABLED: Binance until proxy is set up
+        if (isCrypto && DataProviderService.USE_BINANCE) {
             const binanceSymbol = SymbolMapper.yahooToBinance(symbol);
             if (binanceSymbol) {
                 try {
