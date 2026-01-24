@@ -1,4 +1,4 @@
-import { CandleData, QuoteData, SymbolInfo } from './yahoo-service';
+import type { CandleData, QuoteData, SymbolInfo } from './yahoo-service';
 
 /**
  * BinanceService: Fetches market data from Binance API

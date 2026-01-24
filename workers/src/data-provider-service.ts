@@ -1,4 +1,4 @@
-import { YahooService, CandleData, QuoteData, SymbolInfo } from './yahoo-service';
+import { YahooService, type CandleData, type QuoteData, type SymbolInfo } from './yahoo-service';
 import { BinanceService } from './binance-service';
 import { SymbolMapper } from './symbol-mapper';
 

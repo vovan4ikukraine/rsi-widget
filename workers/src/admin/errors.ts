@@ -1,19 +1,6 @@
-import { Context } from 'hono';
-import { Env } from '../index';
+import type { Context } from 'hono';
+import type { Env } from '../index';
 import { Logger } from '../logger';
-
-interface ErrorLog {
-    id: number;
-    type: string;
-    message: string;
-    errorClass: string;
-    timestamp: string;
-    userId?: string;
-    context?: string;
-    symbol?: string;
-    timeframe?: string;
-    additionalData?: string;
-}
 
 interface ErrorGroup {
     type: string;
