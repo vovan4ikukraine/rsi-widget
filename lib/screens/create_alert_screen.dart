@@ -92,7 +92,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _upperLevelEnabled = true;
   String _mode = 'cross';
   int _cooldownSec = 600;
-  bool _repeatable = true;
   bool _soundEnabled = true;
   bool _alertOnClose = false;
   bool _isLoading = false;
@@ -149,7 +148,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _upperLevelEnabled = _levels.length > 1;
     _mode = alert.mode;
     _cooldownSec = alert.cooldownSec;
-    _repeatable = alert.repeatable;
     _soundEnabled = alert.soundEnabled;
     _alertOnClose = alert.alertOnClose;
 
@@ -899,16 +897,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           ),
             const SizedBox(height: 16),
             SwitchListTile(
-              title: Text(loc.t('create_alert_repeatable')),
-              subtitle: Text(loc.t('create_alert_repeatable_sub')),
-              value: _repeatable,
-              onChanged: (value) {
-                setState(() {
-                  _repeatable = value;
-                });
-              },
-            ),
-            SwitchListTile(
               title: Text(loc.t('create_alert_sound')),
               subtitle: Text(loc.t('create_alert_sound_sub')),
               value: _soundEnabled,
@@ -1136,7 +1124,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       alert.mode = 'cross'; // Always use cross mode with one-way crossing
       alert.cooldownSec = _cooldownSec;
       alert.active = true;
-      alert.repeatable = _repeatable;
       alert.soundEnabled = _soundEnabled;
       alert.alertOnClose = _alertOnClose;
       alert.description = _descriptionController.text.isEmpty
