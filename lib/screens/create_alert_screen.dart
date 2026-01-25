@@ -244,7 +244,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   const SizedBox(height: 16),
 
                   // Indicator settings
-                  _buildIndicatorSettingsCard(loc),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _buildIndicatorSettingsCard(loc),
+                  ),
                   const SizedBox(height: 16),
 
                   // Alert settings

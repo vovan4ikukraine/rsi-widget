@@ -18,16 +18,13 @@ class IndicatorSelector extends StatelessWidget {
     
     // Adaptive colors based on theme
     final backgroundColor = isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50];
-    final borderColor = isDark ? Colors.blue[400] : Colors.blue[300];
     final textColor = isDark ? Colors.blue[100] : Colors.blue[900];
     final iconColor = isDark ? Colors.blue[200] : Colors.blue[900];
     
     return Container(
       decoration: BoxDecoration(
         color: backgroundColor,
-        border: Border(
-          bottom: BorderSide(color: borderColor!, width: 2),
-        ),
+        // Removed bottom border
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
@@ -37,7 +34,7 @@ class IndicatorSelector extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: [
             Icon(Icons.trending_up, size: 22, color: iconColor),

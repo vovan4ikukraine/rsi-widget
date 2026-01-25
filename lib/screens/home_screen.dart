@@ -746,34 +746,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         title: Row(
           children: [
             Text(loc.t('home_title')),
-            // Data source indicator (hidden for production, can be enabled for testing)
-            // if (_dataSource != null) ...[
-            //   const SizedBox(width: 8),
-            //   Container(
-            //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            //     decoration: BoxDecoration(
-            //       color: _dataSource == 'cache'
-            //           ? Colors.green.withOpacity(0.2)
-            //           : Colors.orange.withOpacity(0.2),
-            //       borderRadius: BorderRadius.circular(4),
-            //       border: Border.all(
-            //         color:
-            //             _dataSource == 'cache' ? Colors.green : Colors.orange,
-            //         width: 1,
-            //       ),
-            //     ),
-            //     child: Text(
-            //       _dataSource!.toUpperCase(),
-            //       style: TextStyle(
-            //         fontSize: 10,
-            //         fontWeight: FontWeight.bold,
-            //         color: _dataSource == 'cache'
-            //             ? Colors.green[300]
-            //             : Colors.orange[300],
-            //       ),
-            //     ),
-            //   ),
-            // ],
+            // Data source indicator (only visible in debug mode)
+            if (kDebugMode && _dataSource != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _dataSource == 'cache'
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color:
+                        _dataSource == 'cache' ? Colors.green : Colors.orange,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  _dataSource!.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: _dataSource == 'cache'
+                        ? Colors.green[300]
+                        : Colors.orange[300],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         titleSpacing: 16, // Default spacing for Overview
@@ -862,7 +862,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(height: 10),
 
                             // Indicator settings
-                      _buildIndicatorSettingsCard(),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _buildIndicatorSettingsCard(),
+                      ),
                       const SizedBox(height: 10),
 
                             // Current indicator value

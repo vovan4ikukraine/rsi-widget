@@ -1419,7 +1419,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 // Collapsible settings bar (fixed)
                 Card(
                   key: _settingsKey,
-                  margin: EdgeInsets.zero,
+                  margin: const EdgeInsets.only(top: 8),
                   child: Column(
               children: [
                 InkWell(
