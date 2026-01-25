@@ -1329,6 +1329,63 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         title: Text(loc.t('watchlist_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
+        actions: [
+          // Timeframe selector button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+            child: PopupMenuButton<String>(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _timeframe,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+              ),
+              tooltip: loc.t('home_timeframe_label'),
+              onSelected: (value) async {
+                if (value != _timeframe) {
+                  setState(() {
+                    _timeframe = value;
+                  });
+                  _saveState();
+                  // Don't update widget timeframe - widget has its own timeframe selector
+                  _loadAllIndicatorData(); // Automatically reload data when timeframe changes
+                }
+              },
+              itemBuilder: (BuildContext context) => [
+                const PopupMenuItem(value: '1m', child: Text('1m')),
+                const PopupMenuItem(value: '5m', child: Text('5m')),
+                const PopupMenuItem(value: '15m', child: Text('15m')),
+                const PopupMenuItem(value: '1h', child: Text('1h')),
+                const PopupMenuItem(value: '4h', child: Text('4h')),
+                const PopupMenuItem(value: '1d', child: Text('1d')),
+              ],
+            ),
+          ),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -1395,53 +1452,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                         IntrinsicHeight(
                           child: Row(
                             children: [
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      loc.t('home_timeframe_label'),
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                    ),
-                                    const Spacer(),
-                                    DropdownButtonFormField<String>(
-                                      initialValue: _timeframe,
-                                      decoration: const InputDecoration(
-                                        border: OutlineInputBorder(),
-                                        isDense: true,
-                                        contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 8),
-                                      ),
-                                  isExpanded: true,
-                                  items: const [
-                                    DropdownMenuItem(
-                                        value: '1m', child: Text('1m')),
-                                    DropdownMenuItem(
-                                        value: '5m', child: Text('5m')),
-                                    DropdownMenuItem(
-                                        value: '15m', child: Text('15m')),
-                                    DropdownMenuItem(
-                                        value: '1h', child: Text('1h')),
-                                    DropdownMenuItem(
-                                        value: '4h', child: Text('4h')),
-                                    DropdownMenuItem(
-                                        value: '1d', child: Text('1d')),
-                                  ],
-                                  onChanged: (value) async {
-                                    if (value != null) {
-                                      setState(() {
-                                        _timeframe = value;
-                                      });
-                                      _saveState();
-                                      // Don't update widget timeframe - widget has its own timeframe selector
-                                      _loadAllIndicatorData(); // Automatically reload data when timeframe changes
-                                    }
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Column(

@@ -1343,6 +1343,67 @@ class _MarketsScreenState extends State<MarketsScreen>
         title: Text(loc.t('markets_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
+        actions: [
+          // Timeframe selector button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+            child: PopupMenuButton<String>(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _timeframe,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+              ),
+              tooltip: loc.t('home_timeframe_label'),
+              onSelected: (value) async {
+                if (value != _timeframe) {
+                  if (mounted) {
+                    setState(() {
+                      _timeframe = value;
+                    });
+                  }
+                  await _saveState();
+                  // Clear cache and reload when timeframe changes
+                  _loadedSymbols.clear();
+                  _indicatorDataMap.clear();
+                  unawaited(_loadVisibleItems());
+                }
+              },
+              itemBuilder: (BuildContext context) => [
+                const PopupMenuItem(value: '1m', child: Text('1m')),
+                const PopupMenuItem(value: '5m', child: Text('5m')),
+                const PopupMenuItem(value: '15m', child: Text('15m')),
+                const PopupMenuItem(value: '1h', child: Text('1h')),
+                const PopupMenuItem(value: '4h', child: Text('4h')),
+                const PopupMenuItem(value: '1d', child: Text('1d')),
+              ],
+            ),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: LayoutBuilder(
@@ -1492,57 +1553,6 @@ class _MarketsScreenState extends State<MarketsScreen>
           // Indicator selector (always at top)
           if (_appState != null) IndicatorSelector(appState: _appState!),
           
-          // Timeframe selector
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
-                    loc.t('home_timeframe_label'),
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _timeframe,
-                      decoration: InputDecoration(
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                      ),
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(value: '1m', child: Text('1m')),
-                        DropdownMenuItem(value: '5m', child: Text('5m')),
-                        DropdownMenuItem(value: '15m', child: Text('15m')),
-                        DropdownMenuItem(value: '1h', child: Text('1h')),
-                        DropdownMenuItem(value: '4h', child: Text('4h')),
-                        DropdownMenuItem(value: '1d', child: Text('1d')),
-                      ],
-                      onChanged: (value) async {
-                        if (value != null && value != _timeframe) {
-                          if (mounted) {
-                            setState(() {
-                              _timeframe = value;
-                            });
-                          }
-                          await _saveState();
-                          // Clear cache and reload when timeframe changes
-                          _loadedSymbols.clear();
-                          _indicatorDataMap.clear();
-                          unawaited(_loadVisibleItems());
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
           // Indicator settings
           Card(
             margin: EdgeInsets.zero,
