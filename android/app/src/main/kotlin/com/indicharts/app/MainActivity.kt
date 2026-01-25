@@ -1,4 +1,4 @@
-package com.example.rsi_widget
+package com.indicharts.app
 
 import android.content.Context
 import android.content.Intent
@@ -10,7 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 
 class MainActivity: FlutterActivity() {
-    private val CHANNEL = "com.example.rsi_widget/widget"
+    private val CHANNEL = "com.indicharts.app/widget"
     private val TAG = "MainActivity"
     private var methodChannel: MethodChannel? = null
 

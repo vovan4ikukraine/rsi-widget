@@ -1,4 +1,4 @@
-package com.example.rsi_widget
+package com.indicharts.app
 
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -24,8 +24,8 @@ class RSIWidgetProvider : AppWidgetProvider() {
     
     companion object {
         private const val TAG = "RSIWidgetProvider"
-        const val ACTION_UPDATE_WIDGET = "com.example.rsi_widget.UPDATE_WIDGET"
-        const val ACTION_REFRESH_WIDGET = "com.example.rsi_widget.REFRESH_WIDGET"
+        const val ACTION_UPDATE_WIDGET = "com.indicharts.app.UPDATE_WIDGET"
+        const val ACTION_REFRESH_WIDGET = "com.indicharts.app.REFRESH_WIDGET"
         private val widgetScope = CoroutineScope(Dispatchers.IO)
         @Volatile private var currentRefreshJob: Job? = null
         @Volatile private var currentRequestId: Long = 0
@@ -113,7 +113,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     updateAppWidget(context, appWidgetManager, appWidgetId)
                 }
             }
-            "com.example.rsi_widget.CHANGE_TIMEFRAME" -> {
+            "com.indicharts.app.CHANGE_TIMEFRAME" -> {
                 val newTimeframe = intent.getStringExtra("timeframe") ?: "15m"
                 val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
                 
@@ -326,7 +326,7 @@ class RSIWidgetProvider : AppWidgetProvider() {
                 
                 timeframeButtons.forEach { (buttonId, tf) ->
                     val tfIntent = Intent(context, RSIWidgetProvider::class.java).apply {
-                        action = "com.example.rsi_widget.CHANGE_TIMEFRAME"
+                        action = "com.indicharts.app.CHANGE_TIMEFRAME"
                         putExtra("timeframe", tf)
                         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     }

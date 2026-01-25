@@ -12,7 +12,7 @@ import 'indicator_service.dart';
 /// Service for updating Android widget with watchlist data
 class WidgetService {
   static const MethodChannel _channel =
-      MethodChannel('com.example.rsi_widget/widget');
+      MethodChannel('com.indicharts.app/widget');
   final YahooProtoSource yahooService;
 
   WidgetService({required this.yahooService});

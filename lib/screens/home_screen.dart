@@ -54,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'https://rsi-workers.vovan4ikukraine.workers.dev',
   );
   static const MethodChannel _channel = MethodChannel(
-    'com.example.rsi_widget/widget',
+    'com.indicharts.app/widget',
   );
   late final WidgetService _widgetService;
   late final IWatchlistRepository _watchlistRepository;

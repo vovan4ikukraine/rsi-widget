@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.rsi_widget"
+    namespace = "com.indicharts.app"
     compileSdk = 36
     ndkVersion = "26.1.10909125"
 
@@ -25,16 +25,31 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.rsi_widget"
+        applicationId = "com.indicharts.app"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            // TODO: Настройте путь к вашему keystore файлу
+            // storeFile file('path/to/your/keystore.jks')
+            // storePassword 'your-store-password'
+            // keyAlias 'your-key-alias'
+            // keyPassword 'your-key-password'
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            // Включить minification для уменьшения размера APK
+            minifyEnabled true
+            shrinkResources true
+            // Использовать release подпись (после настройки keystore)
+            signingConfig = signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

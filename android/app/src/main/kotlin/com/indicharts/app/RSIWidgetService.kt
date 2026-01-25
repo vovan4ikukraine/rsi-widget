@@ -1,4 +1,4 @@
-package com.example.rsi_widget
+package com.indicharts.app
 
 import android.content.Intent
 import android.widget.RemoteViews
