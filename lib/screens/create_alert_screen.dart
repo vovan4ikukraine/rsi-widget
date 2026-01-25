@@ -216,6 +216,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         title: Text(widget.alert == null
             ? loc.t('create_alert_title_new')
             : loc.t('create_alert_title_edit')),
+        titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [

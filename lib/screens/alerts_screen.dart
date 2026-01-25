@@ -160,6 +160,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('alerts_title')),
+        titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [

@@ -92,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('settings_title')),
+        titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
       ),

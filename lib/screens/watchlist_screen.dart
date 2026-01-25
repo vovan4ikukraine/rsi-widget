@@ -1343,6 +1343,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ],
           ],
         ),
+        titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
