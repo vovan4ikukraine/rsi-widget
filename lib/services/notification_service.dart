@@ -283,16 +283,37 @@ class NotificationService {
         'notification_watchlist_title',
         params: {'symbol': symbol},
       );
-      final body = message ??
-          await AppLocalizations.tByLanguage(
-            languageCode,
-            'notification_rsi_alert_body',
-            params: {
-              'rsi': rsi.toStringAsFixed(2),
-              'level': level.toStringAsFixed(0),
-              'type': type,
-            },
-          );
+      
+      // Localize message if it contains "above", "below", or "between"
+      String localizedMessage = message ?? '';
+      if (localizedMessage.isNotEmpty) {
+        final above = await AppLocalizations.tByLanguage(languageCode, 'alert_above');
+        final below = await AppLocalizations.tByLanguage(languageCode, 'alert_below');
+        final between = await AppLocalizations.tByLanguage(languageCode, 'alert_between');
+        
+        localizedMessage = localizedMessage
+            .replaceAll(' above ', ' $above ')
+            .replaceAll(' below ', ' $below ')
+            .replaceAll(' between ', ' $between ')
+            .replaceAll('above ', '$above ')
+            .replaceAll('below ', '$below ')
+            .replaceAll('between ', '$between ')
+            .replaceAll(' above', ' $above')
+            .replaceAll(' below', ' $below')
+            .replaceAll(' between', ' $between');
+      } else {
+        localizedMessage = await AppLocalizations.tByLanguage(
+          languageCode,
+          'notification_rsi_alert_body',
+          params: {
+            'rsi': rsi.toStringAsFixed(2),
+            'level': level.toStringAsFixed(0),
+            'type': type,
+          },
+        );
+      }
+      
+      final body = localizedMessage;
 
       final channelName = await AppLocalizations.tByLanguage(
         languageCode,

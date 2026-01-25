@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
+import '../localization/app_localizations.dart';
 import 'rsi_service.dart';
 import 'stochastic_service.dart';
 import 'williams_service.dart';
@@ -205,13 +206,14 @@ class IndicatorService {
     IndicatorZone zone,
     BuildContext context,
   ) {
+    final loc = AppLocalizations.of(context);
     switch (zone) {
       case IndicatorZone.below:
-        return 'Below';
+        return loc.t('zone_below');
       case IndicatorZone.between:
-        return 'Between';
+        return loc.t('zone_between');
       case IndicatorZone.above:
-        return 'Above';
+        return loc.t('zone_above');
     }
   }
 

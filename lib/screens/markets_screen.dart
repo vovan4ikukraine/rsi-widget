@@ -1327,36 +1327,164 @@ class _MarketsScreenState extends State<MarketsScreen>
   @override
   Widget build(BuildContext context) {
     final loc = context.loc;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // Tab texts for width calculation
+    final tabTexts = [
+      loc.t('markets_crypto'),
+      loc.t('markets_indexes'),
+      loc.t('markets_forex'),
+      loc.t('markets_commodities'),
+    ];
+    
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('markets_title')),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          onTap: (index) {
-            // Trigger immediate rebuild to show symbols
-            if (mounted) {
-              setState(() {
-                // Show symbols immediately
-              });
-            }
-            // Load data in background (don't block UI)
-            // If sorting by indicator value, load values first
-            if (_currentSortOrder == _MarketsSortOrder.descending || 
-                _currentSortOrder == _MarketsSortOrder.ascending) {
-              unawaited(_loadIndicatorValuesOnly());
-            } else {
-              unawaited(_loadVisibleItems());
-            }
-          },
-          tabs: [
-            Tab(text: loc.t('markets_crypto')),
-            Tab(text: loc.t('markets_indexes')),
-            Tab(text: loc.t('markets_forex')),
-            Tab(text: loc.t('markets_commodities')),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Estimate total width needed for all tabs
+              final textStyle = const TextStyle(fontSize: 14);
+              final textPainter = TextPainter(
+                textDirection: TextDirection.ltr,
+                text: TextSpan(text: '', style: textStyle),
+              );
+              
+              double maxTabTextWidth = 0;
+              for (final text in tabTexts) {
+                textPainter.text = TextSpan(text: text, style: textStyle);
+                textPainter.layout();
+                final textWidth = textPainter.width;
+                if (textWidth > maxTabTextWidth) {
+                  maxTabTextWidth = textWidth;
+                }
+              }
+              
+              // Check if all tabs fit on screen when stretched to fill width
+              // Each tab will get availableWidth / tabCount when stretched
+              // We need to ensure the widest tab's text fits in that space
+              final availableWidth = constraints.maxWidth;
+              final widthPerTab = availableWidth / tabTexts.length;
+              // Check if the widest tab's text fits in allocated space
+              // Add some margin (20px) for padding and safety
+              final fitsOnScreen = maxTabTextWidth <= widthPerTab - 20;
+              
+              return TabBar(
+                controller: _tabController,
+                isScrollable: !fitsOnScreen,
+                tabAlignment: fitsOnScreen ? TabAlignment.fill : TabAlignment.start,
+                labelColor: Colors.white,
+                unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white.withOpacity(0.7),
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.normal,
+                  fontSize: 14,
+                ),
+                indicatorColor: Colors.white,
+                indicatorWeight: 3,
+                labelPadding: EdgeInsets.zero,
+                padding: EdgeInsets.zero,
+                dividerColor: Colors.transparent,
+                tabs: [
+                  Tab(
+                    child: fitsOnScreen
+                        ? Center(
+                            child: Text(
+                              loc.t('markets_crypto'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Text(
+                              loc.t('markets_crypto'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                  ),
+                  Tab(
+                    child: fitsOnScreen
+                        ? Center(
+                            child: Text(
+                              loc.t('markets_indexes'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Text(
+                              loc.t('markets_indexes'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                  ),
+                  Tab(
+                    child: fitsOnScreen
+                        ? Center(
+                            child: Text(
+                              loc.t('markets_forex'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Text(
+                              loc.t('markets_forex'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                  ),
+                  Tab(
+                    child: fitsOnScreen
+                        ? Center(
+                            child: Text(
+                              loc.t('markets_commodities'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Text(
+                              loc.t('markets_commodities'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                  ),
+                ],
+                onTap: (index) {
+                  // Trigger immediate rebuild to show symbols
+                  if (mounted) {
+                    setState(() {
+                      // Show symbols immediately
+                    });
+                  }
+                  // Load data in background (don't block UI)
+                  // If sorting by indicator value, load values first
+                  if (_currentSortOrder == _MarketsSortOrder.descending || 
+                      _currentSortOrder == _MarketsSortOrder.ascending) {
+                    unawaited(_loadIndicatorValuesOnly());
+                  } else {
+                    unawaited(_loadVisibleItems());
+                  }
+                },
+              );
+            },
+          ),
         ),
       ),
       body: Column(
