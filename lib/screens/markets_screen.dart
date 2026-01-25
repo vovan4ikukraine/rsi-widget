@@ -1378,13 +1378,13 @@ class _MarketsScreenState extends State<MarketsScreen>
                 isScrollable: !fitsOnScreen,
                 tabAlignment: fitsOnScreen ? TabAlignment.fill : TabAlignment.start,
                 labelColor: Colors.white,
-                unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white.withOpacity(0.7),
+                unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white.withOpacity(0.9),
                 labelStyle: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
                 unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.normal,
+                  fontWeight: FontWeight.w500, // Slightly bolder for better visibility
                   fontSize: 14,
                 ),
                 indicatorColor: Colors.white,

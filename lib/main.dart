@@ -116,51 +116,119 @@ class _RSIWidgetAppState extends State<RSIWidgetApp> {
           theme: ThemeData(
             useMaterial3: true,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
+              seedColor: const Color(0xFF2563EB), // Modern blue
               brightness: Brightness.light,
             ),
-            scaffoldBackgroundColor: const Color(0xFFF4F6FB),
+            scaffoldBackgroundColor: const Color(0xFFE8EAED), // Darker background for better contrast
             cardTheme: CardThemeData(
               color: Colors.white,
-              elevation: 6,
-              shadowColor: Colors.black.withValues(alpha: 0.08),
+              elevation: 3, // Visible shadow
+              shadowColor: Colors.black.withValues(alpha: 0.1), // Shadow
+              surfaceTintColor: Colors.transparent,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
+                // Removed border to avoid double-layer effect
               ),
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+              margin: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
             ),
             inputDecorationTheme: InputDecorationTheme(
               filled: true,
-              fillColor: const Color(0xFFFCFDFF),
+              fillColor: const Color(0xFFF8F9FA), // Light gray background to distinguish from cards
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFD8DEEB)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFD8DEEB)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide(
-                  color: Colors.blue.withValues(alpha: 0.5),
-                  width: 1.6,
+                  color: Colors.grey.withValues(alpha: 0.3), // More visible border
+                  width: 1,
                 ),
               ),
-              labelStyle: const TextStyle(
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3), // More visible border
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: Color(0xFF2563EB), // Modern blue
+                  width: 2,
+                ),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Colors.red.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: Colors.red,
+                  width: 2,
+                ),
+              ),
+              labelStyle: TextStyle(
                 overflow: TextOverflow.visible,
+                color: Colors.grey[700], // Better contrast
+              ),
+              floatingLabelStyle: const TextStyle(
+                color: Color(0xFF2563EB),
               ),
               floatingLabelBehavior: FloatingLabelBehavior.always,
               isDense: false,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
             dropdownMenuTheme: DropdownMenuThemeData(
-              textStyle: TextStyle(color: Colors.blueGrey[900], fontSize: 14),
+              textStyle: const TextStyle(
+                color: Color(0xFF1F2937), // Darker, better contrast
+                fontSize: 14,
+              ),
+              menuStyle: MenuStyle(
+                backgroundColor: WidgetStateProperty.all(Colors.white),
+                elevation: WidgetStateProperty.all(8),
+                shadowColor: WidgetStateProperty.all(
+                  Colors.black.withValues(alpha: 0.1),
+                ),
+              ),
             ),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.black87,
+            appBarTheme: AppBarTheme(
+              backgroundColor: Colors.white, // Clean white app bar
+              foregroundColor: const Color(0xFF1F2937), // Dark text
               elevation: 0,
+              surfaceTintColor: Colors.transparent,
+              shadowColor: Colors.black.withValues(alpha: 0.05),
+              scrolledUnderElevation: 1,
+            ),
+            dividerTheme: DividerThemeData(
+              color: Colors.grey.withValues(alpha: 0.12),
+              thickness: 1,
+              space: 1,
+            ),
+            listTileTheme: ListTileThemeData(
+              tileColor: Colors.white,
+              selectedTileColor: const Color(0xFF2563EB).withValues(alpha: 0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                elevation: 2,
+                shadowColor: Colors.black.withValues(alpha: 0.1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+            iconButtonTheme: IconButtonThemeData(
+              style: IconButton.styleFrom(
+                foregroundColor: const Color(0xFF1F2937),
+              ),
             ),
           ),
           darkTheme: ThemeData(

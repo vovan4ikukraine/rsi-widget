@@ -1800,16 +1800,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _showCreateAlertDialog(),
-                    icon: const Icon(Icons.add_alert),
+                    icon: const Icon(Icons.add_alert, size: 20),
                     label: Text(loc.t('home_create_alert')),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 48), // Minimum height for consistency
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _loadIndicatorData(),
-                    icon: const Icon(Icons.refresh),
+                    icon: const Icon(Icons.refresh, size: 20),
                     label: Text(loc.t('home_refresh')),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 48), // Minimum height for consistency
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
                   ),
                 ),
               ],
