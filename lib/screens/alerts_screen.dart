@@ -97,7 +97,7 @@ class _AlertsScreenState extends State<AlertsScreen>
                 a.description!.toUpperCase().contains('WATCHLIST:'))
             .length;
         debugPrint(
-            'AlertsScreen: Loaded ${allAlerts.length} total alerts (${watchlistCount} Watchlist Alerts, ${allAlerts.length - watchlistCount} custom alerts)');
+            'AlertsScreen: Loaded ${allAlerts.length} total alerts ($watchlistCount Watchlist Alerts, ${allAlerts.length - watchlistCount} custom alerts)');
       }
 
       final events = await widget.isar.alertEvents.where().findAll();

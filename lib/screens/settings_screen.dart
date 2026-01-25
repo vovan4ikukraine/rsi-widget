@@ -180,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? NetworkImage(AuthService.photoUrl!)
                         : null,
                     child: AuthService.photoUrl == null
-                        ? Icon(Icons.person)
+                        ? const Icon(Icons.person)
                         : null,
                   ),
                   title: Text(
@@ -277,12 +277,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _theme,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(context);
                   setState(() {
                     _theme = value;
                   });
                   await appState.setTheme(value);
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted) {
+                    navigator.pop();
+                  }
                 },
               ),
             ),
@@ -293,12 +296,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _theme,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(context);
                   setState(() {
                     _theme = value;
                   });
                   await appState.setTheme(value);
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted) {
+                    navigator.pop();
+                  }
                 },
               ),
             ),
@@ -325,12 +331,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _language,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(context);
                   setState(() {
                     _language = value;
                   });
                   await appState.setLanguage(value);
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted) {
+                    navigator.pop();
+                  }
                 },
               ),
             ),
@@ -341,12 +350,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _language,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(context);
                   setState(() {
                     _language = value;
                   });
                   await appState.setLanguage(value);
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted) {
+                    navigator.pop();
+                  }
                 },
               ),
             ),
@@ -357,12 +369,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _language,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(context);
                   setState(() {
                     _language = value;
                   });
                   await appState.setLanguage(value);
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted) {
+                    navigator.pop();
+                  }
                 },
               ),
             ),
@@ -378,8 +393,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? true;
 
+    if (!mounted) return;
+    final dialogContext = context;
     showDialog(
-      context: context,
+      context: dialogContext,
       builder: (context) => AlertDialog(
         title: Text(loc.t('settings_widget_indicator_select')),
         content: Column(
@@ -396,7 +413,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _widgetIndicator = value;
                   });
                   await _saveSettings();
-                  Navigator.pop(context);
+                  if (mounted && dialogContext.mounted) {
+                    final navigator = Navigator.of(dialogContext);
+                    navigator.pop();
+                  }
                   
                   // Update widget with new indicator
                   if (_widgetService != null) {
@@ -429,12 +449,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       indicatorParams = {'dPeriod': stochDPeriod};
                       
                       // DEBUG: Log STOCH parameters
-                      print('SettingsScreen: Updating widget with STOCH - period (K): $indicatorPeriod, dPeriod (D): $stochDPeriod');
-                      print('SettingsScreen: watchlist_stoch_d_period=$watchlistStochD, home_stoch_d_period=$homeStochD');
+                      debugPrint('SettingsScreen: Updating widget with STOCH - period (K): $indicatorPeriod, dPeriod (D): $stochDPeriod');
+                      debugPrint('SettingsScreen: watchlist_stoch_d_period=$watchlistStochD, home_stoch_d_period=$homeStochD');
                     }
                     
                     // DEBUG: Log parameters being used
-                    print('SettingsScreen: Updating widget with indicator=$indicatorKey, timeframe=$indicatorTimeframe (watchlist=$watchlistTimeframe, home=$homeTimeframe), period=$indicatorPeriod (watchlist=$watchlistPeriod, home=$homePeriod)');
+                    debugPrint('SettingsScreen: Updating widget with indicator=$indicatorKey, timeframe=$indicatorTimeframe (watchlist=$watchlistTimeframe, home=$homeTimeframe), period=$indicatorPeriod (watchlist=$watchlistPeriod, home=$homePeriod)');
                     
                     await _widgetService!.updateWidget(
                       timeframe: indicatorTimeframe,

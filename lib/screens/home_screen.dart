@@ -289,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final minimizeAfterUpdate =
             call.arguments['minimizeAfterUpdate'] as bool? ?? false;
 
-        print(
+        debugPrint(
           'HomeScreen: Refresh widget requested - timeframe: $timeframe, period: $rsiPeriod, minimize: $minimizeAfterUpdate',
         );
 
@@ -306,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           indicatorParams: indicatorParams,
         );
 
-        print('HomeScreen: Widget updated successfully');
+        debugPrint('HomeScreen: Widget updated successfully');
 
         // Small additional delay to ensure data is loaded
         // Native part minimizes application after 2 seconds
@@ -522,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
 
     // Clear cache for current symbol/timeframe to force fresh data fetch
-    final cacheKey = '${_selectedSymbol}:$_selectedTimeframe';
+    final cacheKey = '$_selectedSymbol:$_selectedTimeframe';
     DataCache.clearCandles(cacheKey);
 
     // Load fresh data
@@ -753,8 +753,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: _dataSource == 'cache'
-                      ? Colors.green.withOpacity(0.2)
-                      : Colors.orange.withOpacity(0.2),
+                      ? Colors.green.withValues(alpha: 0.2)
+                      : Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
                     color:
@@ -1277,7 +1277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 4),
                       DropdownButtonFormField<String>(
-                        value: _selectedTimeframe,
+                        initialValue: _selectedTimeframe,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
                           isDense: true,

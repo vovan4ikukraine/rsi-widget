@@ -27,8 +27,9 @@ class AlertRule {
   // Helper getter/setter for indicatorParams (converts to/from JSON)
   @ignore
   Map<String, dynamic>? get indicatorParams {
-    if (indicatorParamsJson == null || indicatorParamsJson!.isEmpty)
+    if (indicatorParamsJson == null || indicatorParamsJson!.isEmpty) {
       return null;
+    }
     try {
       return Map<String, dynamic>.from(jsonDecode(indicatorParamsJson!));
     } catch (e) {

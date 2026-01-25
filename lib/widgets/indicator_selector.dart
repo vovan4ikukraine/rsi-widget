@@ -17,7 +17,7 @@ class IndicatorSelector extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     
     // Adaptive colors based on theme
-    final backgroundColor = isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50];
+    final backgroundColor = isDark ? Colors.blue[900]?.withValues(alpha: 0.3) : Colors.blue[50];
     final textColor = isDark ? Colors.blue[100] : Colors.blue[900];
     final iconColor = isDark ? Colors.blue[200] : Colors.blue[900];
     
@@ -27,7 +27,7 @@ class IndicatorSelector extends StatelessWidget {
         // Removed bottom border
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

@@ -1351,13 +1351,32 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             child: PopupMenuButton<String>(
+              tooltip: loc.t('home_timeframe_label'),
+              onSelected: (value) async {
+                if (value != _timeframe) {
+                  setState(() {
+                    _timeframe = value;
+                  });
+                  _saveState();
+                  // Don't update widget timeframe - widget has its own timeframe selector
+                  _loadAllIndicatorData(); // Automatically reload data when timeframe changes
+                }
+              },
+              itemBuilder: (BuildContext context) => [
+                const PopupMenuItem(value: '1m', child: Text('1m')),
+                const PopupMenuItem(value: '5m', child: Text('5m')),
+                const PopupMenuItem(value: '15m', child: Text('15m')),
+                const PopupMenuItem(value: '1h', child: Text('1h')),
+                const PopupMenuItem(value: '4h', child: Text('4h')),
+                const PopupMenuItem(value: '1d', child: Text('1d')),
+              ],
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -1381,25 +1400,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   ],
                 ),
               ),
-              tooltip: loc.t('home_timeframe_label'),
-              onSelected: (value) async {
-                if (value != _timeframe) {
-                  setState(() {
-                    _timeframe = value;
-                  });
-                  _saveState();
-                  // Don't update widget timeframe - widget has its own timeframe selector
-                  _loadAllIndicatorData(); // Automatically reload data when timeframe changes
-                }
-              },
-              itemBuilder: (BuildContext context) => [
-                const PopupMenuItem(value: '1m', child: Text('1m')),
-                const PopupMenuItem(value: '5m', child: Text('5m')),
-                const PopupMenuItem(value: '15m', child: Text('15m')),
-                const PopupMenuItem(value: '1h', child: Text('1h')),
-                const PopupMenuItem(value: '4h', child: Text('4h')),
-                const PopupMenuItem(value: '1d', child: Text('1d')),
-              ],
             ),
           ),
         ],
@@ -1908,10 +1908,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Card(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       child: ExpansionTile(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.notifications_active, size: 20),
-            const SizedBox(width: 8),
+            Icon(Icons.notifications_active, size: 20),
+            SizedBox(width: 8),
             Text(
               'Watchlist Alert',
               style: const TextStyle(
@@ -1973,7 +1973,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
-                      value: _massAlertTimeframe,
+                      initialValue: _massAlertTimeframe,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -2499,7 +2499,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2510,7 +2510,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             if (a.description != watchlistAlertDescription) {
               // Also check alternative description format for WPR (if server returned 'williams')
               if (indicatorType == IndicatorType.williams) {
-                final altDescription = 'WATCHLIST: Mass alert for williams';
+                const altDescription = 'WATCHLIST: Mass alert for williams';
                 if (a.description != altDescription) return false;
               } else {
                 return false;
@@ -2654,7 +2654,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..repeatable = _massAlertRepeatable
             ..soundEnabled = true
             ..alertOnClose = _massAlertOnClose
-            ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
+            ..description = 'WATCHLIST: Mass alert for $indicatorName'
             ..createdAt = createdAt;
 
           await widget.isar.alertRules.put(alert);
@@ -2708,8 +2708,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
     } catch (e) {
       debugPrint('Error creating mass alerts: $e');
-      final loc = context.loc;
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2775,7 +2775,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
       final indicatorName = indicatorType.toJson();
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2786,7 +2786,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             if (a.description != watchlistAlertDescription) {
               // Also check alternative description format for WPR (if server returned 'williams')
               if (indicatorType == IndicatorType.williams) {
-                final altDescription = 'WATCHLIST: Mass alert for williams';
+                const altDescription = 'WATCHLIST: Mass alert for williams';
                 if (a.description != altDescription) return false;
               } else {
                 return false;
@@ -2886,8 +2886,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       }
     } catch (e) {
       debugPrint('Error deleting mass alerts: $e');
-      final loc = context.loc;
       if (mounted) {
+        final loc = context.loc;
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2957,7 +2957,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for ${indicatorName}';
+      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2968,7 +2968,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             if (a.description != watchlistAlertDescription) {
               // Also check alternative description format for WPR (if server returned 'williams')
               if (indicatorType == IndicatorType.williams) {
-                final altDescription = 'WATCHLIST: Mass alert for williams';
+                const altDescription = 'WATCHLIST: Mass alert for williams';
                 if (a.description != altDescription) return false;
               } else {
                 return false;
@@ -3078,7 +3078,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ..repeatable = _massAlertRepeatable
               ..soundEnabled = true
               ..alertOnClose = _massAlertOnClose
-              ..description = 'WATCHLIST: Mass alert for ${indicatorName}'
+              ..description = 'WATCHLIST: Mass alert for $indicatorName'
               ..createdAt = createdAt;
 
             await widget.isar.alertRules.put(alert);

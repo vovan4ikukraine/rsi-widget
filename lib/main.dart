@@ -17,7 +17,6 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'localization/app_localizations.dart';
 import 'state/app_state.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 void main() async {
@@ -388,7 +387,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Show login screen only on first launch

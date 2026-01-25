@@ -111,7 +111,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   final Set<String> _loadingSymbols = {};
   // Track which symbols have been loaded at least once (for cache check)
   final Set<String> _loadedSymbols = {};
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isActionInProgress = false;
 
   // Scroll controllers for each tab to detect visible items
@@ -334,7 +334,7 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   void _loadSymbols() {
     // Load symbols from popular_symbols.dart and categorize them
-    final allSymbols = popularSymbols;
+    const allSymbols = popularSymbols;
 
     // Crypto: top 50 by market cap
     _cryptoSymbols =
@@ -349,7 +349,7 @@ class _MarketsScreenState extends State<MarketsScreen>
         allSymbols.where((s) => s.type == 'currency').toList();
 
     // Commodities: popular in prop firms (FTMO, 5ers, Funding Pips)
-    _commoditySymbols = [
+    _commoditySymbols = const [
       SymbolInfo(
         symbol: 'GC=F',
         name: 'Gold Futures',
@@ -666,18 +666,14 @@ class _MarketsScreenState extends State<MarketsScreen>
         // Try parsing as double first (handles negative values)
         lower = double.tryParse(lowerText);
         // If that fails, try as int
-        if (lower == null) {
-          lower = int.tryParse(lowerText)?.toDouble();
-        }
+        lower ??= int.tryParse(lowerText)?.toDouble();
       }
       
       if (upperText.isNotEmpty) {
         // Try parsing as double first (handles negative values)
         upper = double.tryParse(upperText);
         // If that fails, try as int
-        if (upper == null) {
-          upper = int.tryParse(upperText)?.toDouble();
-        }
+        upper ??= int.tryParse(upperText)?.toDouble();
       }
       
       final stochDPeriod = indicatorType == IndicatorType.stoch 
@@ -866,7 +862,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     // Calculate visible range (roughly 2 screen heights worth of items)
     final viewportHeight = controller.position.viewportDimension;
     final scrollOffset = controller.offset;
-    final itemHeight = 140.0; // Approximate height of each card
+    const itemHeight = 140.0; // Approximate height of each card
 
     final firstVisibleIndex = (scrollOffset / itemHeight).floor();
     final visibleCount =
@@ -1400,36 +1396,6 @@ class _MarketsScreenState extends State<MarketsScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             child: PopupMenuButton<String>(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _timeframe,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.arrow_drop_down,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
               tooltip: loc.t('home_timeframe_label'),
               onSelected: (value) async {
                 if (value != _timeframe) {
@@ -1453,6 +1419,36 @@ class _MarketsScreenState extends State<MarketsScreen>
                 const PopupMenuItem(value: '4h', child: Text('4h')),
                 const PopupMenuItem(value: '1d', child: Text('1d')),
               ],
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _timeframe,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -1461,10 +1457,10 @@ class _MarketsScreenState extends State<MarketsScreen>
           child: LayoutBuilder(
             builder: (context, constraints) {
               // Estimate total width needed for all tabs
-              final textStyle = const TextStyle(fontSize: 14);
+              const textStyle = TextStyle(fontSize: 14);
               final textPainter = TextPainter(
                 textDirection: TextDirection.ltr,
-                text: TextSpan(text: '', style: textStyle),
+                text: const TextSpan(text: '', style: textStyle),
               );
               
               double maxTabTextWidth = 0;
@@ -1491,7 +1487,7 @@ class _MarketsScreenState extends State<MarketsScreen>
                 isScrollable: !fitsOnScreen,
                 tabAlignment: fitsOnScreen ? TabAlignment.fill : TabAlignment.start,
                 labelColor: Colors.white,
-                unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white.withOpacity(0.9),
+                unselectedLabelColor: isDark ? Colors.grey[400] : Colors.white.withValues(alpha: 0.9),
                 labelStyle: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,

@@ -1106,8 +1106,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
       // Read levels directly from controllers (validation already done by FormField validators)
       // Always send array with 2 elements: [lower, upper], where disabled level is null
-      double? lowerLevel = null;
-      double? upperLevel = null;
+      double? lowerLevel;
+      double? upperLevel;
       
       if (_lowerLevelEnabled && _lowerLevelController.text.isNotEmpty) {
         lowerLevel = int.tryParse(_lowerLevelController.text)?.toDouble();

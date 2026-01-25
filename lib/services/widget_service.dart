@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -56,7 +57,7 @@ class WidgetService {
       await prefs.setBool('rsi_widget_sort_descending', finalSortDescending);
       
       // DEBUG: Log indicator being saved
-      print('WidgetService: Saving widget_indicator=${finalIndicator.toJson()}, period=$finalPeriod, params=$finalIndicatorParams');
+      debugPrint('WidgetService: Saving widget_indicator=${finalIndicator.toJson()}, period=$finalPeriod, params=$finalIndicatorParams');
 
       // Load watchlist
       final watchlistItems = await isar.watchlistItems.where().findAll();
@@ -135,7 +136,7 @@ class WidgetService {
           });
         } catch (e) {
           // Skip symbols with errors
-          print('Error loading data for ${item.symbol}: $e');
+          debugPrint('Error loading data for ${item.symbol}: $e');
           continue;
         }
       }
@@ -200,14 +201,14 @@ class WidgetService {
           // Also reload widget timeline
           await _channel.invokeMethod('reloadWidgetTimeline');
         } catch (e) {
-          print('Error saving to iOS App Group: $e');
+          debugPrint('Error saving to iOS App Group: $e');
           // Fallback: save to standard UserDefaults (will need App Group configured)
         }
       }
 
-      print('Widget updated with ${widgetData.length} items');
+      debugPrint('Widget updated with ${widgetData.length} items');
     } catch (e) {
-      print('Error updating widget: $e');
+      debugPrint('Error updating widget: $e');
     }
   }
 

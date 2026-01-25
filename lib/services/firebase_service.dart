@@ -44,11 +44,11 @@ class FirebaseService {
       // Get token in background to avoid blocking app startup
       _getFcmToken().then((token) {
         if (kDebugMode && token != null) {
-          print('FCM Token obtained: $token');
+          debugPrint('FCM Token obtained: $token');
         }
       }).catchError((e) {
         if (kDebugMode) {
-          print('Error getting FCM token in background: $e');
+          debugPrint('Error getting FCM token in background: $e');
         }
       });
 
