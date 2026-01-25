@@ -14,11 +14,17 @@ import '../widgets/indicator_selector.dart';
 class CreateAlertScreen extends StatefulWidget {
   final Isar isar;
   final AlertRule? alert;
+  final String? initialSymbol;
+  final String? initialTimeframe;
+  final int? initialPeriod;
 
   const CreateAlertScreen({
     super.key,
     required this.isar,
     this.alert,
+    this.initialSymbol,
+    this.initialTimeframe,
+    this.initialPeriod,
   });
 
   @override
@@ -119,7 +125,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     // If creating new alert, use selected indicator
     if (widget.alert == null && _appState != null && !_controllersInitialized) {
       final indicatorType = _appState!.selectedIndicator;
-      _indicatorPeriod = indicatorType.defaultPeriod;
+      
+      // Use initial period if provided, otherwise use default
+      _indicatorPeriod = widget.initialPeriod ?? indicatorType.defaultPeriod;
+      
       _levels = List.from(indicatorType.defaultLevels);
       _lowerLevelEnabled = _levels.isNotEmpty;
       _upperLevelEnabled = _levels.length > 1;
@@ -133,6 +142,15 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       if (_levels.length > 1 && _upperLevelController.text.isEmpty) {
         _upperLevelController.text = _levels[1].toInt().toString();
       }
+      
+      // Set initial symbol and timeframe if provided
+      if (widget.initialSymbol != null && widget.initialSymbol!.isNotEmpty) {
+        _symbolController.text = widget.initialSymbol!;
+      }
+      if (widget.initialTimeframe != null && widget.initialTimeframe!.isNotEmpty) {
+        _selectedTimeframe = widget.initialTimeframe!;
+      }
+      
       _controllersInitialized = true;
     }
   }
@@ -338,8 +356,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 FocusNode focusNode,
                 VoidCallback onFieldSubmitted,
               ) {
-                // Initialize controller only once when editing
-                if (widget.alert != null && _symbolController.text.isNotEmpty) {
+                // Initialize controller when editing or when initial symbol is provided
+                if ((widget.alert != null || widget.initialSymbol != null) && 
+                    _symbolController.text.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (textEditingController.text != _symbolController.text) {
                       textEditingController.text = _symbolController.text;
@@ -604,6 +623,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                       ),
                       const Spacer(),
                       TextFormField(
+                        key: ValueKey('period_$_indicatorPeriod'),
                         initialValue: _indicatorPeriod.toString(),
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),

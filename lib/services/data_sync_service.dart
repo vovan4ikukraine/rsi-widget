@@ -560,12 +560,21 @@ class DataSyncService {
       }
 
       final decoded = jsonDecode(response.body);
+      
+      // Helper function to safely convert int or double to double?
+      double? _toDouble(dynamic value) {
+        if (value == null) return null;
+        if (value is double) return value;
+        if (value is int) return value.toDouble();
+        return null;
+      }
+      
       return {
         'symbol': decoded['selected_symbol'] as String?,
         'timeframe': decoded['selected_timeframe'] as String?,
         'rsiPeriod': decoded['rsi_period'] as int?,
-        'lowerLevel': decoded['lower_level'] as double?,
-        'upperLevel': decoded['upper_level'] as double?,
+        'lowerLevel': _toDouble(decoded['lower_level']),
+        'upperLevel': _toDouble(decoded['upper_level']),
       };
     } catch (e, stackTrace) {
       if (kDebugMode) {

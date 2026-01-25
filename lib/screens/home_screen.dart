@@ -1122,6 +1122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       AutocompleteOnSelected<SymbolInfo> onSelected,
                       Iterable<SymbolInfo> options,
                     ) {
+                      // Use context.loc instead of outer loc to avoid context issues
                       if (options.isEmpty) {
                         return Align(
                           alignment: Alignment.topLeft,
@@ -1132,7 +1133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               height: 56,
                               child: Center(
                                 child: Text(
-                                  loc.t('search_no_results'),
+                                  context.loc.t('search_no_results'),
                                   style: const TextStyle(
                                     color: Colors.grey,
                                   ),
@@ -1832,7 +1833,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => CreateAlertScreen(isar: widget.isar),
+        builder: (context) => CreateAlertScreen(
+          isar: widget.isar,
+          initialSymbol: _selectedSymbol.isNotEmpty ? _selectedSymbol : null,
+          initialTimeframe: _selectedTimeframe,
+          initialPeriod: _indicatorPeriod,
+        ),
       ),
     );
     // Always refresh alerts list after return
