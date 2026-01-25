@@ -1906,7 +1906,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final loc = context.loc;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
       child: ExpansionTile(
         title: Row(
           children: [

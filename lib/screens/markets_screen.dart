@@ -1608,7 +1608,7 @@ class _MarketsScreenState extends State<MarketsScreen>
           
           // Indicator settings
           Card(
-            margin: const EdgeInsets.only(top: 8),
+            margin: const EdgeInsets.only(top: 8, bottom: 8),
             child: Column(
               children: [
                 InkWell(
