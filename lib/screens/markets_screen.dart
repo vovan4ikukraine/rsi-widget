@@ -125,6 +125,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   // Track which symbols have indicator values loaded for sorting per tab
   final Map<int, Set<String>> _indicatorValuesLoaded = {};
   bool _isLoadingIndicatorValues = false;
+  int _previousTabIndex = 0; // Track previous tab index to detect changes
 
   @override
   void initState() {
@@ -141,7 +142,12 @@ class _MarketsScreenState extends State<MarketsScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
+    // Handle both during change (indexIsChanging) and after change (when index actually changed)
+    final currentIndex = _tabController.index;
+    if (_tabController.indexIsChanging || currentIndex != _previousTabIndex) {
+      // Update previous index
+      _previousTabIndex = currentIndex;
+      
       // Don't clear values - keep them per tab for faster switching
       // Just trigger rebuild to show new tab's symbols immediately
       if (mounted) {
