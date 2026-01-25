@@ -1099,7 +1099,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         onChanged: (value) {
                           // Update _symbolController to keep it in sync
                           // This allows showing current symbol when not editing
-                          if (value != _symbolController.text) {
+                          if (mounted && value != _symbolController.text) {
                             _symbolController.text = value;
                           }
                         },

@@ -360,7 +360,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 if ((widget.alert != null || widget.initialSymbol != null) && 
                     _symbolController.text.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (textEditingController.text != _symbolController.text) {
+                    if (mounted && textEditingController.text != _symbolController.text) {
                       textEditingController.text = _symbolController.text;
                     }
                   });
@@ -393,7 +393,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                             : null,
                       ),
                       onChanged: (value) {
-                        _symbolController.text = value;
+                        if (mounted) {
+                          _symbolController.text = value;
+                        }
                       },
                       validator: (value) {
                         if (value == null ||
@@ -408,6 +410,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 );
               },
               onSelected: (SymbolInfo selection) {
+                if (!mounted) return;
                 _symbolController.text = selection.symbol;
                 FocusScope.of(context).unfocus();
               },
