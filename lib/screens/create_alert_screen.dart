@@ -10,6 +10,12 @@ import '../services/error_service.dart';
 import '../localization/app_localizations.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+import '../widgets/wpr_level_input_formatter.dart';
+import '../utils/context_extensions.dart';
+import '../utils/snackbar_helper.dart';
+import '../utils/indicator_level_validator.dart';
+import '../constants/app_constants.dart';
+import '../repositories/alert_repository.dart';
 
 class CreateAlertScreen extends StatefulWidget {
   final Isar isar;
@@ -31,56 +37,6 @@ class CreateAlertScreen extends StatefulWidget {
   State<CreateAlertScreen> createState() => _CreateAlertScreenState();
 }
 
-// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
-class WprLevelInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    String newText = newValue.text;
-
-    // Remove all non-digit characters
-    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // If trying to delete the minus sign from a non-empty field, prevent it
-    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
-      // Restore the old value if user is trying to delete the minus
-      return oldValue;
-    }
-
-    // Always prepend minus if there are digits
-    if (digitsOnly.isNotEmpty) {
-      newText = '-$digitsOnly';
-    } else {
-      // If empty, keep minus sign if it was there before
-      newText = oldValue.text.startsWith('-') ? '-' : '';
-    }
-
-    // Calculate cursor position
-    int cursorPosition = newValue.selection.baseOffset;
-    
-    // Adjust cursor if it's before or at the minus sign position (position 0)
-    if (newText.startsWith('-')) {
-      if (cursorPosition <= 0) {
-        // If cursor is before or at minus, move it after minus
-        cursorPosition = 1;
-      } else if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    } else {
-      if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    }
-
-    return TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: cursorPosition),
-    );
-  }
-}
-
 class _CreateAlertScreenState extends State<CreateAlertScreen> {
   final _formKey = GlobalKey<FormState>();
   final _symbolController = TextEditingController();
@@ -91,9 +47,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
   String _selectedTimeframe = '15m';
-  int _indicatorPeriod = 14;
+  int _indicatorPeriod = AppConstants.defaultIndicatorPeriod;
   int? _stochDPeriod; // Stochastic %D period
-  List<double> _levels = [30, 70];
+  List<double> _levels = List.from(AppConstants.defaultLevels);
   bool _lowerLevelEnabled = true;
   bool _upperLevelEnabled = true;
   String _mode = 'cross';
@@ -103,12 +59,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _isLoading = false;
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
+  late final AlertRepository _alertRepository;
   List<SymbolInfo> _popularSymbols = [];
   AppState? _appState;
 
   @override
   void initState() {
     super.initState();
+    _alertRepository = AlertRepository(widget.isar);
     _symbolSearchService = SymbolSearchService(_yahooService);
     _loadPopularSymbols();
     if (widget.alert != null) {
@@ -745,28 +703,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                         ? [WprLevelInputFormatter()]
                         : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                     validator: (value) {
-                      if (!_lowerLevelEnabled) return null;
-                      if (value == null || value.isEmpty) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      final lower = int.tryParse(value)?.toDouble();
-                      if (lower == null) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      final isWilliams = indicatorType == IndicatorType.williams;
-                      final minRange = isWilliams ? -99.0 : 1.0;
-                      final maxRange = isWilliams ? -1.0 : 99.0;
-                      if (lower < minRange || lower > maxRange) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      // Check relation to upper level if both enabled
-                      if (_upperLevelEnabled && _upperLevelController.text.isNotEmpty) {
-                        final upper = int.tryParse(_upperLevelController.text)?.toDouble();
-                        if (upper != null && lower >= upper) {
-                          return ' '; // Empty string to show red border only
-                        }
-                      }
-                      return null;
+                      final upperLevel = _upperLevelEnabled && _upperLevelController.text.isNotEmpty
+                          ? int.tryParse(_upperLevelController.text)?.toDouble()
+                          : null;
+                      return IndicatorLevelValidator.validateLevel(
+                        value,
+                        indicatorType,
+                        _lowerLevelEnabled,
+                        otherLevel: upperLevel,
+                        isLower: true,
+                      );
                     },
                     onChanged: (value) {
                       if (value.isEmpty) return;
@@ -804,7 +750,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                     if (_upperLevelController.text.isEmpty) {
                       final upperValue = defaultLevels.length > 1
                           ? defaultLevels[1]
-                          : 100.0;
+                          : AppConstants.maxIndicatorLevel;
                       _upperLevelController.text = upperValue.toInt().toString();
                       _levels.add(upperValue);
                     }
@@ -832,28 +778,16 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                         ? [WprLevelInputFormatter()]
                         : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                     validator: (value) {
-                      if (!_upperLevelEnabled) return null;
-                      if (value == null || value.isEmpty) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      final upper = int.tryParse(value)?.toDouble();
-                      if (upper == null) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      final isWilliams = indicatorType == IndicatorType.williams;
-                      final minRange = isWilliams ? -99.0 : 1.0;
-                      final maxRange = isWilliams ? -1.0 : 99.0;
-                      if (upper < minRange || upper > maxRange) {
-                        return ' '; // Empty string to show red border only
-                      }
-                      // Check relation to lower level if both enabled
-                      if (_lowerLevelEnabled && _lowerLevelController.text.isNotEmpty) {
-                        final lower = int.tryParse(_lowerLevelController.text)?.toDouble();
-                        if (lower != null && upper <= lower) {
-                          return ' '; // Empty string to show red border only
-                        }
-                      }
-                      return null;
+                      final lowerLevel = _lowerLevelEnabled && _lowerLevelController.text.isNotEmpty
+                          ? int.tryParse(_lowerLevelController.text)?.toDouble()
+                          : null;
+                      return IndicatorLevelValidator.validateLevel(
+                        value,
+                        indicatorType,
+                        _upperLevelEnabled,
+                        otherLevel: lowerLevel,
+                        isLower: false,
+                      );
                     },
                     onChanged: (value) {
                       if (value.isEmpty) return;
@@ -992,9 +926,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       final symbol = _symbolController.text.trim().toUpperCase();
       if (symbol.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(loc.t('create_alert_symbol_error'))),
-          );
+          context.showError(loc.t('create_alert_symbol_error'));
         }
         return;
       }
@@ -1007,14 +939,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
             symbolInfo.where((s) => s.symbol.toUpperCase() == symbol).toList();
         if (exactMatch.isEmpty) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  loc.t('error_symbol_not_found', params: {'symbol': symbol}),
-                ),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
+            context.showError(
+              loc.t('error_symbol_not_found', params: {'symbol': symbol}),
             );
           }
           return;
@@ -1029,14 +955,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         
         // If validation fails, still allow creation but show warning
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                loc.t('error_symbol_validation_failed', params: {'symbol': symbol}),
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
+          SnackBarHelper.showInfo(
+            context,
+            loc.t('error_symbol_validation_failed', params: {'symbol': symbol}),
           );
         }
       }
@@ -1086,17 +1007,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   .every((level) => existingSortedLevels.contains(level))) {
             // Duplicate found
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    loc.t('create_alert_duplicate_error', params: {
-                      'symbol': symbol,
-                      'timeframe': _selectedTimeframe,
-                    }),
-                  ),
-                  backgroundColor: Colors.orange,
-                  duration: const Duration(seconds: 3),
-                ),
+              SnackBarHelper.showInfo(
+                context,
+                loc.t('create_alert_duplicate_error', params: {
+                  'symbol': symbol,
+                  'timeframe': _selectedTimeframe,
+                }),
               );
             }
             return; // Don't save duplicate
@@ -1129,13 +1045,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
           setState(() {
             _isLoading = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.t('create_alert_at_least_one_level_required')),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          context.showError(loc.t('create_alert_at_least_one_level_required'));
         }
         return;
       }
@@ -1174,14 +1084,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.alert == null
-                  ? loc.t('create_alert_created')
-                  : loc.t('create_alert_updated'),
-            ),
-          ),
+        context.showSuccess(
+          widget.alert == null
+              ? loc.t('create_alert_created')
+              : loc.t('create_alert_updated'),
         );
       }
     } catch (e) {
@@ -1194,14 +1100,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       );
       
       if (mounted) {
-        final loc = context.loc;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ErrorService.getUserFriendlyError(e, loc),
-            ),
-          ),
-        );
+        context.showError(ErrorService.getUserFriendlyError(e, context.loc));
       }
     } finally {
       if (mounted) {
@@ -1235,16 +1134,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
     if (confirmed == true) {
       try {
-        await widget.isar.writeTxn(() {
-          return widget.isar.alertRules.delete(widget.alert!.id);
-        });
+        await _alertRepository.deleteAlert(widget.alert!.id);
         await AlertSyncService.deleteAlert(widget.alert!);
 
         if (mounted) {
           Navigator.pop(context, true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(loc.t('create_alert_deleted'))),
-          );
+          context.showSuccess(loc.t('create_alert_deleted'));
         }
       } catch (e) {
         // Log error to server
@@ -1254,13 +1149,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         );
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                ErrorService.getUserFriendlyError(e, loc),
-              ),
-            ),
-          );
+          context.showError(ErrorService.getUserFriendlyError(e, loc));
         }
       }
     }

@@ -13,56 +13,8 @@ import '../localization/app_localizations.dart';
 import '../data/popular_symbols.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
-
-// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
-class WprLevelInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    String newText = newValue.text;
-
-    // Remove all non-digit characters
-    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // If trying to delete the minus sign from a non-empty field, prevent it
-    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
-      // Restore the old value if user is trying to delete the minus
-      return oldValue;
-    }
-
-    // Always prepend minus if there are digits
-    if (digitsOnly.isNotEmpty) {
-      newText = '-$digitsOnly';
-    } else {
-      // If empty, keep minus sign if it was there before
-      newText = oldValue.text.startsWith('-') ? '-' : '';
-    }
-
-    // Calculate cursor position
-    int cursorPosition = newValue.selection.baseOffset;
-    
-    // Adjust cursor if it's before or at the minus sign position (position 0)
-    if (newText.startsWith('-')) {
-      if (cursorPosition <= 0) {
-        // If cursor is before or at minus, move it after minus
-        cursorPosition = 1;
-      } else if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    } else {
-      if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    }
-
-    return TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: cursorPosition),
-    );
-  }
-}
+import '../widgets/wpr_level_input_formatter.dart';
+import '../constants/app_constants.dart';
 
 enum _MarketsSortOrder { none, descending, ascending, marketCap }
 
@@ -85,9 +37,9 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   // Settings for all charts
   String _timeframe = '15m';
-  int _indicatorPeriod = 14;
-  double _lowerLevel = 30.0;
-  double _upperLevel = 70.0;
+  int _indicatorPeriod = AppConstants.defaultIndicatorPeriod;
+  double _lowerLevel = AppConstants.defaultLevels[0];
+  double _upperLevel = AppConstants.defaultLevels[1];
   IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   int? _stochDPeriod;
   bool _settingsExpanded = false;
@@ -683,8 +635,8 @@ class _MarketsScreenState extends State<MarketsScreen>
       bool changed = false;
 
       if (period != null &&
-          period >= 2 &&
-          period <= 100 &&
+          period >= AppConstants.minPeriod &&
+          period <= AppConstants.maxPeriod &&
           period != _indicatorPeriod) {
         _indicatorPeriod = period;
         changed = true;
@@ -1117,9 +1069,11 @@ class _MarketsScreenState extends State<MarketsScreen>
     if (loadedForTab.contains(symbol)) return;
 
     try {
-      // Calculate minimum candles needed (period + small buffer)
-      final periodBuffer = period + 20;
-      final limit = periodBuffer > 50 ? periodBuffer : 50;
+      // Calculate minimum candles needed (period + buffer)
+      final periodBuffer = period + AppConstants.periodBuffer;
+      final limit = periodBuffer > AppConstants.minCandlesForChart
+          ? periodBuffer
+          : AppConstants.minCandlesForChart;
 
       final candles = await _yahooService.fetchCandles(
         symbol,
@@ -1205,21 +1159,21 @@ class _MarketsScreenState extends State<MarketsScreen>
     while (attempt < maxRetries) {
       try {
         // Calculate optimal candle limit based on timeframe and period (same logic as CRON)
-        // Minimum candles required: period + buffer (20 for smoothing and charts)
-        final periodBuffer = currentPeriod + 20;
+        // Minimum candles required: period + buffer
+        final periodBuffer = currentPeriod + AppConstants.periodBuffer;
         
         // Base minimums per timeframe
         int baseMinimum;
         switch (_timeframe) {
           case '4h':
-            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+            baseMinimum = AppConstants.minCandlesForChart;
             break;
           case '1d':
-            baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+            baseMinimum = AppConstants.minCandlesForChart;
             break;
           default:
-            // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
-            baseMinimum = 100;
+            // 1m, 5m, 15m, 1h: base minimum for charts and stability
+            baseMinimum = AppConstants.minCandlesForChart;
             break;
         }
         

@@ -15,6 +15,12 @@ import '../services/alert_sync_service.dart';
 import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+import '../widgets/wpr_level_input_formatter.dart';
+import '../utils/context_extensions.dart';
+import '../utils/snackbar_helper.dart';
+import '../utils/indicator_level_validator.dart';
+import '../constants/app_constants.dart';
+import '../repositories/alert_repository.dart';
 import '../services/widget_service.dart';
 
 class WatchlistScreen extends StatefulWidget {
@@ -28,61 +34,12 @@ class WatchlistScreen extends StatefulWidget {
 
 enum _RsiSortOrder { none, descending, ascending }
 
-// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
-class WprLevelInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    String newText = newValue.text;
-
-    // Remove all non-digit characters
-    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // If trying to delete the minus sign from a non-empty field, prevent it
-    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
-      // Restore the old value if user is trying to delete the minus
-      return oldValue;
-    }
-
-    // Always prepend minus if there are digits
-    if (digitsOnly.isNotEmpty) {
-      newText = '-$digitsOnly';
-    } else {
-      // If empty, keep minus sign if it was there before
-      newText = oldValue.text.startsWith('-') ? '-' : '';
-    }
-
-    // Calculate cursor position
-    int cursorPosition = newValue.selection.baseOffset;
-    
-    // Adjust cursor if it's before or at the minus sign position (position 0)
-    if (newText.startsWith('-')) {
-      if (cursorPosition <= 0) {
-        // If cursor is before or at minus, move it after minus
-        cursorPosition = 1;
-      } else if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    } else {
-      if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    }
-
-    return TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: cursorPosition),
-    );
-  }
-}
-
 class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
   late final WidgetService _widgetService;
+  late final AlertRepository _alertRepository;
 
   static const String _sortOrderPrefKey = 'watchlist_sort_order';
 
@@ -578,7 +535,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 ? indicatorType.defaultLevels[1]
                 : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
         _massAlertCooldownSec =
-            prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? 600;
+            prefs.getInt('watchlist_mass_alert_cooldown_sec') ??
+                AppConstants.defaultCooldownSec;
         _massAlertRepeatable =
             prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
         _massAlertOnClose =
@@ -823,13 +781,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       debugPrint('WatchlistScreen: Error loading list: $e');
       debugPrint('WatchlistScreen: Stack trace: $stackTrace');
       if (mounted) {
-        final loc = context.loc;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              loc.t('watchlist_error_loading', params: {'message': '$e'}),
-            ),
-          ),
+        context.showError(
+          context.loc.t('watchlist_error_loading', params: {'message': '$e'}),
         );
       }
     }
@@ -1082,8 +1035,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       bool changed = false;
 
       if (period != null &&
-          period >= 2 &&
-          period <= 100 &&
+          period >= AppConstants.minPeriod &&
+          period <= AppConstants.maxPeriod &&
           period != _indicatorPeriod) {
         _indicatorPeriod = period;
         changed = true;
@@ -1276,22 +1229,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   // Validate mass alert level based on indicator type
   bool _isValidMassAlertLevel(double value, bool isLower, double? otherLevel) {
     final indicatorType = _massAlertIndicator;
-    if (indicatorType == IndicatorType.williams) {
-      // WPR: -99 to -1, lower must be less than upper
-      if (value < -99 || value > -1) return false;
-      if (otherLevel != null) {
-        if (isLower && value >= otherLevel) return false;
-        if (!isLower && value <= otherLevel) return false;
-      }
-    } else {
-      // RSI/STOCH: 1 to 99, lower must be less than upper
-      if (value < 1 || value > 99) return false;
-      if (otherLevel != null) {
-        if (isLower && value >= otherLevel) return false;
-        if (!isLower && value <= otherLevel) return false;
-      }
-    }
-    return true;
+    final valueStr = value.toInt().toString();
+    final validationResult = IndicatorLevelValidator.validateLevel(
+      valueStr,
+      indicatorType,
+      true, // Always enabled for mass alerts
+      otherLevel: otherLevel,
+      isLower: isLower,
+    );
+    return validationResult == null; // null means valid
   }
 
   // Scroll to settings when a field is focused and keyboard is open
@@ -2378,14 +2324,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _createMassAlerts() async {
     if (_watchlistItems.isEmpty) {
-      final loc = context.loc;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            loc.t('watchlist_mass_alerts_empty'),
-          ),
-        ),
-      );
+      context.showInfo(context.loc.t('watchlist_mass_alerts_empty'));
       return;
     }
 
@@ -2404,14 +2343,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           !_isValidMassAlertLevel(_massAlertLowerLevel, true, 
               _massAlertUpperLevelEnabled ? _massAlertUpperLevel : null)) {
         if (mounted) {
-          final loc = context.loc;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.t('create_alert_invalid_lower_level')),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          context.showError(context.loc.t('create_alert_invalid_lower_level'));
         }
         return;
       }
@@ -2420,30 +2352,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           !_isValidMassAlertLevel(_massAlertUpperLevel, false, 
               _massAlertLowerLevelEnabled ? _massAlertLowerLevel : null)) {
         if (mounted) {
-          final loc = context.loc;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.t('create_alert_invalid_upper_level')),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          context.showError(context.loc.t('create_alert_invalid_upper_level'));
         }
         return;
       }    
       // Additional validation: check relationship between levels when both are enabled
       if (_massAlertLowerLevelEnabled && _massAlertUpperLevelEnabled) {
         if (_massAlertLowerLevel >= _massAlertUpperLevel) {
-          if (mounted) {
-            final loc = context.loc;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(loc.t('create_alert_invalid_levels_relationship')),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+        if (mounted) {
+          context.showError(context.loc.t('create_alert_invalid_levels_relationship'));
+        }
           return;
         }
       }
@@ -2460,14 +2378,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Validate: at least one level must be enabled
       if (levels.isEmpty) {
         if (mounted) {
-          final loc = context.loc;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.t('create_alert_at_least_one_level_required')),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          context.showError(context.loc.t('create_alert_at_least_one_level_required'));
         }
         return;
       }
@@ -2476,22 +2387,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Show loading indicator
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                    'Creating alerts for ${_watchlistItems.length} instrument(s)...'),
-              ],
-            ),
-            duration: const Duration(seconds: 30),
-          ),
+        context.showLoading(
+          'Creating alerts for ${_watchlistItems.length} instrument(s)...',
         );
       }
 
@@ -2499,7 +2396,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
+      final watchlistAlertDescription =
+          '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2534,7 +2432,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final existingCustomAlerts = allAlerts
           .where((a) =>
               (a.description == null ||
-              (!a.description!.toUpperCase().contains('WATCHLIST:'))))
+              (!a.description!.toUpperCase().contains(AppConstants.watchlistAlertPrefix))))
           .toList();
 
       // Create a set of symbols that already have custom alerts with same parameters
@@ -2633,47 +2531,64 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       }
 
-      // Create alerts in transaction (without syncing)
-      await widget.isar.writeTxn(() async {
-        for (final item in _watchlistItems) {
-          // Skip if watchlist alert already exists for this symbol
-          if (existingWatchlistSymbols.contains(item.symbol)) {
-            continue;
-          }
+      // Create alerts first (they need to be saved to get IDs)
+      for (final item in _watchlistItems) {
+        // Skip if watchlist alert already exists for this symbol
+        if (existingWatchlistSymbols.contains(item.symbol)) {
+          continue;
+        }
 
-          final alert = AlertRule()
-            ..symbol = item.symbol
-            ..timeframe = _massAlertTimeframe
-            ..indicator = indicatorName
-            ..period = _massAlertPeriod
-            ..indicatorParams = indicatorParams
-            ..levels = List.from(levels)
-            ..mode = 'cross' // Always use cross mode with one-way crossing
-            ..cooldownSec = _massAlertCooldownSec
-            ..active = true
-            ..repeatable = _massAlertRepeatable
-            ..soundEnabled = true
-            ..alertOnClose = _massAlertOnClose
-            ..description = 'WATCHLIST: Mass alert for $indicatorName'
-            ..createdAt = createdAt;
+        final alert = AlertRule()
+          ..symbol = item.symbol
+          ..timeframe = _massAlertTimeframe
+          ..indicator = indicatorName
+          ..period = _massAlertPeriod
+          ..indicatorParams = indicatorParams
+          ..levels = List.from(levels)
+          ..mode = 'cross' // Always use cross mode with one-way crossing
+          ..cooldownSec = _massAlertCooldownSec
+          ..active = true
+          ..repeatable = _massAlertRepeatable
+          ..soundEnabled = true
+          ..alertOnClose = _massAlertOnClose
+          ..description =
+              '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName'
+          ..createdAt = createdAt;
 
-          await widget.isar.alertRules.put(alert);
-          createdAlerts.add(alert);
+        createdAlerts.add(alert);
+      }
 
+      // Save all alerts in batch (they will get IDs)
+      if (createdAlerts.isNotEmpty) {
+        await _alertRepository.saveAlerts(createdAlerts);
+        debugPrint('_createMassAlerts: Created ${createdAlerts.length} alerts');
+
+        // Now create alert states with correct ruleId
+        final alertStatesToCreate = <AlertState>[];
+        for (final alert in createdAlerts) {
           // Initialize alert state with current indicator value to prevent immediate notifications
           // Set lastFireTs to current time to activate cooldown and prevent spam notifications
-          final symbolData = symbolValues[item.symbol];
-          if (symbolData != null) {
+          final symbolData = symbolValues[alert.symbol];
+          if (symbolData != null && alert.id > 0) {
             final alertState = AlertState()
               ..ruleId = alert.id
               ..lastIndicatorValue = symbolData['value'] as double
               ..lastSide = symbolData['side'] as String?
               ..lastBarTs = symbolData['barTs'] as int
               ..lastFireTs = DateTime.now().millisecondsSinceEpoch ~/ 1000; // Set to activate cooldown
-            await widget.isar.alertStates.put(alertState);
+            alertStatesToCreate.add(alertState);
           }
         }
-      });
+
+        // Save all alert states in batch
+        if (alertStatesToCreate.isNotEmpty) {
+          await widget.isar.writeTxn(() async {
+            for (final state in alertStatesToCreate) {
+              await widget.isar.alertStates.put(state);
+            }
+          });
+        }
+      }
 
       // Sync all created alerts in parallel (outside transaction)
       if (createdAlerts.isNotEmpty) {
@@ -2692,32 +2607,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Update UI and show success message
       if (mounted) {
         final loc = context.loc;
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        context.hideSnackBar();
         String message = '${loc.t('watchlist_title')} ${loc.t('create_alert_created')}: ${createdAlerts.length}';
         if (skippedSymbols.isNotEmpty) {
           message += '\n${skippedSymbols.length} symbol(s) skipped';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor:
-                skippedSymbols.isNotEmpty ? Colors.orange : Colors.green,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        if (skippedSymbols.isNotEmpty) {
+          SnackBarHelper.showInfo(context, message);
+        } else {
+          context.showSuccess(message);
+        }
       }
     } catch (e) {
       debugPrint('Error creating mass alerts: $e');
       if (mounted) {
         final loc = context.loc;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              loc.t('watchlist_mass_alerts_error'),
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+        context.showError(loc.t('watchlist_mass_alerts_error'));
       }
     }
   }
@@ -2725,21 +2630,24 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   /// Calculate optimal candle limit based on timeframe and period
   /// Ensures we have enough candles for indicator calculation + buffer for charts
   int _candlesLimitForTimeframe(String timeframe, [int? period]) {
-    // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
-    final periodBuffer = period != null ? period + 20 : 34; // Default: 14 + 20 = 34
+    // Minimum candles required for indicators: period + buffer
+    final defaultPeriod = AppConstants.defaultIndicatorPeriod;
+    final periodBuffer = period != null
+        ? period + AppConstants.periodBuffer
+        : defaultPeriod + AppConstants.periodBuffer;
     
-    // Base minimums per timeframe (reduced for 4h/1d as they're excessive)
+    // Base minimums per timeframe
     int baseMinimum;
     switch (timeframe) {
       case '4h':
-        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        baseMinimum = AppConstants.minCandlesForChart;
         break;
       case '1d':
-        baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+        baseMinimum = AppConstants.minCandlesForChart;
         break;
       default:
-        // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
-        baseMinimum = 100;
+        // 1m, 5m, 15m, 1h: base minimum for charts and stability
+        baseMinimum = AppConstants.minCandlesForChart;
         break;
     }
     
@@ -2775,7 +2683,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
       final indicatorName = indicatorType.toJson();
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
+      final watchlistAlertDescription =
+          '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2804,11 +2713,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       if (alerts.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No Watchlist Alerts to delete'),
-            ),
-          );
+          context.showInfo('No Watchlist Alerts to delete');
         }
         return;
       }
@@ -2817,63 +2722,30 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       // Collect alerts for syncing deletions after transaction
       final alertsToDelete = <AlertRule>[];
+      final alertIdsToDelete = <int>[];
 
-      // Delete all alerts in one transaction
-      await widget.isar.writeTxn(() async {
-        for (final alert in alerts) {
-          // Skip if alert doesn't have a valid id
-          final alertId = alert.id;
-          if (alertId <= 0) {
-            continue;
-          }
-
-          // Delete alert state first
-          try {
-            final alertState = await widget.isar.alertStates
-                .filter()
-                .ruleIdEqualTo(alertId)
-                .findFirst();
-            if (alertState != null && alertState.id > 0) {
-              await widget.isar.alertStates.delete(alertState.id);
-            }
-          } catch (e) {
-            // Ignore errors - state may not exist
-          }
-
-          // Delete alert events
-          try {
-            final events = await widget.isar.alertEvents
-                .filter()
-                .ruleIdEqualTo(alertId)
-                .findAll();
-            for (final event in events) {
-              if (event.id > 0) {
-                await widget.isar.alertEvents.delete(event.id);
-              }
-            }
-          } catch (e) {
-            // Ignore errors - events may not exist
-          }
-
-          // Delete alert from local database
-          await widget.isar.alertRules.delete(alertId);
+      // Collect valid alert IDs
+      for (final alert in alerts) {
+        final alertId = alert.id;
+        if (alertId > 0) {
+          alertIdsToDelete.add(alertId);
           alertsToDelete.add(alert);
         }
-      });
+      }
+
+      // Delete all alerts with related data in one transaction
+      if (alertIdsToDelete.isNotEmpty) {
+        await _alertRepository.deleteAlertsWithRelatedData(alertIdsToDelete);
+      }
 
       debugPrint('_deleteMassAlerts: Deleted ${alertsToDelete.length} alerts from local database');
 
       // Update UI immediately (don't wait for server sync)
       if (mounted) {
         final loc = context.loc;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${loc.t('watchlist_title')} ${loc.t('create_alert_deleted')}: ${alertsToDelete.length}',
-            ),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 2),
-          ),
+        SnackBarHelper.showInfo(
+          context,
+          '${loc.t('watchlist_title')} ${loc.t('create_alert_deleted')}: ${alertsToDelete.length}',
         );
       }
 
@@ -2888,15 +2760,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       debugPrint('Error deleting mass alerts: $e');
       if (mounted) {
         final loc = context.loc;
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              loc.t('watchlist_mass_alerts_delete_error'),
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+        context.hideSnackBar();
+        context.showError(loc.t('watchlist_mass_alerts_delete_error'));
       }
     }
   }
@@ -2957,7 +2822,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Filter in memory since Isar doesn't support description filtering directly
       final allAlerts = await widget.isar.alertRules.where().findAll();
       final indicatorType = _massAlertIndicator;
-      final watchlistAlertDescription = 'WATCHLIST: Mass alert for $indicatorName';
+      final watchlistAlertDescription =
+          '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
       
       // For WPR, also check for 'williams' (server format) in addition to 'wpr' (local format)
       // Use fromJson to normalize indicator values when comparing
@@ -2987,80 +2853,66 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       debugPrint('_updateMassAlerts: Found ${existingAlerts.length} existing alerts for $indicatorName');
 
       final alertsToSync = <AlertRule>[];
-      await widget.isar.writeTxn(() async {
-        // Update existing alerts
-        for (final alert in existingAlerts) {
-          if (watchlistSymbols.contains(alert.symbol)) {
-            // Check if timeframe actually changed - if so, delete alert state
-            final timeframeChanged = alert.timeframe != _massAlertTimeframe;
-            debugPrint('_updateMassAlerts: Updating alert for ${alert.symbol}, old timeframe=${alert.timeframe}, new timeframe=$_massAlertTimeframe, changed=$timeframeChanged');
-            
-            alert.timeframe = _massAlertTimeframe;
-            alert.indicator = indicatorName;
-            alert.period = _massAlertPeriod;
-            alert.indicatorParams = indicatorParams;
-            alert.levels = List.from(levels);
-            alert.mode = 'cross'; // Always use cross mode with one-way crossing
-            alert.cooldownSec = _massAlertCooldownSec;
-            alert.repeatable = _massAlertRepeatable;
-            alert.alertOnClose = _massAlertOnClose;
+      final alertsToUpdate = <AlertRule>[];
+      final alertsToDelete = <AlertRule>[];
+      
+      // Prepare updates and deletions
+      for (final alert in existingAlerts) {
+        if (watchlistSymbols.contains(alert.symbol)) {
+          // Check if timeframe actually changed - if so, delete alert state
+          final timeframeChanged = alert.timeframe != _massAlertTimeframe;
+          debugPrint('_updateMassAlerts: Updating alert for ${alert.symbol}, old timeframe=${alert.timeframe}, new timeframe=$_massAlertTimeframe, changed=$timeframeChanged');
+          
+          alert.timeframe = _massAlertTimeframe;
+          alert.indicator = indicatorName;
+          alert.period = _massAlertPeriod;
+          alert.indicatorParams = indicatorParams;
+          alert.levels = List.from(levels);
+          alert.mode = 'cross'; // Always use cross mode with one-way crossing
+          alert.cooldownSec = _massAlertCooldownSec;
+          alert.repeatable = _massAlertRepeatable;
+          alert.alertOnClose = _massAlertOnClose;
 
-            await widget.isar.alertRules.put(alert);
-            alertsToSync.add(alert);
+          alertsToSync.add(alert);
+          alertsToUpdate.add(alert);
             
-            // If timeframe changed, delete alert state to reset it
-            if (timeframeChanged) {
-              try {
-                final alertState = await widget.isar.alertStates
-                    .filter()
-                    .ruleIdEqualTo(alert.id)
-                    .findFirst();
-                if (alertState != null && alertState.id > 0) {
-                  await widget.isar.alertStates.delete(alertState.id);
-                  debugPrint('_updateMassAlerts: Deleted alert state for ${alert.symbol} due to timeframe change');
-                }
-              } catch (e) {
-                // Ignore errors - state may not exist
-              }
-            }
+          // If timeframe changed, delete alert state to reset it
+          if (timeframeChanged) {
+            await _alertRepository.deleteAlertStateByRuleId(alert.id);
+            debugPrint('_updateMassAlerts: Deleted alert state for ${alert.symbol} due to timeframe change');
+          }
           } else {
             // Remove alerts for symbols no longer in watchlist
-            // Delete alert state
-            try {
-              final alertState = await widget.isar.alertStates
-                  .filter()
-                  .ruleIdEqualTo(alert.id)
-                  .findFirst();
-              if (alertState != null && alertState.id > 0) {
-                await widget.isar.alertStates.delete(alertState.id);
-              }
-            } catch (e) {
-              // Ignore errors - state may not exist
-            }
-            // Delete alert events
-            try {
-              final events = await widget.isar.alertEvents
-                  .filter()
-                  .ruleIdEqualTo(alert.id)
-                  .findAll();
-              for (final event in events) {
-                await widget.isar.alertEvents.delete(event.id);
-              }
-            } catch (e) {
-              debugPrint(
-                  'Error deleting alert events for alert ${alert.id}: $e');
-            }
-            // Delete from remote server
+            // Delete from remote server first
             await AlertSyncService.deleteAlert(alert, hardDelete: true);
-            // Delete from local database
-            await widget.isar.alertRules.delete(alert.id);
+            // Collect for batch local deletion
+            alertsToDelete.add(alert);
           }
+        }
+
+        // Batch delete alerts that are no longer in watchlist (with related data)
+        if (alertsToDelete.isNotEmpty) {
+          final alertIdsToDelete = alertsToDelete
+              .where((a) => a.id > 0)
+              .map((a) => a.id)
+              .toList();
+          if (alertIdsToDelete.isNotEmpty) {
+            await _alertRepository.deleteAlertsWithRelatedData(alertIdsToDelete);
+            debugPrint('_updateMassAlerts: Deleted ${alertIdsToDelete.length} alerts that are no longer in watchlist');
+          }
+        }
+
+        // Save updated alerts in batch
+        if (alertsToUpdate.isNotEmpty) {
+          await _alertRepository.saveAlerts(alertsToUpdate);
+          debugPrint('_updateMassAlerts: Saved ${alertsToUpdate.length} updated alerts');
         }
 
         // Create alerts for new symbols (only if they don't already have watchlist alerts)
         final existingWatchlistSymbols =
             existingAlerts.map((a) => a.symbol).toSet();
         final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final createdAlerts = <AlertRule>[];
 
         for (final item in _watchlistItems) {
           // Only create if symbol doesn't already have a watchlist alert
@@ -3078,10 +2930,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ..repeatable = _massAlertRepeatable
               ..soundEnabled = true
               ..alertOnClose = _massAlertOnClose
-              ..description = 'WATCHLIST: Mass alert for $indicatorName'
+              ..description =
+                '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName'
               ..createdAt = createdAt;
 
-            await widget.isar.alertRules.put(alert);
+            createdAlerts.add(alert);
+          }
+        }
+
+        // Save all new alerts in batch
+        if (createdAlerts.isNotEmpty) {
+          await _alertRepository.saveAlerts(createdAlerts);
+          debugPrint('_updateMassAlerts: Created ${createdAlerts.length} new alerts');
+          
+          // Sync new alerts in parallel (outside transaction)
+          for (final alert in createdAlerts) {
             unawaited(AlertSyncService.syncAlert(
               widget.isar, 
               alert,
@@ -3092,7 +2955,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ));
           }
         }
-      });
       
       // Sync all updated alerts after transaction completes
       if (alertsToSync.isNotEmpty) {

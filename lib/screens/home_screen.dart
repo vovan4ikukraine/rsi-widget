@@ -20,6 +20,10 @@ import '../services/auth_service.dart';
 import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+import '../widgets/wpr_level_input_formatter.dart';
+import '../utils/context_extensions.dart';
+import '../utils/snackbar_helper.dart';
+import '../constants/app_constants.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -42,56 +46,6 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-// Custom input formatter for WPR levels - ensures minus sign at start and only digits after
-class WprLevelInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    String newText = newValue.text;
-
-    // Remove all non-digit characters
-    String digitsOnly = newText.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // If trying to delete the minus sign from a non-empty field, prevent it
-    if (oldValue.text.startsWith('-') && newText.isNotEmpty && !newText.startsWith('-')) {
-      // Restore the old value if user is trying to delete the minus
-      return oldValue;
-    }
-
-    // Always prepend minus if there are digits
-    if (digitsOnly.isNotEmpty) {
-      newText = '-$digitsOnly';
-    } else {
-      // If empty, keep minus sign if it was there before
-      newText = oldValue.text.startsWith('-') ? '-' : '';
-    }
-
-    // Calculate cursor position
-    int cursorPosition = newValue.selection.baseOffset;
-    
-    // Adjust cursor if it's before or at the minus sign position (position 0)
-    if (newText.startsWith('-')) {
-      if (cursorPosition <= 0) {
-        // If cursor is before or at minus, move it after minus
-        cursorPosition = 1;
-      } else if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    } else {
-      if (cursorPosition > newText.length) {
-        cursorPosition = newText.length;
-      }
-    }
-
-    return TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: cursorPosition),
-    );
-  }
-}
-
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final YahooProtoSource _yahooService = YahooProtoSource(
     'https://rsi-workers.vovan4ikukraine.workers.dev',
@@ -103,9 +57,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
-  int _indicatorPeriod = 14; // Indicator period (universal)
-  double _lowerLevel = 30.0; // Lower zone
-  double _upperLevel = 70.0; // Upper zone
+  int _indicatorPeriod = AppConstants.defaultIndicatorPeriod;
+  double _lowerLevel = AppConstants.defaultLevels[0];
+  double _upperLevel = AppConstants.defaultLevels[1];
   IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   List<double> _indicatorValues = []; // Universal indicator values
   List<IndicatorResult> _indicatorResults = []; // Full indicator results for chart
@@ -178,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error setting indicator from initialIndicator: $e');
+        debugPrint('Error setting indicator from initialIndicator: $e');
       }
     }
   }
@@ -502,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final alerts = allAlerts.where((a) {
       final desc = a.description;
       if (desc == null) return true;
-      return !desc.toUpperCase().contains('WATCHLIST:');
+      return !desc.toUpperCase().contains(AppConstants.watchlistAlertPrefix);
     }).toList();
     setState(() {
       _alerts = alerts;
@@ -545,21 +499,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     try {
       // Calculate optimal candle limit based on timeframe and period (same logic as CRON)
-      // Minimum candles required: period + buffer (20 for smoothing and charts)
-      final periodBuffer = _indicatorPeriod + 20;
+      // Minimum candles required: period + buffer (for smoothing and charts)
+      final periodBuffer = _indicatorPeriod + AppConstants.periodBuffer;
       
       // Base minimums per timeframe
       int baseMinimum;
       switch (_selectedTimeframe) {
         case '4h':
-          baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+          baseMinimum = AppConstants.minCandlesForChart;
           break;
         case '1d':
-          baseMinimum = 100; // Same as other timeframes - period-based calculation handles large periods
+          baseMinimum = AppConstants.minCandlesForChart;
           break;
         default:
-          // 1m, 5m, 15m, 1h: base minimum for small periods (100 for charts and stability)
-          baseMinimum = 100;
+          // 1m, 5m, 15m, 1h: base minimum for charts and stability
+          baseMinimum = AppConstants.minCandlesForChart;
           break;
       }
       
@@ -620,15 +574,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
         if (candles.length < minDataRequired) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  loc.t(
-                    'home_insufficient_data',
-                    params: {'count': '${candles.length}'},
-                  ),
-                ),
-                duration: const Duration(seconds: 4),
+            context.showError(
+              loc.t(
+                'home_insufficient_data',
+                params: {'count': '${candles.length}'},
               ),
             );
           }
@@ -723,12 +672,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           message = ErrorService.getUserFriendlyError(e, loc);
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        context.showError(message);
       }
     } finally {
       setState(() {
@@ -1511,8 +1455,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool changed = false;
 
     if (period != null &&
-        period >= 2 &&
-        period <= 100 &&
+        period >= AppConstants.minPeriod &&
+        period <= AppConstants.maxPeriod &&
         period != _indicatorPeriod) {
       _indicatorPeriod = period;
       changed = true;
@@ -1865,18 +1809,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _addToWatchlist(String symbol) async {
     final loc = context.loc;
 
-    // Check watchlist limit (max 30 symbols)
+    // Check watchlist limit
     final allExistingItems = await widget.isar.watchlistItems.where().findAll();
-    if (allExistingItems.length >= 30) {
+    if (allExistingItems.length >= AppConstants.maxWatchlistItems) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              loc.t('home_watchlist_limit_reached'),
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        SnackBarHelper.showInfo(context, loc.t('home_watchlist_limit_reached'));
       }
       return;
     }
@@ -1889,13 +1826,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (existing != null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              loc.t('home_watchlist_exists', params: {'symbol': symbol}),
-            ),
-          ),
-        );
+        context.showInfo(loc.t('home_watchlist_exists', params: {'symbol': symbol}));
       }
       return;
     }
@@ -1965,13 +1896,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            loc.t('home_watchlist_added', params: {'symbol': symbol}),
-          ),
-        ),
-      );
+      context.showSuccess(loc.t('home_watchlist_added', params: {'symbol': symbol}));
     }
   }
 

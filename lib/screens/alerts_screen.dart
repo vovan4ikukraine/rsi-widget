@@ -10,6 +10,10 @@ import '../services/alert_sync_service.dart';
 import '../services/error_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
+import '../utils/context_extensions.dart';
+import '../utils/snackbar_helper.dart';
+import '../constants/app_constants.dart';
+import '../repositories/alert_repository.dart';
 
 class AlertsScreen extends StatefulWidget {
   final Isar isar;
@@ -22,6 +26,7 @@ class AlertsScreen extends StatefulWidget {
 
 class _AlertsScreenState extends State<AlertsScreen>
     with WidgetsBindingObserver {
+  late final AlertRepository _alertRepository;
   List<AlertRule> _alerts = [];
   List<AlertEvent> _events = [];
   bool _isLoading = true;
@@ -34,6 +39,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   @override
   void initState() {
     super.initState();
+    _alertRepository = AlertRepository(widget.isar);
     WidgetsBinding.instance.addObserver(this);
     // Always refresh when screen is opened to ensure Watchlist Alert changes are reflected
     _loadData();
@@ -81,23 +87,18 @@ class _AlertsScreenState extends State<AlertsScreen>
       await AlertSyncService.fetchAndSyncAlerts(widget.isar);
       await AlertSyncService.syncPendingAlerts(widget.isar);
 
-      final allAlerts = await widget.isar.alertRules.where().findAll();
-      // Filter out Watchlist Alerts - they are background monitoring, not visible in list
-      final alerts = allAlerts.where((a) {
-        // Exclude alerts with description containing "WATCHLIST:"
-        final desc = a.description;
-        if (desc == null) return true;
-        return !desc.toUpperCase().contains('WATCHLIST:');
-      }).toList();
+      // Get custom alerts (excludes watchlist alerts)
+      final alerts = await _alertRepository.getCustomAlerts();
 
       if (kDebugMode) {
+        final allAlerts = await _alertRepository.getAllAlerts();
         final watchlistCount = allAlerts
             .where((a) =>
                 a.description != null &&
-                a.description!.toUpperCase().contains('WATCHLIST:'))
+                a.description!.toUpperCase().contains(AppConstants.watchlistAlertPrefix))
             .length;
         debugPrint(
-            'AlertsScreen: Loaded ${allAlerts.length} total alerts ($watchlistCount Watchlist Alerts, ${allAlerts.length - watchlistCount} custom alerts)');
+            'AlertsScreen: Loaded ${allAlerts.length} total alerts ($watchlistCount Watchlist Alerts, ${alerts.length} custom alerts)');
       }
 
       final events = await widget.isar.alertEvents.where().findAll();
@@ -119,14 +120,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       );
       
       if (mounted) {
-        final loc = context.loc;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ErrorService.getUserFriendlyError(e, loc),
-            ),
-          ),
-        );
+        context.showError(ErrorService.getUserFriendlyError(e, context.loc));
       }
     }
   }
@@ -562,22 +556,13 @@ class _AlertsScreenState extends State<AlertsScreen>
 
       if (!mounted) return;
       final loc = context.loc;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            alert.active ? loc.t('alerts_enabled') : loc.t('alerts_disabled'),
-          ),
-        ),
+      context.showSuccess(
+        alert.active ? loc.t('alerts_enabled') : loc.t('alerts_disabled'),
       );
     } catch (e) {
       if (!mounted) return;
-      final loc = context.loc;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            loc.t('alerts_error_generic', params: {'message': '$e'}),
-          ),
-        ),
+      context.showError(
+        context.loc.t('alerts_error_generic', params: {'message': '$e'}),
       );
     }
   }
@@ -600,27 +585,17 @@ class _AlertsScreenState extends State<AlertsScreen>
         ..createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000
         ..description = '${alert.description ?? ''} (copy)';
 
-      await widget.isar.writeTxn(() {
-        return widget.isar.alertRules.put(newAlert);
-      });
+      await _alertRepository.saveAlert(newAlert);
       await AlertSyncService.syncAlert(widget.isar, newAlert);
 
       await _loadData();
 
       if (!mounted) return;
-      final loc = context.loc;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(loc.t('alerts_duplicate_success'))),
-      );
+      context.showSuccess(context.loc.t('alerts_duplicate_success'));
     } catch (e) {
       if (!mounted) return;
-      final loc = context.loc;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            loc.t('alerts_error_generic', params: {'message': '$e'}),
-          ),
-        ),
+      context.showError(
+        context.loc.t('alerts_error_generic', params: {'message': '$e'}),
       );
     }
   }
@@ -649,17 +624,13 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     if (confirmed == true) {
       try {
-        await widget.isar.writeTxn(() {
-          return widget.isar.alertRules.delete(alert.id);
-        });
+        await _alertRepository.deleteAlert(alert.id);
         await AlertSyncService.deleteAlert(alert);
 
         _loadData();
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(loc.t('alerts_delete_success'))),
-        );
+        context.showSuccess(loc.t('alerts_delete_success'));
       } catch (e) {
         // Log error to server
         ErrorService.logError(
@@ -669,13 +640,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         );
         
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ErrorService.getUserFriendlyError(e, loc),
-            ),
-          ),
-        );
+        context.showError(ErrorService.getUserFriendlyError(e, loc));
       }
     }
   }
@@ -705,34 +670,17 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     // Show loading indicator
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 16),
-              Text('Processing ${selectedAlerts.length} alert(s)...'),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      context.showLoading('Processing ${selectedAlerts.length} alert(s)...');
     }
 
     try {
       switch (action) {
         case 'enable':
           // Update all alerts in one transaction
-          await widget.isar.writeTxn(() async {
-            for (final alert in selectedAlerts) {
-              alert.active = true;
-              await widget.isar.alertRules.put(alert);
-            }
-          });
+          for (final alert in selectedAlerts) {
+            alert.active = true;
+          }
+          await _alertRepository.saveAlerts(selectedAlerts);
 
           // Sync all alerts in parallel (non-blocking)
           unawaited(Future.wait(
@@ -753,24 +701,17 @@ class _AlertsScreenState extends State<AlertsScreen>
               _selectedAlertIds.clear();
             });
 
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${selectedAlerts.length} alert(s) enabled'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            context.hideSnackBar();
+            context.showSuccess('${selectedAlerts.length} alert(s) enabled');
           }
           return;
 
         case 'disable':
           // Update all alerts in one transaction
-          await widget.isar.writeTxn(() async {
-            for (final alert in selectedAlerts) {
-              alert.active = false;
-              await widget.isar.alertRules.put(alert);
-            }
-          });
+          for (final alert in selectedAlerts) {
+            alert.active = false;
+          }
+          await _alertRepository.saveAlerts(selectedAlerts);
 
           // Sync all alerts in parallel (non-blocking)
           unawaited(Future.wait(
@@ -791,12 +732,10 @@ class _AlertsScreenState extends State<AlertsScreen>
               _selectedAlertIds.clear();
             });
 
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${selectedAlerts.length} alert(s) disabled'),
-                backgroundColor: Colors.orange,
-              ),
+            context.hideSnackBar();
+            SnackBarHelper.showInfo(
+              context,
+              '${selectedAlerts.length} alert(s) disabled',
             );
           }
           return;
@@ -824,39 +763,9 @@ class _AlertsScreenState extends State<AlertsScreen>
           );
 
           if (confirmed == true) {
-            // Delete all alerts in one transaction
-            await widget.isar.writeTxn(() async {
-              for (final alert in selectedAlerts) {
-                // Delete alert state
-                try {
-                  final alertState = await widget.isar.alertStates
-                      .filter()
-                      .ruleIdEqualTo(alert.id)
-                      .findFirst();
-                  if (alertState != null && alertState.id > 0) {
-                    await widget.isar.alertStates.delete(alertState.id);
-                  }
-                } catch (e) {
-                  // Ignore errors
-                }
-
-                // Delete alert events
-                try {
-                  final events = await widget.isar.alertEvents
-                      .filter()
-                      .ruleIdEqualTo(alert.id)
-                      .findAll();
-                  for (final event in events) {
-                    await widget.isar.alertEvents.delete(event.id);
-                  }
-                } catch (e) {
-                  // Ignore errors
-                }
-
-                // Delete alert
-                await widget.isar.alertRules.delete(alert.id);
-              }
-            });
+            // Delete all alerts
+            final alertIds = selectedAlerts.map((a) => a.id).toList();
+            await _alertRepository.deleteAlerts(alertIds);
 
             // Sync deletions in parallel (non-blocking)
             unawaited(Future.wait(
@@ -872,13 +781,8 @@ class _AlertsScreenState extends State<AlertsScreen>
                 _selectedAlertIds.clear();
               });
 
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${selectedAlerts.length} alert(s) deleted'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+            context.hideSnackBar();
+            context.showError('${selectedAlerts.length} alert(s) deleted');
             }
           }
           return;
@@ -895,13 +799,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       );
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ErrorService.getUserFriendlyError(e, loc),
-            ),
-          ),
-        );
+        context.showError(ErrorService.getUserFriendlyError(e, loc));
       }
     }
   }

@@ -26,7 +26,7 @@ class FirebaseService {
       await initializeWithoutFirebaseInit();
     } catch (e) {
       if (kDebugMode) {
-        print('Error initializing Firebase: $e');
+        debugPrint('Error initializing Firebase: $e');
       }
     }
   }
@@ -53,11 +53,11 @@ class FirebaseService {
       });
 
       if (kDebugMode) {
-        print('Firebase services initialized');
+        debugPrint('Firebase services initialized');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error initializing Firebase services: $e');
+        debugPrint('Error initializing Firebase services: $e');
       }
     }
   }
@@ -72,9 +72,9 @@ class FirebaseService {
     // Handle messages when app is open
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (kDebugMode) {
-        print('Message received: ${message.messageId}');
-        print('Data: ${message.data}');
-        print('Notification: ${message.notification?.title}');
+        debugPrint('Message received: ${message.messageId}');
+        debugPrint('Data: ${message.data}');
+        debugPrint('Notification: ${message.notification?.title}');
       }
 
       // Can show local notification here
@@ -84,7 +84,7 @@ class FirebaseService {
     // Handle notification taps
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       if (kDebugMode) {
-        print('App opened from notification: ${message.messageId}');
+        debugPrint('App opened from notification: ${message.messageId}');
       }
 
       _handleNotificationTap(message);
@@ -94,7 +94,7 @@ class FirebaseService {
     _messaging!.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         if (kDebugMode) {
-          print('App launched from notification: ${message.messageId}');
+          debugPrint('App launched from notification: ${message.messageId}');
         }
         _handleNotificationTap(message);
       }
@@ -128,7 +128,7 @@ class FirebaseService {
       return _fcmToken;
     } catch (e) {
       if (kDebugMode) {
-        print('Error getting FCM token: $e');
+        debugPrint('Error getting FCM token: $e');
       }
       return null;
     }
@@ -161,7 +161,7 @@ class FirebaseService {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error refreshing FCM token: $e');
+        debugPrint('Error refreshing FCM token: $e');
       }
     }
   }
@@ -175,7 +175,7 @@ class FirebaseService {
       await _sendTokenToServer();
     } catch (e) {
       if (kDebugMode) {
-        print('Error registering device with server: $e');
+        debugPrint('Error registering device with server: $e');
       }
     }
   }
@@ -202,16 +202,16 @@ class FirebaseService {
 
       if (response.statusCode == 200) {
         if (kDebugMode) {
-          print('FCM token successfully sent to server');
+          debugPrint('FCM token successfully sent to server');
         }
       } else {
         if (kDebugMode) {
-          print('Error sending token: ${response.statusCode}');
+          debugPrint('Error sending token: ${response.statusCode}');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error sending token to server: $e');
+        debugPrint('Error sending token to server: $e');
       }
     }
   }
@@ -240,13 +240,13 @@ class FirebaseService {
     // Filter out stale notifications (older than 10 minutes)
     if (!_isNotificationFresh(message)) {
       if (kDebugMode) {
-        print('Skipping stale background notification: ${message.messageId}');
+        debugPrint('Skipping stale background notification: ${message.messageId}');
       }
       return;
     }
 
     if (kDebugMode) {
-      print('Handling message in background: ${message.messageId}');
+      debugPrint('Handling message in background: ${message.messageId}');
     }
 
     // Can process message data here
@@ -262,7 +262,7 @@ class FirebaseService {
     // Filter out stale notifications (older than 10 minutes)
     if (!_isNotificationFresh(message)) {
       if (kDebugMode) {
-        print('Skipping stale notification: ${message.messageId}');
+        debugPrint('Skipping stale notification: ${message.messageId}');
       }
       return;
     }
@@ -288,7 +288,7 @@ class FirebaseService {
     // Filter out stale notifications (older than 10 minutes)
     if (!_isNotificationFresh(message)) {
       if (kDebugMode) {
-        print('Skipping stale notification tap: ${message.messageId}');
+        debugPrint('Skipping stale notification tap: ${message.messageId}');
       }
       return;
     }
@@ -327,7 +327,7 @@ class FirebaseService {
       return age <= maxAgeMs;
     } catch (e) {
       if (kDebugMode) {
-        print('Error checking notification freshness: $e');
+        debugPrint('Error checking notification freshness: $e');
       }
       return true; // Assume fresh on error
     }
@@ -338,7 +338,7 @@ class FirebaseService {
     // Alert data is processed automatically through NotificationService
     // when receiving notification in background
     if (kDebugMode) {
-      print('Handling alert: $data');
+      debugPrint('Handling alert: $data');
     }
   }
 
@@ -346,7 +346,7 @@ class FirebaseService {
   static void _navigateToAlert(String alertId) {
     // Navigation is implemented through NotificationService on notification tap
     if (kDebugMode) {
-      print(
+      debugPrint(
           'Navigate to alert: $alertId (handled through NotificationService)');
     }
   }
@@ -355,7 +355,7 @@ class FirebaseService {
   static void _navigateToSymbol(String symbol) {
     // Navigation is implemented through NotificationService on notification tap
     if (kDebugMode) {
-      print(
+      debugPrint(
           'Navigate to symbol: $symbol (handled through NotificationService)');
     }
   }
@@ -368,11 +368,11 @@ class FirebaseService {
       await _messaging!.subscribeToTopic(topic);
 
       if (kDebugMode) {
-        print('Subscribed to topic: $topic');
+        debugPrint('Subscribed to topic: $topic');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error subscribing to topic $topic: $e');
+        debugPrint('Error subscribing to topic $topic: $e');
       }
     }
   }
@@ -385,11 +385,11 @@ class FirebaseService {
       await _messaging!.unsubscribeFromTopic(topic);
 
       if (kDebugMode) {
-        print('Unsubscribed from topic: $topic');
+        debugPrint('Unsubscribed from topic: $topic');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error unsubscribing from topic $topic: $e');
+        debugPrint('Error unsubscribing from topic $topic: $e');
       }
     }
   }
@@ -406,11 +406,11 @@ class FirebaseService {
       await prefs.remove('fcm_token');
 
       if (kDebugMode) {
-        print('FCM token cleared');
+        debugPrint('FCM token cleared');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error clearing FCM token: $e');
+        debugPrint('Error clearing FCM token: $e');
       }
     }
   }

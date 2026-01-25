@@ -11,6 +11,7 @@ import '../services/data_sync_service.dart';
 import '../services/widget_service.dart';
 import '../models/indicator_type.dart';
 import '../state/app_state.dart';
+import '../utils/context_extensions.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Isar? isar;
@@ -465,14 +466,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   }
                   
-                  // Use ScaffoldMessenger with mounted check to avoid deactivated widget error
+                  // Use context extension with mounted check to avoid deactivated widget error
                   if (mounted && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(loc.t('settings_widget_indicator_updated')),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    context.showSuccess(loc.t('settings_widget_indicator_updated'));
                   }
                 },
               ),
@@ -517,24 +513,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc.t('auth_signed_in_as',
-                params: {'email': AuthService.email ?? loc.t('common_user')})),
-            backgroundColor: Colors.green,
-          ),
+        context.showSuccess(
+          loc.t('auth_signed_in_as',
+              params: {'email': AuthService.email ?? loc.t('common_user')}),
         );
         // Refresh the screen to show account info
         setState(() {});
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc.t('auth_error_message')),
-            backgroundColor: Colors.red,
-          ),
-        );
+        context.showError(loc.t('auth_error_message'));
       }
     }
   }
@@ -560,11 +548,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               } catch (e) {
                 // Show error only if context is still valid
                 if (mounted && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(loc.t('auth_sign_out_error', params: {'error': e.toString()})),
-                      backgroundColor: Colors.red,
-                    ),
+                  context.showError(
+                    loc.t('auth_sign_out_error', params: {'error': e.toString()}),
                   );
                 }
               }

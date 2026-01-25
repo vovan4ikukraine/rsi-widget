@@ -55,11 +55,11 @@ class NotificationService {
       _initialized = true;
 
       if (kDebugMode) {
-        print('Notification service initialized');
+        debugPrint('Notification service initialized');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error initializing notifications: $e');
+        debugPrint('Error initializing notifications: $e');
       }
     }
   }
@@ -81,7 +81,7 @@ class NotificationService {
       return false;
     } catch (e) {
       if (kDebugMode) {
-        print('Error requesting Android permissions: $e');
+        debugPrint('Error requesting Android permissions: $e');
       }
       return false;
     }
@@ -90,7 +90,7 @@ class NotificationService {
   /// Handle notification tap
   static void _onNotificationTapped(NotificationResponse response) {
     if (kDebugMode) {
-      print('Notification tapped: ${response.payload}');
+      debugPrint('Notification tapped: ${response.payload}');
     }
 
     final payload = response.payload;
@@ -121,7 +121,7 @@ class NotificationService {
 
       if (data == null) {
         if (kDebugMode) {
-          print('Failed to parse payload: $payload');
+          debugPrint('Failed to parse payload: $payload');
         }
         return;
       }
@@ -156,11 +156,11 @@ class NotificationService {
       }
 
       if (kDebugMode) {
-        print('Navigation completed for payload: $data');
+        debugPrint('Navigation completed for payload: $data');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error processing payload: $e');
+        debugPrint('Error processing payload: $e');
       }
     }
   }
@@ -220,7 +220,7 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Error navigating to symbol $symbol: $e');
+        debugPrint('Error navigating to symbol $symbol: $e');
       }
     }
   }
@@ -252,7 +252,7 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Error navigating to alert $alertId: $e');
+        debugPrint('Error navigating to alert $alertId: $e');
       }
     }
   }
@@ -366,11 +366,11 @@ class NotificationService {
       );
 
       if (kDebugMode) {
-        print('RSI notification shown for $symbol');
+        debugPrint('RSI notification shown for $symbol');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error showing RSI notification: $e');
+        debugPrint('Error showing RSI notification: $e');
       }
     }
   }
@@ -434,7 +434,7 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Error showing notification: $e');
+        debugPrint('Error showing notification: $e');
       }
     }
   }
@@ -515,11 +515,11 @@ class NotificationService {
       await _notifications.cancelAll();
 
       if (kDebugMode) {
-        print('All notifications cancelled');
+        debugPrint('All notifications cancelled');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error cancelling notifications: $e');
+        debugPrint('Error cancelling notifications: $e');
       }
     }
   }
@@ -530,7 +530,7 @@ class NotificationService {
       await _notifications.cancel(id);
     } catch (e) {
       if (kDebugMode) {
-        print('Error cancelling notification $id: $e');
+        debugPrint('Error cancelling notification $id: $e');
       }
     }
   }
@@ -543,7 +543,7 @@ class NotificationService {
       await _notifications.cancel(id);
     } catch (e) {
       if (kDebugMode) {
-        print('Error cancelling notifications by tag $tag: $e');
+        debugPrint('Error cancelling notifications by tag $tag: $e');
       }
     }
   }
@@ -554,7 +554,7 @@ class NotificationService {
       return await _notifications.getActiveNotifications();
     } catch (e) {
       if (kDebugMode) {
-        print('Error getting active notifications: $e');
+        debugPrint('Error getting active notifications: $e');
       }
       return [];
     }
@@ -575,7 +575,7 @@ class NotificationService {
       return true; // For iOS assume they are enabled
     } catch (e) {
       if (kDebugMode) {
-        print('Error checking notification status: $e');
+        debugPrint('Error checking notification status: $e');
       }
       return false;
     }
@@ -590,12 +590,12 @@ class NotificationService {
         );
       } else {
         if (kDebugMode) {
-          print('Opening settings is supported only on Android/iOS');
+          debugPrint('Opening settings is supported only on Android/iOS');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error opening notification settings: $e');
+        debugPrint('Error opening notification settings: $e');
       }
     }
   }
