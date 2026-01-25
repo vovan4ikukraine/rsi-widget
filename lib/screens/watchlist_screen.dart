@@ -19,9 +19,10 @@ import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/indicator_level_validator.dart';
 import '../constants/app_constants.dart';
-import '../repositories/alert_repository.dart';
+import '../di/app_container.dart';
+import '../repositories/i_alert_repository.dart';
+import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
-import '../repositories/watchlist_repository.dart';
 import '../services/widget_service.dart';
 
 class WatchlistScreen extends StatefulWidget {
@@ -40,8 +41,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
   late final WidgetService _widgetService;
-  late final AlertRepository _alertRepository;
-  late final WatchlistRepository _watchlistRepository;
+  late final IAlertRepository _alertRepository;
+  late final IWatchlistRepository _watchlistRepository;
 
   static const String _sortOrderPrefKey = 'watchlist_sort_order';
 
@@ -122,12 +123,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _alertRepository = AlertRepository(widget.isar);
-    _watchlistRepository = WatchlistRepository(widget.isar);
-    _widgetService = WidgetService(
-      isar: widget.isar,
-      yahooService: _yahooService,
-    );
+    _alertRepository = sl<IAlertRepository>();
+    _watchlistRepository = sl<IWatchlistRepository>();
+    _widgetService = WidgetService(yahooService: _yahooService);
     _updateControllerHints();
     _loadSavedState();
   }
@@ -729,12 +727,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     try {
       // Fetch watchlist from server if authenticated
       if (AuthService.isSignedIn) {
-        await DataSyncService.fetchWatchlist(widget.isar);
+        await DataSyncService.fetchWatchlist();
       } else {
         // In anonymous mode, restore from cache if database is empty
         final existingItems = await _watchlistRepository.getAll();
         if (existingItems.isEmpty) {
-          await DataSyncService.restoreWatchlistFromCache(widget.isar);
+          await DataSyncService.restoreWatchlistFromCache();
         }
       }
 
@@ -1008,9 +1006,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
-      unawaited(DataSyncService.syncWatchlist(widget.isar));
+      unawaited(DataSyncService.syncWatchlist());
     } else {
-      unawaited(DataSyncService.saveWatchlistToCache(widget.isar));
+      unawaited(DataSyncService.saveWatchlistToCache());
     }
   }
 
@@ -2544,9 +2542,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Sync all created alerts in parallel (outside transaction)
       if (createdAlerts.isNotEmpty) {
         unawaited(Future.wait(
-          createdAlerts.map((alert) => AlertSyncService.syncAlert(
-            widget.isar, 
-            alert,
+          createdAlerts.map((alert) => AlertSyncService.syncAlert(alert,
             lowerLevelEnabled: _massAlertLowerLevelEnabled,
             upperLevelEnabled: _massAlertUpperLevelEnabled,
             lowerLevelValue: _massAlertLowerLevel,
@@ -2837,9 +2833,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
         // Sync new alerts in parallel (outside transaction)
         for (final alert in createdAlerts) {
-          unawaited(AlertSyncService.syncAlert(
-            widget.isar,
-            alert,
+          unawaited(AlertSyncService.syncAlert(alert,
             lowerLevelEnabled: _massAlertLowerLevelEnabled,
             upperLevelEnabled: _massAlertUpperLevelEnabled,
             lowerLevelValue: _massAlertLowerLevel,
@@ -2852,9 +2846,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       if (alertsToSync.isNotEmpty) {
         debugPrint('_updateMassAlerts: Syncing ${alertsToSync.length} updated alerts');
         for (final alert in alertsToSync) {
-          unawaited(AlertSyncService.syncAlert(
-            widget.isar, 
-            alert,
+          unawaited(AlertSyncService.syncAlert(alert,
             lowerLevelEnabled: _massAlertLowerLevelEnabled,
             upperLevelEnabled: _massAlertUpperLevelEnabled,
             lowerLevelValue: _massAlertLowerLevel,

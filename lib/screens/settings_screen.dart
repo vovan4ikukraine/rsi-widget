@@ -30,18 +30,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   IndicatorType _widgetIndicator = IndicatorType.rsi;
   StreamSubscription? _authSubscription;
   bool _isSignedIn = false;
-  WidgetService? _widgetService;
+  late final WidgetService _widgetService;
 
   @override
   void initState() {
     super.initState();
     _isSignedIn = AuthService.isSignedIn;
-    if (widget.isar != null) {
-      _widgetService = WidgetService(
-        isar: widget.isar!,
-        yahooService: YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev'),
-      );
-    }
+    _widgetService = WidgetService(
+      yahooService: YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev'),
+    );
     _loadSettings();
 
     // Listen to auth state changes
@@ -420,7 +417,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                   
                   // Update widget with new indicator
-                  if (_widgetService != null) {
+                  {
                     // Get current settings for the selected indicator from watchlist/home
                     // This ensures widget uses actual user settings, not defaults
                     final indicatorKey = value.toJson();
@@ -457,7 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // DEBUG: Log parameters being used
                     debugPrint('SettingsScreen: Updating widget with indicator=$indicatorKey, timeframe=$indicatorTimeframe (watchlist=$watchlistTimeframe, home=$homeTimeframe), period=$indicatorPeriod (watchlist=$watchlistPeriod, home=$homePeriod)');
                     
-                    await _widgetService!.updateWidget(
+                    await _widgetService.updateWidget(
                       timeframe: indicatorTimeframe,
                       rsiPeriod: indicatorPeriod,
                       sortDescending: savedSortDescending,
@@ -498,19 +495,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _signInFromSettings(AppLocalizations loc) async {
     try {
       // Save anonymous watchlist and alerts to cache before signing in
-      if (widget.isar != null) {
-        await DataSyncService.saveWatchlistToCache(widget.isar!);
-        await DataSyncService.saveAlertsToCache(widget.isar!);
-      }
+      await DataSyncService.saveWatchlistToCache();
+      await DataSyncService.saveAlertsToCache();
 
       await AuthService.signInWithGoogle();
 
-      // Sync data after sign in
-      if (widget.isar != null) {
-        unawaited(AlertSyncService.fetchAndSyncAlerts(widget.isar!));
-        unawaited(AlertSyncService.syncPendingAlerts(widget.isar!));
-        unawaited(DataSyncService.fetchWatchlist(widget.isar!));
-      }
+      unawaited(AlertSyncService.fetchAndSyncAlerts());
+      unawaited(AlertSyncService.syncPendingAlerts());
+      unawaited(DataSyncService.fetchWatchlist());
 
       if (mounted) {
         context.showSuccess(
@@ -542,7 +534,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               Navigator.pop(context); // Close dialog first
               try {
-                await AuthService.signOut(isar: widget.isar);
+                await AuthService.signOut();
                 // UI will update automatically via authStateChanges listener
                 // No need to pop - let user see the updated state
               } catch (e) {

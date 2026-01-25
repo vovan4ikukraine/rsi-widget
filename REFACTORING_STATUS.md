@@ -52,10 +52,10 @@
 
 ### Dependency Inversion Principle (DIP)
 
-- **AlertRepository**: экраны зависят от репозитория, а не от Isar напрямую — шаг в сторону DIP.
-- **Общий DI-контейнер** (Service Locator, get_it и т.п.) не используется. Сервисы и репозитории создаются вручную в экранах.
+- **AlertRepository / WatchlistRepository**: экраны и сервисы зависят от интерфейсов `IAlertRepository`, `IWatchlistRepository`, а не от Isar напрямую.
+- **DI (get_it)**: ✅ `lib/di/app_container.dart` — регистрация Isar, `IAlertRepository`, `IWatchlistRepository` при старте. `DataSyncService`, `AlertSyncService`, `WidgetService` и экраны используют `sl<IAlertRepository>()`, `sl<IWatchlistRepository>()`. Методы sync/watchlist/alerts без аргумента Isar; всё идёт через get_it.
 
-**Итог по SOLID:** Улучшения по SRP (репозитории, утилиты), OCP/ISP (интерфейсы `IAlertRepository`, `IWatchlistRepository`), DIP (зависимость от репозиториев, а не от Isar). Крупные экраны и отсутствие DI-контейнера оставляют частичные нарушения.
+**Итог по SOLID:** Улучшения по SRP (репозитории, утилиты), OCP/ISP (интерфейсы), DIP (репозитории + get_it). Крупные экраны по-прежнему без ViewModel.
 
 ---
 
@@ -83,7 +83,7 @@
 | Принцип | Оценка | Комментарий |
 |---------|--------|-------------|
 | **DRY** | ✅ ~95% | Форматтер, SnackBar, валидация, константы, AlertRepository, WatchlistRepository внедрены. Запросы массовых алертов и работа с watchlist идут через репозитории. |
-| **SOLID** | ⚠️ ~60% | Репозитории, утилиты, интерфейсы IAlertRepository/IWatchlistRepository. Экраны по-прежнему крупные, DI не используется. |
+| **SOLID** | ⚠️ ~70% | Репозитории, интерфейсы, get_it (DI). Экраны крупные, ViewModel не введены. |
 | **KISS** | ✅ ~80% | Меньше дублирования, крупные методы разбиты на вспомогательные (`_createMassAlerts`, `_loadIndicatorData`), исправлена структура `_updateMassAlerts`. |
 
 ---
@@ -91,7 +91,7 @@
 ## Рекомендации для дальнейшего рефакторинга
 
 1. **DRY:** Выполнено — DataSyncService и AlertSyncService переведены на AlertRepository; WatchlistRepository используется в DataSync/Widget; PreferencesStorage — для SharedPreferences.
-2. **SOLID:** Интерфейсы репозиториев введены. По желанию: разбить большие экраны на UI + ViewModel; внедрить DI (get_it и т.п.).
+2. **SOLID:** Интерфейсы и DI (get_it) внедрены. По желанию: разбить большие экраны на UI + ViewModel.
 3. **KISS:** Упростить вложенность в отдельных виджетах; при необходимости разбить крупные виджеты на переиспользуемые компоненты.
 
 ---

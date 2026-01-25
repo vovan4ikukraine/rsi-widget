@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:isar/isar.dart';
 import 'user_service.dart';
 import 'firebase_service.dart';
 import 'data_sync_service.dart';
@@ -71,7 +70,7 @@ class AuthService {
   }
 
   /// Sign out
-  static Future<void> signOut({Isar? isar}) async {
+  static Future<void> signOut() async {
     try {
       // Before signing out, save current preferences and watchlist to cache
       final prefs = await SharedPreferences.getInstance();
@@ -96,21 +95,16 @@ class AuthService {
       }
 
       // Sync watchlist and alerts to server before signing out (if authenticated)
-      if (isar != null) {
-        await DataSyncService.syncWatchlist(isar);
-        // Sync pending alerts before signing out
-        await AlertSyncService.syncPendingAlerts(isar);
-      }
+      await DataSyncService.syncWatchlist();
+      await AlertSyncService.syncPendingAlerts();
 
       await _googleSignIn.signOut();
       await _auth.signOut();
       await UserService.clearFirebaseUserId();
 
       // Restore anonymous watchlist and alerts from cache
-      if (isar != null) {
-        await DataSyncService.restoreWatchlistFromCache(isar);
-        await DataSyncService.restoreAlertsFromCache(isar);
-      }
+      await DataSyncService.restoreWatchlistFromCache();
+      await DataSyncService.restoreAlertsFromCache();
 
       // Clear auth_skipped flag so user can sign in again if they want
       await prefs.setBool('auth_skipped', true);

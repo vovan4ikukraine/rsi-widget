@@ -12,6 +12,7 @@ abstract interface class IAlertRepository {
   Future<void> deleteAlerts(List<int> ids);
   Future<void> deleteAlertWithRelatedData(int id);
   Future<void> deleteAlertsWithRelatedData(List<int> ids);
+  Future<void> deleteAlertStateByRuleId(int ruleId);
   Future<List<AlertRule>> getAllAlerts();
   Future<AlertRule?> getAlertById(int id);
   Future<List<AlertRule>> getAlertsBySymbol(String symbol);

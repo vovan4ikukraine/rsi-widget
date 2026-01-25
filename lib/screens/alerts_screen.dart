@@ -13,7 +13,8 @@ import '../widgets/indicator_selector.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../constants/app_constants.dart';
-import '../repositories/alert_repository.dart';
+import '../di/app_container.dart';
+import '../repositories/i_alert_repository.dart';
 
 class AlertsScreen extends StatefulWidget {
   final Isar isar;
@@ -26,7 +27,7 @@ class AlertsScreen extends StatefulWidget {
 
 class _AlertsScreenState extends State<AlertsScreen>
     with WidgetsBindingObserver {
-  late final AlertRepository _alertRepository;
+  late final IAlertRepository _alertRepository;
   List<AlertRule> _alerts = [];
   List<AlertEvent> _events = [];
   bool _isLoading = true;
@@ -39,7 +40,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   @override
   void initState() {
     super.initState();
-    _alertRepository = AlertRepository(widget.isar);
+    _alertRepository = sl<IAlertRepository>();
     WidgetsBinding.instance.addObserver(this);
     // Always refresh when screen is opened to ensure Watchlist Alert changes are reflected
     _loadData();
@@ -84,8 +85,8 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     try {
       // Sync alerts from server if authenticated
-      await AlertSyncService.fetchAndSyncAlerts(widget.isar);
-      await AlertSyncService.syncPendingAlerts(widget.isar);
+      await AlertSyncService.fetchAndSyncAlerts();
+      await AlertSyncService.syncPendingAlerts();
 
       // Get custom alerts (excludes watchlist alerts)
       final alerts = await _alertRepository.getCustomAlerts();
@@ -542,7 +543,7 @@ class _AlertsScreenState extends State<AlertsScreen>
     try {
       alert.active = !alert.active;
       await _alertRepository.saveAlert(alert);
-      await AlertSyncService.syncAlert(widget.isar, alert);
+      await AlertSyncService.syncAlert(alert);
 
       if (!mounted) return;
       setState(() {
@@ -584,7 +585,7 @@ class _AlertsScreenState extends State<AlertsScreen>
         ..description = '${alert.description ?? ''} (copy)';
 
       await _alertRepository.saveAlert(newAlert);
-      await AlertSyncService.syncAlert(widget.isar, newAlert);
+      await AlertSyncService.syncAlert(newAlert);
 
       await _loadData();
 
@@ -683,7 +684,7 @@ class _AlertsScreenState extends State<AlertsScreen>
           // Sync all alerts in parallel (non-blocking)
           unawaited(Future.wait(
             selectedAlerts
-                .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+                .map((alert) => AlertSyncService.syncAlert(alert)),
           ));
 
           // Update UI immediately
@@ -714,7 +715,7 @@ class _AlertsScreenState extends State<AlertsScreen>
           // Sync all alerts in parallel (non-blocking)
           unawaited(Future.wait(
             selectedAlerts
-                .map((alert) => AlertSyncService.syncAlert(widget.isar, alert)),
+                .map((alert) => AlertSyncService.syncAlert(alert)),
           ));
 
           // Update UI immediately

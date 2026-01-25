@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:isar/isar.dart';
+import '../di/app_container.dart';
 import '../models/indicator_type.dart';
+import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
-import '../repositories/watchlist_repository.dart';
 import 'yahoo_proto.dart';
 import 'indicator_service.dart';
 
@@ -13,13 +13,9 @@ import 'indicator_service.dart';
 class WidgetService {
   static const MethodChannel _channel =
       MethodChannel('com.example.rsi_widget/widget');
-  final Isar isar;
   final YahooProtoSource yahooService;
 
-  WidgetService({
-    required this.isar,
-    required this.yahooService,
-  });
+  WidgetService({required this.yahooService});
 
   /// Updates widget with current watchlist data
   Future<void> updateWidget({
@@ -60,7 +56,7 @@ class WidgetService {
       debugPrint('WidgetService: Saving widget_indicator=${finalIndicator.toJson()}, period=$finalPeriod, params=$finalIndicatorParams');
 
       // Load watchlist
-      final repo = WatchlistRepository(isar);
+      final repo = sl<IWatchlistRepository>();
       final watchlistItems = await repo.getAll();
 
       if (watchlistItems.isEmpty) {

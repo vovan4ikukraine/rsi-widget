@@ -6,6 +6,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'di/app_container.dart';
 import 'models.dart';
 import 'services/notification_service.dart';
 import 'services/firebase_service.dart';
@@ -41,6 +42,9 @@ void main() async {
     directory: dir.path,
     name: 'rsi_alert_db',
   );
+
+  // 3a Register DI (Isar, repositories)
+  registerAppDependencies(isar);
 
   // 4️⃣ Load preferences (quick)
   final prefs = await SharedPreferences.getInstance();
@@ -350,13 +354,13 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   Future<void> _syncUserData() async {
     try {
       // Save anonymous watchlist and alerts to cache before loading account data
-      await DataSyncService.saveWatchlistToCache(widget.isar);
-      await DataSyncService.saveAlertsToCache(widget.isar);
+      await DataSyncService.saveWatchlistToCache();
+      await DataSyncService.saveAlertsToCache();
 
       // Fetch account data (completely replaces local data)
-      await AlertSyncService.fetchAndSyncAlerts(widget.isar);
-      await AlertSyncService.syncPendingAlerts(widget.isar);
-      await DataSyncService.fetchWatchlist(widget.isar);
+      await AlertSyncService.fetchAndSyncAlerts();
+      await AlertSyncService.syncPendingAlerts();
+      await DataSyncService.fetchWatchlist();
     } catch (e) {
       // Silently handle errors - user can manually sync if needed
       debugPrint('_AuthWrapper: Error syncing user data: $e');

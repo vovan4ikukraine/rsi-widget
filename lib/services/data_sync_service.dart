@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:isar/isar.dart';
 
+import '../di/app_container.dart';
 import '../models.dart';
-import '../repositories/alert_repository.dart';
-import '../repositories/watchlist_repository.dart';
+import '../repositories/i_alert_repository.dart';
+import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
 import 'user_service.dart';
 import 'auth_service.dart';
@@ -54,9 +54,9 @@ class DataSyncService {
   }
 
   /// Save anonymous watchlist to cache
-  static Future<void> saveWatchlistToCache(Isar isar) async {
+  static Future<void> saveWatchlistToCache() async {
     try {
-      final repo = WatchlistRepository(isar);
+      final repo = sl<IWatchlistRepository>();
       final items = await repo.getAll();
       final prefs = await PreferencesStorage.instance;
       final symbols = items.map((item) => item.symbol).toList();
@@ -86,7 +86,7 @@ class DataSyncService {
   }
 
   /// Restore anonymous watchlist from cache to database
-  static Future<void> restoreWatchlistFromCache(Isar isar) async {
+  static Future<void> restoreWatchlistFromCache() async {
     try {
       final symbols = await loadWatchlistFromCache();
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -97,7 +97,7 @@ class DataSyncService {
               ..createdAt = now,
           )
           .toList();
-      final repo = WatchlistRepository(isar);
+      final repo = sl<IWatchlistRepository>();
       await repo.replaceAll(items);
 
       if (kDebugMode) {
@@ -112,9 +112,9 @@ class DataSyncService {
   }
 
   /// Save anonymous alerts to cache
-  static Future<void> saveAlertsToCache(Isar isar) async {
+  static Future<void> saveAlertsToCache() async {
     try {
-      final repo = AlertRepository(isar);
+      final repo = sl<IAlertRepository>();
       final alerts = await repo.getAllAlerts();
       final prefs = await PreferencesStorage.instance;
 
@@ -203,7 +203,7 @@ class DataSyncService {
   }
 
   /// Restore anonymous alerts from cache to database
-  static Future<void> restoreAlertsFromCache(Isar isar) async {
+  static Future<void> restoreAlertsFromCache() async {
     try {
       final prefs = await PreferencesStorage.instance;
 
@@ -293,7 +293,7 @@ class DataSyncService {
         }
       }
 
-      final repo = AlertRepository(isar);
+      final repo = sl<IAlertRepository>();
       await repo.restoreAnonymousAlertsFromCacheData(
         alertsToRestore: alertsToRestore,
         statesToRestore: statesToRestore,
@@ -313,14 +313,11 @@ class DataSyncService {
   }
 
   /// Sync watchlist to server
-  static Future<void> syncWatchlist(Isar isar) async {
-    if (!AuthService.isSignedIn) {
-      // In anonymous mode, just save locally
-      return;
-    }
+  static Future<void> syncWatchlist() async {
+    if (!AuthService.isSignedIn) return;
 
     final userId = await UserService.ensureUserId();
-    final repo = WatchlistRepository(isar);
+    final repo = sl<IWatchlistRepository>();
     final localItems = await repo.getAll();
 
     try {
@@ -353,11 +350,8 @@ class DataSyncService {
   }
 
   /// Fetch watchlist from server and replace local watchlist completely
-  static Future<void> fetchWatchlist(Isar isar) async {
-    if (!AuthService.isSignedIn) {
-      // In anonymous mode, don't fetch from server
-      return;
-    }
+  static Future<void> fetchWatchlist() async {
+    if (!AuthService.isSignedIn) return;
 
     final userId = await UserService.ensureUserId();
 
@@ -380,8 +374,7 @@ class DataSyncService {
       final List<dynamic>? symbols = decoded['symbols'] as List<dynamic>?;
 
       if (symbols == null) {
-        // Server has empty watchlist - clear local
-        final repo = WatchlistRepository(isar);
+        final repo = sl<IWatchlistRepository>();
         await repo.replaceAll([]);
         return;
       }
@@ -419,7 +412,7 @@ class DataSyncService {
         }
         items.add(item);
       }
-      final repo = WatchlistRepository(isar);
+      final repo = sl<IWatchlistRepository>();
       await repo.replaceAll(items);
 
       if (kDebugMode) {

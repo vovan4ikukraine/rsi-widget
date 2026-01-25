@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:isar/isar.dart';
 
+import '../di/app_container.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
-import '../repositories/alert_repository.dart';
+import '../repositories/i_alert_repository.dart';
 import 'user_service.dart';
 import 'firebase_service.dart';
 import 'auth_service.dart';
@@ -16,7 +16,6 @@ class AlertSyncService {
   static const _baseUrl = 'https://rsi-workers.vovan4ikukraine.workers.dev';
 
   static Future<void> syncAlert(
-    Isar isar, 
     AlertRule alert, {
     bool? lowerLevelEnabled,
     bool? upperLevelEnabled,
@@ -30,7 +29,7 @@ class AlertSyncService {
     }
     try {
       if (alert.remoteId == null) {
-        await _createRemoteAlert(isar, alert, userId,
+        await _createRemoteAlert(alert, userId,
           lowerLevelEnabled: lowerLevelEnabled,
           upperLevelEnabled: upperLevelEnabled,
           lowerLevelValue: lowerLevelValue,
@@ -83,19 +82,19 @@ class AlertSyncService {
     }
   }
 
-  static Future<void> syncPendingAlerts(Isar isar) async {
-    final repo = AlertRepository(isar);
+  static Future<void> syncPendingAlerts() async {
+    final repo = sl<IAlertRepository>();
     final alerts = await repo.getAllAlerts();
     for (final alert in alerts) {
       if (alert.remoteId == null) {
-        await syncAlert(isar, alert);
+        await syncAlert(alert);
       }
     }
   }
 
   /// Fetch alerts from server and sync to local database
   /// Completely replaces local alerts with server alerts (for authenticated users)
-  static Future<void> fetchAndSyncAlerts(Isar isar) async {
+  static Future<void> fetchAndSyncAlerts() async {
     if (!AuthService.isSignedIn) return;
 
     final userId = await UserService.ensureUserId();
@@ -124,7 +123,7 @@ class AlertSyncService {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
-      final repo = AlertRepository(isar);
+      final repo = sl<IAlertRepository>();
       await repo.replaceAlertsWithServerSnapshot(rules);
 
       if (kDebugMode) {
@@ -140,7 +139,6 @@ class AlertSyncService {
   }
 
   static Future<void> _createRemoteAlert(
-    Isar isar,
     AlertRule alert,
     String userId, {
     bool? lowerLevelEnabled,
@@ -220,7 +218,7 @@ class AlertSyncService {
         : (remoteIdValue is String ? int.tryParse(remoteIdValue) : null);
     if (remoteId != null) {
       alert.remoteId = remoteId;
-      final repo = AlertRepository(isar);
+      final repo = sl<IAlertRepository>();
       await repo.saveAlert(alert);
       if (kDebugMode) {
         debugPrint(

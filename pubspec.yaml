@@ -43,6 +43,7 @@ dependencies:
   material_design_icons_flutter: ^7.0.7296
   
   # Utilities
+  get_it: ^8.0.3
   intl: ^0.20.2
   shared_preferences: ^2.2.2
   path_provider: ^2.1.3

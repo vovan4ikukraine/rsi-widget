@@ -23,8 +23,9 @@ import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../constants/app_constants.dart';
-import '../repositories/alert_repository.dart';
-import '../repositories/watchlist_repository.dart';
+import '../di/app_container.dart';
+import '../repositories/i_alert_repository.dart';
+import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
@@ -56,8 +57,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'com.example.rsi_widget/widget',
   );
   late final WidgetService _widgetService;
-  late final WatchlistRepository _watchlistRepository;
-  late final AlertRepository _alertRepository;
+  late final IWatchlistRepository _watchlistRepository;
+  late final IAlertRepository _alertRepository;
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
@@ -91,17 +92,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _watchlistRepository = WatchlistRepository(widget.isar);
-    _alertRepository = AlertRepository(widget.isar);
-    _widgetService = WidgetService(
-      isar: widget.isar,
-      yahooService: _yahooService,
-    );
+    _watchlistRepository = sl<IWatchlistRepository>();
+    _alertRepository = sl<IAlertRepository>();
+    _widgetService = WidgetService(yahooService: _yahooService);
     _symbolSearchService = SymbolSearchService(_yahooService);
     _setupMethodChannel();
     _loadSavedState();
     _loadPopularSymbols();
-    unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
+    unawaited(AlertSyncService.syncPendingAlerts());
     // Always refresh data on app open to ensure freshness
     unawaited(_refreshIndicatorData());
   }
@@ -401,9 +399,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Sync data: fetch from server and push local changes
     if (AuthService.isSignedIn) {
-      unawaited(AlertSyncService.fetchAndSyncAlerts(widget.isar));
-      unawaited(AlertSyncService.syncPendingAlerts(widget.isar));
-      unawaited(DataSyncService.fetchWatchlist(widget.isar));
+      unawaited(AlertSyncService.fetchAndSyncAlerts());
+      unawaited(AlertSyncService.syncPendingAlerts());
+      unawaited(DataSyncService.fetchWatchlist());
     }
 
     _loadAlerts();
@@ -1842,10 +1840,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
-      unawaited(DataSyncService.syncWatchlist(widget.isar));
+      unawaited(DataSyncService.syncWatchlist());
     } else {
       // In anonymous mode, save to cache
-      unawaited(DataSyncService.saveWatchlistToCache(widget.isar));
+      unawaited(DataSyncService.saveWatchlistToCache());
     }
 
     debugPrint('HomeScreen: After put() item.id = ${item.id}');

@@ -15,7 +15,8 @@ import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/indicator_level_validator.dart';
 import '../constants/app_constants.dart';
-import '../repositories/alert_repository.dart';
+import '../di/app_container.dart';
+import '../repositories/i_alert_repository.dart';
 
 class CreateAlertScreen extends StatefulWidget {
   final Isar isar;
@@ -59,14 +60,14 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _isLoading = false;
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
-  late final AlertRepository _alertRepository;
+  late final IAlertRepository _alertRepository;
   List<SymbolInfo> _popularSymbols = [];
   AppState? _appState;
 
   @override
   void initState() {
     super.initState();
-    _alertRepository = AlertRepository(widget.isar);
+    _alertRepository = sl<IAlertRepository>();
     _symbolSearchService = SymbolSearchService(_yahooService);
     _loadPopularSymbols();
     if (widget.alert != null) {
@@ -1068,7 +1069,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
       await _alertRepository.saveAlert(alert);
       // Pass enabled levels info to sync service so it can send proper array to server
-      await AlertSyncService.syncAlert(widget.isar, alert, 
+      await AlertSyncService.syncAlert(alert,
         lowerLevelEnabled: _lowerLevelEnabled,
         upperLevelEnabled: _upperLevelEnabled,
         lowerLevelValue: lowerLevel,
