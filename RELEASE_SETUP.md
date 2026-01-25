@@ -55,11 +55,13 @@ if (-not $javaHome) { $javaHome = "${env:ProgramFiles}\Android\Android Studio\jb
 
 **Файл `android/key.properties` создан** (уже в `.gitignore`, не будет закоммичен):
 ```
-storePassword=TT2002TT
-keyPassword=TT2002TT
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
 keyAlias=upload
 storeFile=upload-keystore.jks
 ```
+
+⚠️ **ВАЖНО:** Замените `YOUR_KEYSTORE_PASSWORD` и `YOUR_KEY_PASSWORD` на ваши реальные пароли!
 
 **Важно:** Файл `key.properties` уже добавлен в `.gitignore` и не будет закоммичен в репозиторий. Это безопасный способ хранения паролей.
 
@@ -77,15 +79,13 @@ if (-not $javaHome) { $javaHome = "${env:ProgramFiles}\Android\Android Studio\jb
 & "$javaHome\bin\keytool.exe" -list -v -keystore "$env:USERPROFILE\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android | Select-String -Pattern "SHA1:"
 ```
 
-**Ваш текущий Debug SHA-1:** `2E:7F:94:25:9E:D0:51:31:60:51:71:25:DE:DC:25:A9:A6:D2:9F:F2`
-
 **2. Release keystore:**
 ```powershell
 $javaHome = "C:\Program Files\Android\Android Studio\jbr"
-& "$javaHome\bin\keytool.exe" -list -v -keystore android/app/upload-keystore.jks -alias upload -storepass TT2002TT | Select-String -Pattern "SHA1:"
+& "$javaHome\bin\keytool.exe" -list -v -keystore android/app/upload-keystore.jks -alias upload -storepass YOUR_KEYSTORE_PASSWORD | Select-String -Pattern "SHA1:"
 ```
 
-**Ваш Release SHA-1:** `DA:92:02:D5:0A:FE:B5:0B:46:35:4E:E9:DB:40:31:98:1A:7A:CC:0E`
+⚠️ **ВАЖНО:** Замените `YOUR_KEYSTORE_PASSWORD` на ваш реальный пароль keystore!
 
 **Примечание:** При вводе пароля в терминале символы не отображаются — это нормально для безопасности. Просто введите пароль и нажмите Enter.
 
@@ -100,9 +100,9 @@ SHA1: XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX
 2. Выберите проект `rsi-widget-app` → **Project Settings** (⚙️) → вкладка **Your apps**
 3. Найдите приложение с package name `com.indicharts.app`
 4. Нажмите **"Add fingerprint"** (или иконку карандаша)
-5. Добавьте оба SHA-1:
-   - Debug: `2E:7F:94:25:9E:D0:51:31:60:51:71:25:DE:DC:25:A9:A6:D2:9F:F2`
-   - Release: `DA:92:02:D5:0A:FE:B5:0B:46:35:4E:E9:DB:40:31:98:1A:7A:CC:0E`
+5. Добавьте оба SHA-1 (получите их командами выше):
+   - Debug: `XX:XX:XX:...` (получите командой для debug keystore)
+   - Release: `XX:XX:XX:...` (получите командой для release keystore)
 6. Сохраните изменения
 7. Скачайте обновленный `google-services.json` и замените текущий файл
 
@@ -154,15 +154,15 @@ SHA1: XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX
 **Получение SHA-256 для верификации:**
 ```powershell
 $javaHome = "C:\Program Files\Android\Android Studio\jbr"
-& "$javaHome\bin\keytool.exe" -list -v -keystore android/app/upload-keystore.jks -alias upload -storepass TT2002TT | Select-String -Pattern "SHA256:"
+& "$javaHome\bin\keytool.exe" -list -v -keystore android/app/upload-keystore.jks -alias upload -storepass YOUR_KEYSTORE_PASSWORD | Select-String -Pattern "SHA256:"
 ```
 
-**Ваш Release SHA-256:** `45:91:D4:E5:65:39:4E:49:92:6A:8D:B2:6D:3B:FB:12:07:AF:95:2C:EB:4B:BF:96:62:06:E9:3B:ED:DE:ED:80`
+⚠️ **ВАЖНО:** Замените `YOUR_KEYSTORE_PASSWORD` на ваш реальный пароль keystore!
 
 **Для верификации:**
 1. В Firebase Console нажмите на ссылку "Android client for com.indicharts.app"
 2. Выберите способ верификации через SHA-256 fingerprint
-3. Добавьте SHA-256: `45:91:D4:E5:65:39:4E:49:92:6A:8D:B2:6D:3B:FB:12:07:AF:95:2C:EB:4B:BF:96:62:06:E9:3B:ED:DE:ED:80`
+3. Добавьте SHA-256, полученный командой выше
 4. Сохраните изменения
 
 **Примечание:** Старое приложение `com.example.rsi_widget` можно удалить из Firebase Console, если оно больше не используется.
