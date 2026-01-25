@@ -379,6 +379,42 @@ const List<SymbolInfo> popularSymbols = [
     currency: 'EUR',
     exchange: 'EURONEXT',
   ),
+  // Additional indices with prop firm names
+  SymbolInfo(
+    symbol: '^GDAXI',
+    name: 'GER40 (DAX)',
+    type: 'index',
+    currency: 'EUR',
+    exchange: 'XETR',
+  ),
+  SymbolInfo(
+    symbol: '^FTSE',
+    name: 'UK100 (FTSE 100)',
+    type: 'index',
+    currency: 'GBP',
+    exchange: 'LSE',
+  ),
+  SymbolInfo(
+    symbol: '^NDX',
+    name: 'US100 (NASDAQ 100)',
+    type: 'index',
+    currency: 'USD',
+    exchange: 'NASDAQ',
+  ),
+  SymbolInfo(
+    symbol: '^DJI',
+    name: 'US30 (Dow Jones)',
+    type: 'index',
+    currency: 'USD',
+    exchange: 'CBOE',
+  ),
+  SymbolInfo(
+    symbol: '^GSPC',
+    name: 'US500 (S&P 500)',
+    type: 'index',
+    currency: 'USD',
+    exchange: 'CBOE',
+  ),
 
   // Forex majors
   SymbolInfo(

@@ -56,6 +56,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   List<SymbolInfo> _indexSymbols = [];
   List<SymbolInfo> _forexSymbols = [];
   List<SymbolInfo> _commoditySymbols = [];
+  List<SymbolInfo> _stockSymbols = [];
 
   // Indicator data map: symbol -> indicator data
   final Map<String, _SymbolIndicatorData> _indicatorDataMap = {};
@@ -82,9 +83,9 @@ class _MarketsScreenState extends State<MarketsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     // Create scroll controllers for each tab
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       _scrollControllers[i] = ScrollController();
     }
     _tabController.addListener(_onTabChanged);
@@ -299,6 +300,12 @@ class _MarketsScreenState extends State<MarketsScreen>
     // Forex: all available forex pairs (popular in prop firms)
     _forexSymbols =
         allSymbols.where((s) => s.type == 'currency').toList();
+
+    // Stocks: popular stocks traded in prop firms (NVDA, TSLA, etc.)
+    _stockSymbols = allSymbols
+        .where((s) => s.type == 'equity')
+        .take(50) // Top 50 stocks
+        .toList();
 
     // Commodities: popular in prop firms (FTMO, 5ers, Funding Pips)
     _commoditySymbols = const [
@@ -889,6 +896,9 @@ class _MarketsScreenState extends State<MarketsScreen>
       case 3:
         symbols = List.from(_commoditySymbols);
         break;
+      case 4:
+        symbols = List.from(_stockSymbols);
+        break;
       default:
         return [];
     }
@@ -993,6 +1003,9 @@ class _MarketsScreenState extends State<MarketsScreen>
         break;
       case 3:
         originalSymbols = _commoditySymbols;
+        break;
+      case 4:
+        originalSymbols = _stockSymbols;
         break;
       default:
         return;
@@ -1321,6 +1334,7 @@ class _MarketsScreenState extends State<MarketsScreen>
       loc.t('markets_indexes'),
       loc.t('markets_forex'),
       loc.t('markets_commodities'),
+      loc.t('markets_stocks'),
     ];
     
     return Scaffold(
@@ -1523,6 +1537,24 @@ class _MarketsScreenState extends State<MarketsScreen>
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Text(
                               loc.t('markets_commodities'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          ),
+                  ),
+                  Tab(
+                    child: fitsOnScreen
+                        ? Center(
+                            child: Text(
+                              loc.t('markets_stocks'),
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Text(
+                              loc.t('markets_stocks'),
                               overflow: TextOverflow.ellipsis,
                               softWrap: false,
                             ),
@@ -1822,6 +1854,7 @@ class _MarketsScreenState extends State<MarketsScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
+                _buildSymbolList(loc),
                 _buildSymbolList(loc),
                 _buildSymbolList(loc),
                 _buildSymbolList(loc),

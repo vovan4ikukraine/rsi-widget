@@ -187,6 +187,7 @@ class AppLocalizations {
       'markets_indexes': 'Indexes',
       'markets_forex': 'Forex',
       'markets_commodities': 'Commodities',
+      'markets_stocks': 'Stocks',
       'markets_indicator_settings': 'Indicator Settings',
 
       // Alerts
@@ -475,6 +476,7 @@ class AppLocalizations {
       'markets_indexes': 'Индексы',
       'markets_forex': 'Форекс',
       'markets_commodities': 'Сырьё',
+      'markets_stocks': 'Акции',
       'markets_indicator_settings': 'Настройки индикатора',
 
       // Alerts
@@ -749,6 +751,7 @@ class AppLocalizations {
       'markets_indexes': 'Індекси',
       'markets_forex': 'Форекс',
       'markets_commodities': 'Сировина',
+      'markets_stocks': 'Акції',
       'markets_indicator_settings': 'Налаштування індикатора',
 
       // Alerts
