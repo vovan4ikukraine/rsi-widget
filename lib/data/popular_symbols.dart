@@ -966,8 +966,8 @@ const List<SymbolInfo> popularSymbols = [
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'FTM-USD',
-    name: 'Fantom',
+    symbol: 'S32684-USD',
+    name: 'Sonic',
     type: 'crypto',
     currency: 'USD',
     exchange: 'Crypto',
@@ -987,7 +987,7 @@ const List<SymbolInfo> popularSymbols = [
     exchange: 'Crypto',
   ),
   SymbolInfo(
-    symbol: 'RNDR-USD',
+    symbol: 'RENDER-USD',
     name: 'Render',
     type: 'crypto',
     currency: 'USD',

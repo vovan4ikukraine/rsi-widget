@@ -491,13 +491,6 @@ class _MarketsScreenState extends State<MarketsScreen>
         currency: 'USD',
         exchange: 'CME',
       ),
-      SymbolInfo(
-        symbol: 'ZR=F',
-        name: 'Rough Rice Futures',
-        type: 'commodity',
-        currency: 'USD',
-        exchange: 'CBOT',
-      ),
     ];
 
     // Don't load indicator data here - wait until _loadSavedState() sets correct parameters
