@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/preferences_storage.dart';
 import '../localization/app_localizations.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await UserService.initialize();
 
     // Save flag that user skipped sign in
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     await prefs.setBool('auth_skipped', true);
 
     if (mounted && widget.onSignInSuccess != null) {

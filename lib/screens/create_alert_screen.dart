@@ -974,18 +974,13 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
       // Check for duplicate alert (only when creating new, not editing)
       if (widget.alert == null) {
-        // Note: Isar doesn't support filtering by indicator field directly,
-        // so we'll filter in memory after fetching
-        final allAlerts = await widget.isar.alertRules
-            .filter()
-            .symbolEqualTo(symbol)
-            .timeframeEqualTo(_selectedTimeframe)
-            .modeEqualTo(_mode)
-            .findAll();
-
+        final allAlerts = await _alertRepository.getAlertsBySymbol(symbol);
         final existingAlerts = allAlerts
             .where((a) =>
-                a.indicator == indicatorName && a.period == _indicatorPeriod)
+                a.timeframe == _selectedTimeframe &&
+                a.mode == _mode &&
+                a.indicator == indicatorName &&
+                a.period == _indicatorPeriod)
             .toList();
 
         // Check if there's an identical alert (same symbol, timeframe, mode, period, and levels)
@@ -1071,9 +1066,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
         alert.createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       }
 
-      await widget.isar.writeTxn(() {
-        return widget.isar.alertRules.put(alert);
-      });
+      await _alertRepository.saveAlert(alert);
       // Pass enabled levels info to sync service so it can send proper array to server
       await AlertSyncService.syncAlert(widget.isar, alert, 
         lowerLevelEnabled: _lowerLevelEnabled,

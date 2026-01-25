@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
@@ -24,6 +23,9 @@ import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../constants/app_constants.dart';
+import '../repositories/alert_repository.dart';
+import '../repositories/watchlist_repository.dart';
+import '../utils/preferences_storage.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'create_alert_screen.dart';
@@ -54,6 +56,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     'com.example.rsi_widget/widget',
   );
   late final WidgetService _widgetService;
+  late final WatchlistRepository _watchlistRepository;
+  late final AlertRepository _alertRepository;
   List<AlertRule> _alerts = [];
   String _selectedSymbol = 'AAPL';
   String _selectedTimeframe = '15m';
@@ -87,6 +91,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _watchlistRepository = WatchlistRepository(widget.isar);
+    _alertRepository = AlertRepository(widget.isar);
     _widgetService = WidgetService(
       isar: widget.isar,
       yahooService: _yahooService,
@@ -139,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onIndicatorChanged() async {
     if (_appState != null) {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
       final indicatorType = _appState!.selectedIndicator;
 
       // Save current settings for the PREVIOUS indicator before switching
@@ -269,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadSavedState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
 
     if (widget.initialSymbol != null) {
       _selectedSymbol = widget.initialSymbol!;
@@ -417,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _saveState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     await prefs.setString('home_selected_symbol', _selectedSymbol);
     await prefs.setString('home_selected_timeframe', _selectedTimeframe);
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
@@ -450,14 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadAlerts() async {
-    final allAlerts =
-        await widget.isar.alertRules.filter().activeEqualTo(true).findAll();
-    // Filter out Watchlist Alerts - they are background monitoring, not visible in list
-    final alerts = allAlerts.where((a) {
-      final desc = a.description;
-      if (desc == null) return true;
-      return !desc.toUpperCase().contains(AppConstants.watchlistAlertPrefix);
-    }).toList();
+    final alerts = await _alertRepository.getActiveCustomAlerts();
     setState(() {
       _alerts = alerts;
     });
@@ -483,42 +482,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _loadIndicatorData();
   }
 
+  /// Candle limit for home chart (period + buffer, or base minimum for timeframe).
+  int _candleLimitForHome() {
+    final periodBuffer = _indicatorPeriod + AppConstants.periodBuffer;
+    const baseMinimum = AppConstants.minCandlesForChart;
+    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+  }
+
+  /// Max chart points to display based on timeframe.
+  int _maxChartPointsForTimeframe(String timeframe) {
+    switch (timeframe) {
+      case '4h':
+        return 60;
+      case '1d':
+        return 90;
+      case '1h':
+        return 100;
+      default:
+        return 100;
+    }
+  }
+
   Future<void> _loadIndicatorData({String? symbol}) async {
     final requestedSymbol = (symbol ?? _selectedSymbol).trim().toUpperCase();
-    if (requestedSymbol.isEmpty) {
-      return;
-    }
+    if (requestedSymbol.isEmpty) return;
 
     final previousSymbol = _selectedSymbol;
-
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     final loc = context.loc;
 
     try {
-      // Calculate optimal candle limit based on timeframe and period (same logic as CRON)
-      // Minimum candles required: period + buffer (for smoothing and charts)
-      final periodBuffer = _indicatorPeriod + AppConstants.periodBuffer;
-      
-      // Base minimums per timeframe
-      int baseMinimum;
-      switch (_selectedTimeframe) {
-        case '4h':
-          baseMinimum = AppConstants.minCandlesForChart;
-          break;
-        case '1d':
-          baseMinimum = AppConstants.minCandlesForChart;
-          break;
-        default:
-          // 1m, 5m, 15m, 1h: base minimum for charts and stability
-          baseMinimum = AppConstants.minCandlesForChart;
-          break;
-      }
-      
-      // Return max of period requirement and base minimum
-      final limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+      final limit = _candleLimitForHome();
 
       final (candles, dataSource) = await _yahooService.fetchCandlesWithSource(
         requestedSymbol,
@@ -584,18 +579,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      // For chart display take only last N points
-      // This improves readability, especially for large timeframes
-      int maxChartPoints = 100; // Maximum points for chart
-      if (_selectedTimeframe == '4h') {
-        maxChartPoints = 60; // For 4h show last 60 points (~10 days)
-      } else if (_selectedTimeframe == '1d') {
-        maxChartPoints = 90; // For 1d show last 90 points (~3 months)
-      } else if (_selectedTimeframe == '1h') {
-        maxChartPoints = 100; // For 1h show last 100 points (~4 days)
-      } else {
-        maxChartPoints = 100; // For minute timeframes show last 100 points
-      }
+      final maxChartPoints = _maxChartPointsForTimeframe(_selectedTimeframe);
 
       // Extract values and timestamps from results
       final indicatorValues = indicatorResults.map((r) => r.value).toList();
@@ -1810,7 +1794,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final loc = context.loc;
 
     // Check watchlist limit
-    final allExistingItems = await widget.isar.watchlistItems.where().findAll();
+    final allExistingItems = await _watchlistRepository.getAll();
     if (allExistingItems.length >= AppConstants.maxWatchlistItems) {
       if (mounted) {
         SnackBarHelper.showInfo(context, loc.t('home_watchlist_limit_reached'));
@@ -1819,10 +1803,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // Check if this symbol is already added
-    final existing = await widget.isar.watchlistItems
-        .where()
-        .symbolEqualTo(symbol)
-        .findFirst();
+    final existing = await _watchlistRepository.getBySymbol(symbol);
 
     if (existing != null) {
       if (mounted) {
@@ -1857,10 +1838,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     item.symbol = symbol;
     item.createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    await widget.isar.writeTxn(() {
-      // Use put() with explicit ID
-      return widget.isar.watchlistItems.put(item);
-    });
+    await _watchlistRepository.put(item);
 
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
@@ -1873,7 +1851,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     debugPrint('HomeScreen: After put() item.id = ${item.id}');
 
     // Verify that item was actually added
-    final allItems = await widget.isar.watchlistItems.where().findAll();
+    final allItems = await _watchlistRepository.getAll();
     debugPrint(
       'HomeScreen: After adding $symbol total items: ${allItems.length}',
     );
@@ -1882,10 +1860,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
 
     // Verify that new item actually has unique ID
-    final addedItem = await widget.isar.watchlistItems
-        .where()
-        .symbolEqualTo(symbol)
-        .findAll();
+    final addedItem = await _watchlistRepository.findAllBySymbol(symbol);
     debugPrint(
       'HomeScreen: Found items with symbol $symbol: ${addedItem.length}',
     );

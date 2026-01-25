@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../repositories/watchlist_repository.dart';
+import '../utils/preferences_storage.dart';
 import 'user_service.dart';
 import 'auth_service.dart';
 
@@ -21,7 +22,7 @@ class DataSyncService {
     double? lowerLevel,
     double? upperLevel,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     if (symbol != null) {
       await prefs.setString('anonymous_home_selected_symbol', symbol);
     }
@@ -41,7 +42,7 @@ class DataSyncService {
 
   /// Load chart preferences from cache (for anonymous mode)
   static Future<Map<String, dynamic>> loadPreferencesFromCache() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     return {
       'symbol': prefs.getString('anonymous_home_selected_symbol'),
       'timeframe': prefs.getString('anonymous_home_selected_timeframe'),
@@ -54,8 +55,9 @@ class DataSyncService {
   /// Save anonymous watchlist to cache
   static Future<void> saveWatchlistToCache(Isar isar) async {
     try {
-      final items = await isar.watchlistItems.where().findAll();
-      final prefs = await SharedPreferences.getInstance();
+      final repo = WatchlistRepository(isar);
+      final items = await repo.getAll();
+      final prefs = await PreferencesStorage.instance;
       final symbols = items.map((item) => item.symbol).toList();
       await prefs.setStringList('anonymous_watchlist', symbols);
       if (kDebugMode) {
@@ -72,7 +74,7 @@ class DataSyncService {
   /// Load anonymous watchlist from cache
   static Future<List<String>> loadWatchlistFromCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
       return prefs.getStringList('anonymous_watchlist') ?? [];
     } catch (e) {
       if (kDebugMode) {
@@ -86,23 +88,16 @@ class DataSyncService {
   static Future<void> restoreWatchlistFromCache(Isar isar) async {
     try {
       final symbols = await loadWatchlistFromCache();
-
-      await isar.writeTxn(() async {
-        // Clear current watchlist
-        final existingItems = await isar.watchlistItems.where().findAll();
-        for (final item in existingItems) {
-          await isar.watchlistItems.delete(item.id);
-        }
-
-        // Restore from cache
-        final now = DateTime.now().millisecondsSinceEpoch;
-        for (final symbol in symbols) {
-          final item = WatchlistItem()
-            ..symbol = symbol
-            ..createdAt = now;
-          await isar.watchlistItems.put(item);
-        }
-      });
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final items = symbols
+          .map(
+            (symbol) => WatchlistItem()
+              ..symbol = symbol
+              ..createdAt = now,
+          )
+          .toList();
+      final repo = WatchlistRepository(isar);
+      await repo.replaceAll(items);
 
       if (kDebugMode) {
         debugPrint(
@@ -119,7 +114,7 @@ class DataSyncService {
   static Future<void> saveAlertsToCache(Isar isar) async {
     try {
       final alerts = await isar.alertRules.where().findAll();
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
 
       // Save only anonymous alerts (those without remoteId)
       final anonymousAlerts = alerts.where((a) => a.remoteId == null).toList();
@@ -208,7 +203,7 @@ class DataSyncService {
   /// Restore anonymous alerts from cache to database
   static Future<void> restoreAlertsFromCache(Isar isar) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
 
       // Restore alerts
       final alertsJsonStr = prefs.getString('anonymous_alerts');
@@ -353,7 +348,8 @@ class DataSyncService {
     }
 
     final userId = await UserService.ensureUserId();
-    final localItems = await isar.watchlistItems.where().findAll();
+    final repo = WatchlistRepository(isar);
+    final localItems = await repo.getAll();
 
     try {
       final uri = Uri.parse('$_baseUrl/user/watchlist');
@@ -413,12 +409,8 @@ class DataSyncService {
 
       if (symbols == null) {
         // Server has empty watchlist - clear local
-        await isar.writeTxn(() async {
-          final existingItems = await isar.watchlistItems.where().findAll();
-          for (final item in existingItems) {
-            await isar.watchlistItems.delete(item.id);
-          }
-        });
+        final repo = WatchlistRepository(isar);
+        await repo.replaceAll([]);
         return;
       }
 
@@ -441,32 +433,22 @@ class DataSyncService {
         }
       }
 
-      await isar.writeTxn(() async {
-        // Completely replace local watchlist with server watchlist
-        // First, clear all existing items
-        final existingItems = await isar.watchlistItems.where().findAll();
-        for (final item in existingItems) {
-          await isar.watchlistItems.delete(item.id);
+      final items = <WatchlistItem>[];
+      for (final symbol in serverSymbols) {
+        final item = WatchlistItem()..symbol = symbol;
+        if (serverSymbolsWithData.containsKey(symbol) &&
+            serverSymbolsWithData[symbol]!['created_at'] != null) {
+          final createdAt = serverSymbolsWithData[symbol]!['created_at'];
+          item.createdAt = createdAt is int
+              ? createdAt
+              : DateTime.now().millisecondsSinceEpoch;
+        } else {
+          item.createdAt = DateTime.now().millisecondsSinceEpoch;
         }
-
-        // Then add all items from server
-        for (final symbol in serverSymbols) {
-          final item = WatchlistItem()..symbol = symbol;
-
-          // Use server's createdAt if available, otherwise use current time
-          if (serverSymbolsWithData.containsKey(symbol) &&
-              serverSymbolsWithData[symbol]!['created_at'] != null) {
-            final createdAt = serverSymbolsWithData[symbol]!['created_at'];
-            item.createdAt = createdAt is int
-                ? createdAt
-                : DateTime.now().millisecondsSinceEpoch;
-          } else {
-            item.createdAt = DateTime.now().millisecondsSinceEpoch;
-          }
-
-          await isar.watchlistItems.put(item);
-        }
-      });
+        items.add(item);
+      }
+      final repo = WatchlistRepository(isar);
+      await repo.replaceAll(items);
 
       if (kDebugMode) {
         debugPrint(

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isar/isar.dart';
 
 import '../localization/app_localizations.dart';
@@ -12,6 +11,7 @@ import '../services/widget_service.dart';
 import '../models/indicator_type.dart';
 import '../state/app_state.dart';
 import '../utils/context_extensions.dart';
+import '../utils/preferences_storage.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Isar? isar;
@@ -61,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     // Use 'widget_indicator' to match Android native code and widget_service.dart
     final savedWidgetIndicator = prefs.getString('widget_indicator');
     setState(() {
@@ -76,7 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     await prefs.setBool('sound_enabled', _soundEnabled);
     await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
@@ -391,7 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showWidgetIndicatorDialog(AppLocalizations loc) async {
     if (widget.isar == null) return;
     
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? true;
 
     if (!mounted) return;

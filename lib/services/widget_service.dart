@@ -3,9 +3,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../models.dart';
 import '../models/indicator_type.dart';
+import '../utils/preferences_storage.dart';
+import '../repositories/watchlist_repository.dart';
 import 'yahoo_proto.dart';
 import 'indicator_service.dart';
 
@@ -31,7 +31,7 @@ class WidgetService {
   }) async {
     try {
       // Load saved settings from widget (if timeframe was changed in widget)
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
       final savedTimeframe = prefs.getString('rsi_widget_timeframe');
       final savedPeriod = prefs.getInt('rsi_widget_period');
       // Use 'widget_indicator' to match Android native code (MainActivity.kt line 42)
@@ -60,7 +60,8 @@ class WidgetService {
       debugPrint('WidgetService: Saving widget_indicator=${finalIndicator.toJson()}, period=$finalPeriod, params=$finalIndicatorParams');
 
       // Load watchlist
-      final watchlistItems = await isar.watchlistItems.where().findAll();
+      final repo = WatchlistRepository(isar);
+      final watchlistItems = await repo.getAll();
 
       if (watchlistItems.isEmpty) {
         // Clear both watchlist_symbols and watchlist_data to prevent widget from using old data

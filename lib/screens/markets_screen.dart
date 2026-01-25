@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/indicator_type.dart';
+import '../utils/preferences_storage.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/indicator_service.dart';
@@ -177,7 +177,7 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   void _onIndicatorChanged() async {
     if (_appState != null && mounted) {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PreferencesStorage.instance;
       final indicatorType = _appState!.selectedIndicator;
       debugPrint('MarketsScreen: _onIndicatorChanged called for indicator: $indicatorType, previous: $_previousIndicatorType');
       
@@ -456,7 +456,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   }
 
   Future<void> _loadSavedState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     
     // Load levels with validation to ensure they match the current indicator type
@@ -537,7 +537,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   }
 
   Future<void> _saveSortOrderPreference(_MarketsSortOrder order) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     await prefs.setString(_sortOrderPrefKey, _sortOrderToString(order));
   }
 
@@ -580,7 +580,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   }
 
   Future<void> _saveState() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     await prefs.setString('markets_timeframe', _timeframe);
     await prefs.setInt(
@@ -847,7 +847,7 @@ class _MarketsScreenState extends State<MarketsScreen>
 
     // Get current parameters once per batch to avoid repeated SharedPreferences reads
     // This ensures we use correct values while optimizing performance
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     final indicatorKey = indicatorType.toJson();
     final currentPeriod = prefs.getInt('markets_${indicatorKey}_period') ?? indicatorType.defaultPeriod;
@@ -1015,7 +1015,7 @@ class _MarketsScreenState extends State<MarketsScreen>
 
     _isLoadingIndicatorValues = true;
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await PreferencesStorage.instance;
     final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
     final indicatorKey = indicatorType.toJson();
     final currentPeriod = prefs.getInt('markets_${indicatorKey}_period') ?? indicatorType.defaultPeriod;

@@ -1,5 +1,7 @@
 import 'package:isar/isar.dart';
 import '../models.dart';
+import '../models/indicator_type.dart';
+import '../constants/app_constants.dart';
 
 /// Repository for AlertRule operations
 /// Encapsulates database operations and provides clean API
@@ -11,6 +13,17 @@ class AlertRepository {
   /// Save or update an alert
   Future<void> saveAlert(AlertRule alert) async {
     await isar.writeTxn(() => isar.alertRules.put(alert));
+  }
+
+  /// Save multiple alert states in a single transaction
+  Future<void> saveAlertStates(List<AlertState> states) async {
+    if (states.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final state in states) {
+        await isar.alertStates.put(state);
+      }
+      return Future<void>.value();
+    });
   }
 
   /// Save multiple alerts in a single transaction
@@ -178,6 +191,21 @@ class AlertRepository {
         .findAll();
   }
 
+  /// Get active alerts excluding watchlist alerts (for home chart)
+  Future<List<AlertRule>> getActiveCustomAlerts() async {
+    final active = await getActiveAlerts();
+    return active.where((a) {
+      final desc = a.description;
+      if (desc == null) return true;
+      return !desc.toUpperCase().contains(AppConstants.watchlistAlertPrefix);
+    }).toList();
+  }
+
+  /// Get all alert events
+  Future<List<AlertEvent>> getAllAlertEvents() async {
+    return await isar.alertEvents.where().findAll();
+  }
+
   /// Get alerts excluding watchlist alerts
   Future<List<AlertRule>> getCustomAlerts() async {
     final allAlerts = await getAllAlerts();
@@ -195,6 +223,37 @@ class AlertRepository {
       final desc = a.description;
       if (desc == null) return false;
       return desc.toUpperCase().contains('WATCHLIST:');
+    }).toList();
+  }
+
+  /// Get watchlist mass alerts for a specific indicator (e.g. "WATCHLIST: Mass alert for rsi").
+  /// Handles WPR/williams alternate description from server.
+  Future<List<AlertRule>> getWatchlistMassAlertsForIndicator(
+    IndicatorType indicatorType,
+  ) async {
+    final allAlerts = await getAllAlerts();
+    final indicatorName = indicatorType.toJson();
+    final watchlistAlertDescription =
+        '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
+    final williamsAltDescription =
+        '${AppConstants.watchlistAlertPrefix} Mass alert for williams';
+
+    return allAlerts.where((a) {
+      if (a.description == null) return false;
+      if (a.description != watchlistAlertDescription) {
+        if (indicatorType == IndicatorType.williams &&
+            a.description != williamsAltDescription) {
+          return false;
+        } else if (indicatorType != IndicatorType.williams) {
+          return false;
+        }
+      }
+      try {
+        final alertIndicatorType = IndicatorType.fromJson(a.indicator);
+        return alertIndicatorType == indicatorType;
+      } catch (_) {
+        return false;
+      }
     }).toList();
   }
 

@@ -101,7 +101,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             'AlertsScreen: Loaded ${allAlerts.length} total alerts ($watchlistCount Watchlist Alerts, ${alerts.length} custom alerts)');
       }
 
-      final events = await widget.isar.alertEvents.where().findAll();
+      final events = await _alertRepository.getAllAlertEvents();
 
       setState(() {
         _alerts = alerts;
@@ -540,10 +540,8 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   Future<void> _toggleAlert(AlertRule alert) async {
     try {
-      await widget.isar.writeTxn(() {
-        alert.active = !alert.active;
-        return widget.isar.alertRules.put(alert);
-      });
+      alert.active = !alert.active;
+      await _alertRepository.saveAlert(alert);
       await AlertSyncService.syncAlert(widget.isar, alert);
 
       if (!mounted) return;
