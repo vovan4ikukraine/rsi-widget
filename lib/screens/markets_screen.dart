@@ -64,7 +64,7 @@ class WprLevelInputFormatter extends TextInputFormatter {
   }
 }
 
-enum _MarketsSortOrder { none, descending, ascending }
+enum _MarketsSortOrder { none, descending, ascending, marketCap }
 
 class MarketsScreen extends StatefulWidget {
   final Isar isar;
@@ -119,7 +119,7 @@ class _MarketsScreenState extends State<MarketsScreen>
 
   // Sorting
   static const String _sortOrderPrefKey = 'markets_sort_order';
-  _MarketsSortOrder _currentSortOrder = _MarketsSortOrder.none;
+  _MarketsSortOrder _currentSortOrder = _MarketsSortOrder.marketCap;
   // Map to store indicator values for sorting per tab (tabIndex -> symbol -> indicator value)
   final Map<int, Map<String, double>> _indicatorValuesForSorting = {};
   // Track which symbols have indicator values loaded for sorting per tab
@@ -330,9 +330,9 @@ class _MarketsScreenState extends State<MarketsScreen>
     // Load symbols from popular_symbols.dart and categorize them
     final allSymbols = popularSymbols;
 
-    // Crypto: top 100 by market cap (we'll use all available crypto for now)
+    // Crypto: top 50 by market cap
     _cryptoSymbols =
-        allSymbols.where((s) => s.type == 'crypto').take(100).toList();
+        allSymbols.where((s) => s.type == 'crypto').take(50).toList();
 
     // Indexes: all available indices (popular in prop firms)
     _indexSymbols =
@@ -551,10 +551,10 @@ class _MarketsScreenState extends State<MarketsScreen>
         
         // Load sort order
         if (savedSortOrder != null) {
-          _currentSortOrder = _sortOrderFromString(savedSortOrder);
-        } else {
-          _currentSortOrder = _MarketsSortOrder.none;
-        }
+        _currentSortOrder = _sortOrderFromString(savedSortOrder);
+      } else {
+        _currentSortOrder = _MarketsSortOrder.marketCap;
+      }
       });
     }
   }
@@ -565,6 +565,8 @@ class _MarketsScreenState extends State<MarketsScreen>
         return 'ascending';
       case _MarketsSortOrder.descending:
         return 'descending';
+      case _MarketsSortOrder.marketCap:
+        return 'marketCap';
       case _MarketsSortOrder.none:
         return 'none';
     }
@@ -576,8 +578,10 @@ class _MarketsScreenState extends State<MarketsScreen>
         return _MarketsSortOrder.ascending;
       case 'descending':
         return _MarketsSortOrder.descending;
+      case 'marketCap':
+        return _MarketsSortOrder.marketCap;
       default:
-        return _MarketsSortOrder.none;
+        return _MarketsSortOrder.marketCap;
     }
   }
 
@@ -611,6 +615,11 @@ class _MarketsScreenState extends State<MarketsScreen>
       
       // Load indicator values for all symbols in background
       unawaited(_loadIndicatorValuesOnly());
+    } else if (order == _MarketsSortOrder.marketCap) {
+      // For market cap sorting, just reload visible items (no need to load indicator values)
+      _loadedSymbols.clear();
+      _indicatorDataMap.clear();
+      unawaited(_loadVisibleItems());
     } else {
       // For none sorting, just reload visible items
       _loadedSymbols.clear();
@@ -937,11 +946,8 @@ class _MarketsScreenState extends State<MarketsScreen>
         return [];
     }
 
-    // Apply sorting if needed
-    if (_currentSortOrder != _MarketsSortOrder.none) {
-      return _applySortingToSymbols(symbols);
-    }
-    return symbols;
+    // Always apply sorting (no none state)
+    return _applySortingToSymbols(symbols);
   }
 
   List<SymbolInfo> _applySortingToSymbols(List<SymbolInfo> symbols) {
@@ -974,8 +980,38 @@ class _MarketsScreenState extends State<MarketsScreen>
           return indexA.compareTo(indexB);
         });
         break;
+      case _MarketsSortOrder.marketCap:
+        // Sort by market cap (order in original list - crypto symbols are already sorted by market cap)
+        // For crypto tab, use original order (already sorted by market cap)
+        // For other tabs, maintain original order
+        if (tabIndex == 0) {
+          // Crypto tab - symbols are already sorted by market cap in the list
+          // Just maintain the original order
+          sorted.sort((a, b) {
+            final indexA = _cryptoSymbols.indexWhere((s) => s.symbol == a.symbol);
+            final indexB = _cryptoSymbols.indexWhere((s) => s.symbol == b.symbol);
+            // If not found in original list, put at end
+            if (indexA == -1 && indexB == -1) return 0;
+            if (indexA == -1) return 1;
+            if (indexB == -1) return -1;
+            return indexA.compareTo(indexB);
+          });
+        }
+        // For other tabs, market cap sorting doesn't apply, maintain original order
+        break;
       case _MarketsSortOrder.none:
-        // No sorting
+        // Fallback - treat as marketCap
+        // For crypto tab, maintain original order
+        if (tabIndex == 0) {
+          sorted.sort((a, b) {
+            final indexA = _cryptoSymbols.indexWhere((s) => s.symbol == a.symbol);
+            final indexB = _cryptoSymbols.indexWhere((s) => s.symbol == b.symbol);
+            if (indexA == -1 && indexB == -1) return 0;
+            if (indexA == -1) return 1;
+            if (indexB == -1) return -1;
+            return indexA.compareTo(indexB);
+          });
+        }
         break;
     }
     
@@ -1340,7 +1376,23 @@ class _MarketsScreenState extends State<MarketsScreen>
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(loc.t('markets_title')),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(loc.t('markets_title')),
+            if (_isLoading || _isActionInProgress || _isLoadingIndicatorValues) ...[
+              const SizedBox(width: 12),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ],
+          ],
+        ),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
@@ -1730,8 +1782,10 @@ class _MarketsScreenState extends State<MarketsScreen>
                                       return Icons.north;
                                     case _MarketsSortOrder.ascending:
                                       return Icons.south;
-                                    case _MarketsSortOrder.none:
+                                    case _MarketsSortOrder.marketCap:
                                       return Icons.unfold_more;
+                                    case _MarketsSortOrder.none:
+                                      return Icons.unfold_more; // Fallback
                                   }
                                 }(),
                                 color: () {
@@ -1740,8 +1794,10 @@ class _MarketsScreenState extends State<MarketsScreen>
                                       return Colors.green;
                                     case _MarketsSortOrder.ascending:
                                       return Colors.red;
-                                    case _MarketsSortOrder.none:
+                                    case _MarketsSortOrder.marketCap:
                                       return Colors.grey[600];
+                                    case _MarketsSortOrder.none:
+                                      return Colors.grey[600]; // Fallback
                                   }
                                 }(),
                               ),
@@ -1751,8 +1807,10 @@ class _MarketsScreenState extends State<MarketsScreen>
                                     return loc.t('watchlist_sort_desc');
                                   case _MarketsSortOrder.ascending:
                                     return loc.t('watchlist_sort_asc');
+                                  case _MarketsSortOrder.marketCap:
+                                    return 'Sort by Market Cap';
                                   case _MarketsSortOrder.none:
-                                    return loc.t('watchlist_sort_desc');
+                                    return 'Sort by Market Cap'; // Fallback
                                 }
                               }(),
                               onPressed: (_isLoading || _isActionInProgress)
@@ -1760,11 +1818,19 @@ class _MarketsScreenState extends State<MarketsScreen>
                                   : () {
                                       final currentSymbols = _getCurrentTabSymbols();
                                       if (currentSymbols.isEmpty) return;
-                                      // Cycle: none -> descending -> ascending -> descending
-                                      final targetOrder = _currentSortOrder ==
-                                              _MarketsSortOrder.descending
-                                          ? _MarketsSortOrder.ascending
-                                          : _MarketsSortOrder.descending;
+                                      // Cycle: marketCap -> descending -> ascending -> marketCap
+                                      final targetOrder = () {
+                                        switch (_currentSortOrder) {
+                                          case _MarketsSortOrder.marketCap:
+                                            return _MarketsSortOrder.descending;
+                                          case _MarketsSortOrder.descending:
+                                            return _MarketsSortOrder.ascending;
+                                          case _MarketsSortOrder.ascending:
+                                            return _MarketsSortOrder.marketCap;
+                                          case _MarketsSortOrder.none:
+                                            return _MarketsSortOrder.marketCap; // Fallback
+                                        }
+                                      }();
                                       _applySortOrder(targetOrder);
                                     },
                             ),

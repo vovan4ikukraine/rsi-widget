@@ -1326,7 +1326,23 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Text(loc.t('watchlist_title')),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(loc.t('watchlist_title')),
+            if (_isLoading || _isActionInProgress || _isLoadingData) ...[
+              const SizedBox(width: 12),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ],
+          ],
+        ),
         backgroundColor: Colors.blue[900],
         foregroundColor: Colors.white,
         actions: [
