@@ -1,9 +1,10 @@
 import 'package:isar/isar.dart';
 import '../models.dart';
+import 'i_watchlist_repository.dart';
 
 /// Repository for WatchlistItem operations.
 /// Encapsulates database operations and provides a clean API.
-class WatchlistRepository {
+class WatchlistRepository implements IWatchlistRepository {
   final Isar isar;
 
   WatchlistRepository(this.isar);

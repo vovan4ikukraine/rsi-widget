@@ -1,11 +1,14 @@
+import 'dart:convert';
+
 import 'package:isar/isar.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../constants/app_constants.dart';
+import 'i_alert_repository.dart';
 
-/// Repository for AlertRule operations
-/// Encapsulates database operations and provides clean API
-class AlertRepository {
+/// Repository for AlertRule operations.
+/// Encapsulates database operations and provides a clean API.
+class AlertRepository implements IAlertRepository {
   final Isar isar;
 
   AlertRepository(this.isar);
@@ -204,6 +207,202 @@ class AlertRepository {
   /// Get all alert events
   Future<List<AlertEvent>> getAllAlertEvents() async {
     return await isar.alertEvents.where().findAll();
+  }
+
+  /// Get all alert states
+  Future<List<AlertState>> getAllAlertStates() async {
+    return await isar.alertStates.where().findAll();
+  }
+
+  /// Save multiple alert events in a single transaction
+  Future<void> saveAlertEvents(List<AlertEvent> events) async {
+    if (events.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final event in events) {
+        await isar.alertEvents.put(event);
+      }
+      return Future<void>.value();
+    });
+  }
+
+  /// Delete all anonymous alerts (remoteId == null) with related states and events
+  Future<void> deleteAnonymousAlertsWithRelatedData() async {
+    final all = await getAllAlerts();
+    final ids = all.where((a) => a.remoteId == null).map((a) => a.id).toList();
+    await deleteAlertsWithRelatedData(ids);
+  }
+
+  /// Restore anonymous alerts from cache data in a single transaction.
+  /// Deletes anonymous alerts, then puts [alertsToRestore], [statesToRestore], [eventsToRestore].
+  /// States/events use placeholder ruleId; repo overwrites with new ruleId from idMap before put.
+  Future<void> restoreAnonymousAlertsFromCacheData({
+    required List<(int oldId, AlertRule rule)> alertsToRestore,
+    required List<(int oldRuleId, AlertState state)> statesToRestore,
+    required List<(int oldRuleId, AlertEvent event)> eventsToRestore,
+  }) async {
+    final idMap = <int, int>{};
+    await isar.writeTxn(() async {
+      await _deleteAnonymousInTxn();
+      for (final r in alertsToRestore) {
+        final oldId = r.$1;
+        final rule = r.$2;
+        await isar.alertRules.put(rule);
+        idMap[oldId] = rule.id;
+      }
+      for (final s in statesToRestore) {
+        final oldRuleId = s.$1;
+        final state = s.$2;
+        final newRuleId = idMap[oldRuleId];
+        if (newRuleId != null) {
+          state.ruleId = newRuleId;
+          await isar.alertStates.put(state);
+        }
+      }
+      for (final e in eventsToRestore) {
+        final oldRuleId = e.$1;
+        final event = e.$2;
+        final newRuleId = idMap[oldRuleId];
+        if (newRuleId != null) {
+          event.ruleId = newRuleId;
+          await isar.alertEvents.put(event);
+        }
+      }
+      return Future<void>.value();
+    });
+  }
+
+  /// Get alerts with remoteId set (for fetch-and-sync)
+  Future<List<AlertRule>> getAlertsWithRemoteId() async {
+    return await isar.alertRules.filter().remoteIdIsNotNull().findAll();
+  }
+
+  /// Replace local alerts with server snapshot (fetch-and-sync logic).
+  /// Deletes anonymous alerts, then adds/updates from [rules], removes locals not on server.
+  Future<void> replaceAlertsWithServerSnapshot(
+    List<Map<String, dynamic>> rules,
+  ) async {
+    final existingAlerts = await getAlertsWithRemoteId();
+    final existingRemoteIds = existingAlerts
+        .where((a) => a.remoteId != null)
+        .map((a) => a.remoteId as int)
+        .toSet();
+
+    if (rules.isEmpty) {
+      await deleteAlertsWithRelatedData(
+        existingAlerts.map((a) => a.id).toList(),
+      );
+      return;
+    }
+
+    await isar.writeTxn(() async {
+      await _deleteAnonymousInTxn();
+      for (final ruleData in rules) {
+        final remoteId = ruleData['id'] as int?;
+        if (remoteId == null) continue;
+        final matches =
+            existingAlerts.where((a) => a.remoteId == remoteId).toList();
+        final ex = matches.isEmpty ? null : matches.first;
+        if (ex == null) {
+          final levelsData = ruleData['levels'] is String
+              ? jsonDecode(ruleData['levels'] as String)
+              : ruleData['levels'];
+          final levelsList = (levelsData as List<dynamic>)
+              .map((e) => (e as num).toDouble())
+              .toList();
+          final alert = AlertRule()
+            ..remoteId = remoteId
+            ..symbol = ruleData['symbol'] as String
+            ..timeframe = ruleData['timeframe'] as String
+            ..indicator = ruleData['indicator'] as String? ?? 'rsi'
+            ..period = ruleData['period'] as int? ??
+                ruleData['rsi_period'] as int? ??
+                14
+            ..indicatorParams = ruleData['indicator_params'] != null
+                ? Map<String, dynamic>.from(
+                    jsonDecode(ruleData['indicator_params'] as String) as Map)
+                : null
+            ..levels = levelsList
+            ..mode = ruleData['mode'] as String? ?? 'cross'
+            ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
+            ..active = (ruleData['active'] as int? ?? 1) == 1
+            ..createdAt = ruleData['created_at'] as int? ??
+                DateTime.now().millisecondsSinceEpoch
+            ..description = ruleData['description'] as String?
+            ..alertOnClose = (ruleData['alert_on_close'] as int? ?? 0) == 1
+            ..repeatable = true
+            ..soundEnabled = true;
+          await isar.alertRules.put(alert);
+        } else {
+          final levelsData = ruleData['levels'] is String
+              ? jsonDecode(ruleData['levels'] as String)
+              : ruleData['levels'];
+          final levelsList = (levelsData as List<dynamic>)
+              .map((e) => (e as num).toDouble())
+              .toList();
+          ex
+            ..symbol = ruleData['symbol'] as String
+            ..timeframe = ruleData['timeframe'] as String
+            ..indicator =
+                ruleData['indicator'] as String? ?? ex.indicator
+            ..period = ruleData['period'] as int? ??
+                ruleData['rsi_period'] as int? ??
+                ex.period
+            ..indicatorParams = ruleData['indicator_params'] != null
+                ? Map<String, dynamic>.from(
+                    jsonDecode(ruleData['indicator_params'] as String) as Map)
+                : ex.indicatorParams
+            ..levels = levelsList
+            ..mode = ruleData['mode'] as String? ?? 'cross'
+            ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
+            ..active = (ruleData['active'] as int? ?? 1) == 1
+            ..description =
+                ruleData['description'] as String? ?? ex.description
+            ..alertOnClose = ruleData['alert_on_close'] != null
+                ? (ruleData['alert_on_close'] as int? ?? 0) == 1
+                : ex.alertOnClose;
+          await isar.alertRules.put(ex);
+        }
+        existingRemoteIds.remove(remoteId);
+      }
+      for (final remoteId in existingRemoteIds) {
+        final toDelete =
+            existingAlerts.where((a) => a.remoteId == remoteId).toList();
+        if (toDelete.isNotEmpty) {
+          await _deleteAlertWithRelatedDataInTxn(toDelete.first.id);
+        }
+      }
+      return Future<void>.value();
+    });
+  }
+
+  /// Must be called inside an active writeTxn.
+  Future<void> _deleteAlertWithRelatedDataInTxn(int id) async {
+    try {
+      final states =
+          await isar.alertStates.filter().ruleIdEqualTo(id).findAll();
+      for (final s in states) await isar.alertStates.delete(s.id);
+    } catch (_) {}
+    try {
+      final events =
+          await isar.alertEvents.filter().ruleIdEqualTo(id).findAll();
+      for (final e in events) await isar.alertEvents.delete(e.id);
+    } catch (_) {}
+    await isar.alertRules.delete(id);
+  }
+
+  Future<void> _deleteAnonymousInTxn() async {
+    final all = await isar.alertRules.where().findAll();
+    for (final a in all) {
+      if (a.remoteId == null) {
+        final states =
+            await isar.alertStates.filter().ruleIdEqualTo(a.id).findAll();
+        for (final s in states) await isar.alertStates.delete(s.id);
+        final events =
+            await isar.alertEvents.filter().ruleIdEqualTo(a.id).findAll();
+        for (final e in events) await isar.alertEvents.delete(e.id);
+        await isar.alertRules.delete(a.id);
+      }
+    }
   }
 
   /// Get alerts excluding watchlist alerts

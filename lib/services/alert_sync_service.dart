@@ -6,6 +6,7 @@ import 'package:isar/isar.dart';
 
 import '../models.dart';
 import '../models/indicator_type.dart';
+import '../repositories/alert_repository.dart';
 import 'user_service.dart';
 import 'firebase_service.dart';
 import 'auth_service.dart';
@@ -83,7 +84,8 @@ class AlertSyncService {
   }
 
   static Future<void> syncPendingAlerts(Isar isar) async {
-    final alerts = await isar.alertRules.where().findAll();
+    final repo = AlertRepository(isar);
+    final alerts = await repo.getAllAlerts();
     for (final alert in alerts) {
       if (alert.remoteId == null) {
         await syncAlert(isar, alert);
@@ -94,10 +96,7 @@ class AlertSyncService {
   /// Fetch alerts from server and sync to local database
   /// Completely replaces local alerts with server alerts (for authenticated users)
   static Future<void> fetchAndSyncAlerts(Isar isar) async {
-    if (!AuthService.isSignedIn) {
-      // In anonymous mode, don't fetch from server
-      return;
-    }
+    if (!AuthService.isSignedIn) return;
 
     final userId = await UserService.ensureUserId();
     if (kDebugMode) {
@@ -120,194 +119,13 @@ class AlertSyncService {
       }
 
       final decoded = jsonDecode(response.body);
-      final List<dynamic>? rules = decoded['rules'] as List<dynamic>?;
+      final raw = decoded['rules'] as List<dynamic>?;
+      final rules = (raw ?? <dynamic>[])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
-      // Get existing alerts by remoteId (only those with remoteId)
-      final existingAlerts =
-          await isar.alertRules.filter().remoteIdIsNotNull().findAll();
-      final existingRemoteIds = existingAlerts
-          .where((a) => a.remoteId != null)
-          .map((a) => a.remoteId as int)
-          .toSet();
-
-      if (rules == null || rules.isEmpty) {
-        // Server has no alerts - delete all alerts with remoteId
-        await isar.writeTxn(() async {
-          for (final alert in existingAlerts) {
-            // Delete alert state and events first
-            final states = await isar.alertStates
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final state in states) {
-              await isar.alertStates.delete(state.id);
-            }
-            final events = await isar.alertEvents
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final event in events) {
-              await isar.alertEvents.delete(event.id);
-            }
-            // Then delete the alert itself
-            await isar.alertRules.delete(alert.id);
-          }
-        });
-        if (kDebugMode) {
-          debugPrint(
-              'AlertSyncService: Server has no alerts, cleared all remote alerts');
-        }
-        return;
-      }
-
-      await isar.writeTxn(() async {
-        // First, delete all anonymous alerts (those without remoteId) since we're loading account alerts
-        final allAlerts = await isar.alertRules.where().findAll();
-        for (final alert in allAlerts) {
-          if (alert.remoteId == null) {
-            // Delete alert state and events first
-            final states = await isar.alertStates
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final state in states) {
-              await isar.alertStates.delete(state.id);
-            }
-            final events = await isar.alertEvents
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final event in events) {
-              await isar.alertEvents.delete(event.id);
-            }
-            // Then delete the alert itself
-            await isar.alertRules.delete(alert.id);
-            if (kDebugMode) {
-              debugPrint(
-                  'AlertSyncService: Deleted anonymous alert ${alert.id} (loading account alerts)');
-            }
-          }
-        }
-
-        // Now add/update alerts from server
-        for (final ruleData in rules) {
-          final remoteId = ruleData['id'] as int?;
-          if (remoteId == null) continue;
-
-          // Check if alert already exists
-          final existing = existingAlerts.firstWhere(
-            (a) => a.remoteId == remoteId,
-            orElse: () => AlertRule(),
-          );
-
-          if (existing.id == Isar.autoIncrement) {
-            // Create new alert
-            final levelsData = ruleData['levels'] is String
-                ? jsonDecode(ruleData['levels'] as String)
-                : ruleData['levels'];
-            final levelsList = (levelsData as List<dynamic>)
-                .map((e) => (e as num).toDouble())
-                .toList();
-
-            final alert = AlertRule()
-              ..remoteId = remoteId
-              ..symbol = ruleData['symbol'] as String
-              ..timeframe = ruleData['timeframe'] as String
-              ..indicator = ruleData['indicator'] as String? ?? 'rsi'
-              ..period = ruleData['period'] as int? ??
-                  ruleData['rsi_period'] as int? ??
-                  14
-              ..indicatorParams = ruleData['indicator_params'] != null
-                  ? Map<String, dynamic>.from(
-                      jsonDecode(ruleData['indicator_params'] as String))
-                  : null
-              ..levels = levelsList
-              ..mode = ruleData['mode'] as String? ?? 'cross'
-              ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
-              ..active = (ruleData['active'] as int? ?? 1) == 1
-              ..createdAt = ruleData['created_at'] as int? ??
-                  DateTime.now().millisecondsSinceEpoch
-              ..description = ruleData['description'] as String?
-              ..alertOnClose = (ruleData['alert_on_close'] as int? ?? 0) == 1
-              ..repeatable = true
-              ..soundEnabled = true;
-
-            await isar.alertRules.put(alert);
-            if (kDebugMode) {
-              debugPrint(
-                  'AlertSyncService: Created local alert from remoteId=$remoteId');
-            }
-          } else {
-            // Update existing alert
-            final levelsData = ruleData['levels'] is String
-                ? jsonDecode(ruleData['levels'] as String)
-                : ruleData['levels'];
-            final levelsList = (levelsData as List<dynamic>)
-                .map((e) => (e as num).toDouble())
-                .toList();
-
-            existing
-              ..symbol = ruleData['symbol'] as String
-              ..timeframe = ruleData['timeframe'] as String
-              ..indicator =
-                  ruleData['indicator'] as String? ?? existing.indicator
-              ..period = ruleData['period'] as int? ??
-                  ruleData['rsi_period'] as int? ??
-                  existing.period
-              ..indicatorParams = ruleData['indicator_params'] != null
-                  ? Map<String, dynamic>.from(
-                      jsonDecode(ruleData['indicator_params'] as String))
-                  : existing.indicatorParams
-              ..levels = levelsList
-              ..mode = ruleData['mode'] as String? ?? 'cross'
-              ..cooldownSec = ruleData['cooldown_sec'] as int? ?? 600
-              ..active = (ruleData['active'] as int? ?? 1) == 1
-              ..description = ruleData['description'] as String? ?? existing.description
-              ..alertOnClose = ruleData['alert_on_close'] != null
-                  ? (ruleData['alert_on_close'] as int? ?? 0) == 1
-                  : existing.alertOnClose;
-
-            await isar.alertRules.put(existing);
-            if (kDebugMode) {
-              debugPrint(
-                  'AlertSyncService: Updated local alert from remoteId=$remoteId');
-            }
-          }
-
-          existingRemoteIds.remove(remoteId);
-        }
-
-        // Delete alerts that are no longer on server (they were deleted)
-        for (final remoteId in existingRemoteIds) {
-          final alert = existingAlerts.firstWhere(
-            (a) => a.remoteId == remoteId,
-            orElse: () => AlertRule(),
-          );
-          if (alert.id != Isar.autoIncrement) {
-            // Delete alert state and events first
-            final states = await isar.alertStates
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final state in states) {
-              await isar.alertStates.delete(state.id);
-            }
-            final events = await isar.alertEvents
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final event in events) {
-              await isar.alertEvents.delete(event.id);
-            }
-            // Then delete the alert itself
-            await isar.alertRules.delete(alert.id);
-            if (kDebugMode) {
-              debugPrint(
-                  'AlertSyncService: Deleted alert with remoteId=$remoteId (no longer on server)');
-            }
-          }
-        }
-      });
+      final repo = AlertRepository(isar);
+      await repo.replaceAlertsWithServerSnapshot(rules);
 
       if (kDebugMode) {
         debugPrint(
@@ -315,7 +133,7 @@ class AlertSyncService {
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        debugPrint('AlertSyncService: Error fetching alerts: $e');
+        debugPrint('AlertSyncService: Error fetching/syncing alerts: $e');
         debugPrint('$stackTrace');
       }
     }
@@ -401,10 +219,9 @@ class AlertSyncService {
         ? remoteIdValue
         : (remoteIdValue is String ? int.tryParse(remoteIdValue) : null);
     if (remoteId != null) {
-      await isar.writeTxn(() async {
-        alert.remoteId = remoteId;
-        await isar.alertRules.put(alert);
-      });
+      alert.remoteId = remoteId;
+      final repo = AlertRepository(isar);
+      await repo.saveAlert(alert);
       if (kDebugMode) {
         debugPrint(
             'AlertSyncService: alert ${alert.id} synced with remoteId=$remoteId');

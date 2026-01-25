@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:isar/isar.dart';
 
 import '../models.dart';
+import '../repositories/alert_repository.dart';
 import '../repositories/watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
 import 'user_service.dart';
@@ -113,7 +114,8 @@ class DataSyncService {
   /// Save anonymous alerts to cache
   static Future<void> saveAlertsToCache(Isar isar) async {
     try {
-      final alerts = await isar.alertRules.where().findAll();
+      final repo = AlertRepository(isar);
+      final alerts = await repo.getAllAlerts();
       final prefs = await PreferencesStorage.instance;
 
       // Save only anonymous alerts (those without remoteId)
@@ -145,7 +147,7 @@ class DataSyncService {
 
       // Also save alert states for anonymous alerts
       final alertIds = anonymousAlerts.map((a) => a.id).toSet();
-      final states = await isar.alertStates.where().findAll();
+      final states = await repo.getAllAlertStates();
       final anonymousStates =
           states.where((s) => alertIds.contains(s.ruleId)).toList();
       final statesJson = anonymousStates
@@ -168,7 +170,7 @@ class DataSyncService {
       await prefs.setString('anonymous_alert_states', jsonEncode(statesJson));
 
       // Also save alert events for anonymous alerts
-      final events = await isar.alertEvents.where().findAll();
+      final events = await repo.getAllAlertEvents();
       final anonymousEvents =
           events.where((e) => alertIds.contains(e.ruleId)).toList();
       final eventsJson = anonymousEvents
@@ -205,7 +207,6 @@ class DataSyncService {
     try {
       final prefs = await PreferencesStorage.instance;
 
-      // Restore alerts
       final alertsJsonStr = prefs.getString('anonymous_alerts');
       if (alertsJsonStr == null) {
         if (kDebugMode) {
@@ -215,118 +216,89 @@ class DataSyncService {
       }
 
       final alertsJson = jsonDecode(alertsJsonStr) as List<dynamic>;
+      final alertsToRestore = <(int, AlertRule)>[];
+      for (final alertData in alertsJson) {
+        final oldId = alertData['id'] as int;
+        final alert = AlertRule()
+          ..symbol = alertData['symbol'] as String
+          ..timeframe = alertData['timeframe'] as String
+          ..indicator = alertData['indicator'] as String? ?? 'rsi'
+          ..period = alertData['period'] as int? ??
+              alertData['rsiPeriod'] as int? ??
+              14
+          ..indicatorParams = alertData['indicatorParams'] != null
+              ? Map<String, dynamic>.from(alertData['indicatorParams'] as Map)
+              : null
+          ..levels = (alertData['levels'] as List<dynamic>)
+              .map((e) => (e as num).toDouble())
+              .toList()
+          ..mode = alertData['mode'] as String
+          ..cooldownSec = alertData['cooldownSec'] as int
+          ..active = alertData['active'] as bool
+          ..createdAt = alertData['createdAt'] as int
+          ..description = alertData['description'] as String?
+          ..repeatable = alertData['repeatable'] as bool? ?? true
+          ..soundEnabled = alertData['soundEnabled'] as bool? ?? true
+          ..customSound = alertData['customSound'] as String?
+          ..remoteId = null;
+        alertsToRestore.add((oldId, alert));
+      }
 
-      await isar.writeTxn(() async {
-        // Clear current anonymous alerts (only those without remoteId)
-        final existingAlerts = await isar.alertRules.where().findAll();
-        for (final alert in existingAlerts) {
-          if (alert.remoteId == null) {
-            // Delete alert state and events first
-            final states = await isar.alertStates
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final state in states) {
-              await isar.alertStates.delete(state.id);
-            }
-            final events = await isar.alertEvents
-                .filter()
-                .ruleIdEqualTo(alert.id)
-                .findAll();
-            for (final event in events) {
-              await isar.alertEvents.delete(event.id);
-            }
-            // Then delete the alert itself
-            await isar.alertRules.delete(alert.id);
-          }
+      final statesToRestore = <(int, AlertState)>[];
+      final statesJsonStr = prefs.getString('anonymous_alert_states');
+      if (statesJsonStr != null) {
+        final statesJson = jsonDecode(statesJsonStr) as List<dynamic>;
+        for (final stateData in statesJson) {
+          final oldRuleId = stateData['ruleId'] as int;
+          final state = AlertState()
+            ..ruleId = 0
+            ..lastIndicatorValue =
+                stateData['lastIndicatorValue'] as double? ??
+                    stateData['lastRsi'] as double?
+            ..indicatorStateJson = stateData['indicatorState'] as String? ??
+                (stateData['lastAu'] != null || stateData['lastAd'] != null
+                    ? jsonEncode({
+                        'au': stateData['lastAu'] as double?,
+                        'ad': stateData['lastAd'] as double?,
+                      })
+                    : null)
+            ..lastBarTs = stateData['lastBarTs'] as int?
+            ..lastFireTs = stateData['lastFireTs'] as int?
+            ..lastSide = stateData['lastSide'] as String?
+            ..wasAboveUpper = stateData['wasAboveUpper'] as bool?
+            ..wasBelowLower = stateData['wasBelowLower'] as bool?;
+          statesToRestore.add((oldRuleId, state));
         }
+      }
 
-        // Restore alerts from cache
-        final idMap = <int, int>{}; // oldId -> newId mapping
-        for (final alertData in alertsJson) {
-          final alert = AlertRule()
-            ..symbol = alertData['symbol'] as String
-            ..timeframe = alertData['timeframe'] as String
-            ..indicator = alertData['indicator'] as String? ?? 'rsi'
-            ..period = alertData['period'] as int? ??
-                alertData['rsiPeriod'] as int? ??
-                14
-            ..indicatorParams = alertData['indicatorParams'] != null
-                ? Map<String, dynamic>.from(alertData['indicatorParams'] as Map)
-                : null
-            ..levels = (alertData['levels'] as List<dynamic>)
-                .map((e) => (e as num).toDouble())
-                .toList()
-            ..mode = alertData['mode'] as String
-            ..cooldownSec = alertData['cooldownSec'] as int
-            ..active = alertData['active'] as bool
-            ..createdAt = alertData['createdAt'] as int
-            ..description = alertData['description'] as String?
-            ..repeatable = alertData['repeatable'] as bool? ?? true
-            ..soundEnabled = alertData['soundEnabled'] as bool? ?? true
-            ..customSound = alertData['customSound'] as String?
-            ..remoteId = null; // Anonymous alerts have no remoteId
-
-          await isar.alertRules.put(alert);
-          final oldId = alertData['id'] as int;
-          idMap[oldId] = alert.id;
+      final eventsToRestore = <(int, AlertEvent)>[];
+      final eventsJsonStr = prefs.getString('anonymous_alert_events');
+      if (eventsJsonStr != null) {
+        final eventsJson = jsonDecode(eventsJsonStr) as List<dynamic>;
+        for (final eventData in eventsJson) {
+          final oldRuleId = eventData['ruleId'] as int;
+          final event = AlertEvent()
+            ..ruleId = 0
+            ..ts = eventData['ts'] as int
+            ..indicatorValue = eventData['indicatorValue'] as double? ??
+                eventData['rsi'] as double
+            ..indicator = eventData['indicator'] as String? ?? 'rsi'
+            ..level = eventData['level'] as double?
+            ..side = eventData['side'] as String?
+            ..barTs = eventData['barTs'] as int?
+            ..symbol = eventData['symbol'] as String
+            ..message = eventData['message'] as String?
+            ..isRead = eventData['isRead'] as bool;
+          eventsToRestore.add((oldRuleId, event));
         }
+      }
 
-        // Restore alert states
-        final statesJsonStr = prefs.getString('anonymous_alert_states');
-        if (statesJsonStr != null) {
-          final statesJson = jsonDecode(statesJsonStr) as List<dynamic>;
-          for (final stateData in statesJson) {
-            final oldRuleId = stateData['ruleId'] as int;
-            final newRuleId = idMap[oldRuleId];
-            if (newRuleId != null) {
-              final state = AlertState()
-                ..ruleId = newRuleId
-                ..lastIndicatorValue =
-                    stateData['lastIndicatorValue'] as double? ??
-                        stateData['lastRsi'] as double?
-                ..indicatorStateJson = stateData['indicatorState'] as String? ??
-                    (stateData['lastAu'] != null || stateData['lastAd'] != null
-                        ? jsonEncode({
-                            'au': stateData['lastAu'] as double?,
-                            'ad': stateData['lastAd'] as double?,
-                          })
-                        : null)
-                ..lastBarTs = stateData['lastBarTs'] as int?
-                ..lastFireTs = stateData['lastFireTs'] as int?
-                ..lastSide = stateData['lastSide'] as String?
-                ..wasAboveUpper = stateData['wasAboveUpper'] as bool?
-                ..wasBelowLower = stateData['wasBelowLower'] as bool?;
-              await isar.alertStates.put(state);
-            }
-          }
-        }
-
-        // Restore alert events
-        final eventsJsonStr = prefs.getString('anonymous_alert_events');
-        if (eventsJsonStr != null) {
-          final eventsJson = jsonDecode(eventsJsonStr) as List<dynamic>;
-          for (final eventData in eventsJson) {
-            final oldRuleId = eventData['ruleId'] as int;
-            final newRuleId = idMap[oldRuleId];
-            if (newRuleId != null) {
-              final event = AlertEvent()
-                ..ruleId = newRuleId
-                ..ts = eventData['ts'] as int
-                ..indicatorValue = eventData['indicatorValue'] as double? ??
-                    eventData['rsi'] as double
-                ..indicator = eventData['indicator'] as String? ?? 'rsi'
-                ..level = eventData['level'] as double?
-                ..side = eventData['side'] as String?
-                ..barTs = eventData['barTs'] as int?
-                ..symbol = eventData['symbol'] as String
-                ..message = eventData['message'] as String?
-                ..isRead = eventData['isRead'] as bool;
-              await isar.alertEvents.put(event);
-            }
-          }
-        }
-      });
+      final repo = AlertRepository(isar);
+      await repo.restoreAnonymousAlertsFromCacheData(
+        alertsToRestore: alertsToRestore,
+        statesToRestore: statesToRestore,
+        eventsToRestore: eventsToRestore,
+      );
 
       if (kDebugMode) {
         debugPrint(

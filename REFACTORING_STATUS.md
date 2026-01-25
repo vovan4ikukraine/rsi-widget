@@ -23,11 +23,13 @@
 ### Дополнительно сделано
 
 - **PreferencesStorage** (`lib/utils/preferences_storage.dart`): централизованный доступ к `SharedPreferences`. Все экраны (home, watchlist, markets, settings, login), `DataSyncService` и `WidgetService` используют `PreferencesStorage.instance` вместо `SharedPreferences.getInstance()`.
-- **AlertRepository**: добавлены `saveAlertStates`, `getActiveCustomAlerts`, `getAllAlertEvents`. В `_createMassAlerts` сохранение состояний идёт через репозиторий.
+- **AlertRepository**: добавлены `saveAlertStates`, `getActiveCustomAlerts`, `getAllAlertEvents`, `getAllAlertStates`, `saveAlertEvents`, `deleteAnonymousAlertsWithRelatedData`, `restoreAnonymousAlertsFromCacheData`, `replaceAlertsWithServerSnapshot`. В `_createMassAlerts` сохранение состояний идёт через репозиторий.
 - **WatchlistRepository**: добавлен `replaceAll`. `DataSyncService` и `WidgetService` переведены на `WatchlistRepository` для операций с watchlist.
 - **Экраны**: убраны все прямые вызовы `widget.isar` (alertRules, alertEvents, watchlistItems). Home использует `AlertRepository.getActiveCustomAlerts`; AlertsScreen — `getCustomAlerts` и `getAllAlertEvents`; CreateAlertScreen — `getAlertsBySymbol` для проверки дубликатов.
+- **DataSyncService**: `saveAlertsToCache` / `restoreAlertsFromCache` переведены на `AlertRepository` (getAllAlerts, getAllAlertStates, getAllAlertEvents, `restoreAnonymousAlertsFromCacheData`). Прямых обращений к Isar по алертам нет.
+- **AlertSyncService**: `syncPendingAlerts`, `fetchAndSyncAlerts`, `_createRemoteAlert` используют `AlertRepository` (getAllAlerts, replaceAlertsWithServerSnapshot, saveAlert). Прямых обращений к Isar нет.
 
-**Итог по DRY:** Дубли убраны. Прямые вызовы Isar в экранах устранены; watchlist и алерты идут через репозитории. SharedPreferences — через `PreferencesStorage`.
+**Итог по DRY:** Дубли убраны. Все операции с алертами и watchlist идут через репозитории; сервисы и экраны не обращаются к Isar напрямую. SharedPreferences — через `PreferencesStorage`.
 
 ---
 
@@ -41,19 +43,19 @@
 
 ### Open/Closed Principle (OCP)
 
-- Интерфейсы для «источников данных» (например, `DataSource`) не вводились.
+- **Интерфейсы репозиториев**: ✅ введены `IAlertRepository` (`lib/repositories/i_alert_repository.dart`) и `IWatchlistRepository` (`lib/repositories/i_watchlist_repository.dart`). `AlertRepository` и `WatchlistRepository` реализуют их. Позволяет подменять реализации (моки в тестах, альтернативные хранилища) без правок вызывающего кода.
 - Связка с `YahooProtoSource` и другими сервисами остаётся жёсткой. Расширение через новые реализации без правок экранов пока не предусмотрено.
 
 ### Liskov Substitution, Interface Segregation
 
-- Не применялись целенаправленно — абстракций мало.
+- Интерфейсы репозиториев узкие (алерты / watchlist), без лишних методов — шаг к ISP.
 
 ### Dependency Inversion Principle (DIP)
 
 - **AlertRepository**: экраны зависят от репозитория, а не от Isar напрямую — шаг в сторону DIP.
 - **Общий DI-контейнер** (Service Locator, get_it и т.п.) не используется. Сервисы и репозитории создаются вручную в экранах.
 
-**Итог по SOLID:** Есть улучшения по SRP (репозиторий, утилиты) и по DIP (использование `AlertRepository`). Крупные экраны и отсутствие интерфейсов/DI оставляют нарушения.
+**Итог по SOLID:** Улучшения по SRP (репозитории, утилиты), OCP/ISP (интерфейсы `IAlertRepository`, `IWatchlistRepository`), DIP (зависимость от репозиториев, а не от Isar). Крупные экраны и отсутствие DI-контейнера оставляют частичные нарушения.
 
 ---
 
@@ -81,15 +83,15 @@
 | Принцип | Оценка | Комментарий |
 |---------|--------|-------------|
 | **DRY** | ✅ ~95% | Форматтер, SnackBar, валидация, константы, AlertRepository, WatchlistRepository внедрены. Запросы массовых алертов и работа с watchlist идут через репозитории. |
-| **SOLID** | ⚠️ ~45% | Улучшения за счёт AlertRepository, WatchlistRepository и утилит. Экраны по-прежнему крупные, нет интерфейсов и DI. |
+| **SOLID** | ⚠️ ~60% | Репозитории, утилиты, интерфейсы IAlertRepository/IWatchlistRepository. Экраны по-прежнему крупные, DI не используется. |
 | **KISS** | ✅ ~80% | Меньше дублирования, крупные методы разбиты на вспомогательные (`_createMassAlerts`, `_loadIndicatorData`), исправлена структура `_updateMassAlerts`. |
 
 ---
 
 ## Рекомендации для дальнейшего рефакторинга
 
-1. **DRY:** При необходимости перевести `DataSyncService` / `WidgetService` на `WatchlistRepository`; ввести `ScreenStateMixin` для save/load настроек.
-2. **SOLID:** Разбить большие экраны на UI + Controller/ViewModel; ввести интерфейсы для ключевых сервисов и DI.
+1. **DRY:** Выполнено — DataSyncService и AlertSyncService переведены на AlertRepository; WatchlistRepository используется в DataSync/Widget; PreferencesStorage — для SharedPreferences.
+2. **SOLID:** Интерфейсы репозиториев введены. По желанию: разбить большие экраны на UI + ViewModel; внедрить DI (get_it и т.п.).
 3. **KISS:** Упростить вложенность в отдельных виджетах; при необходимости разбить крупные виджеты на переиспользуемые компоненты.
 
 ---
