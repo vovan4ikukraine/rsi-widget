@@ -1,258 +1,389 @@
-# RSI Widget App
+# INDI CHARTS - Technical Indicators App
 
-Mobile application for RSI alerts and widgets on iOS and Android.
+[![Flutter](https://img.shields.io/badge/Flutter-3.5+-blue.svg)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.5+-blue.svg)](https://dart.dev)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Description
+A professional cross-platform mobile application for technical indicator analysis, alerts, and widgets. Monitor RSI, Stochastic, and Williams %R indicators for stocks, cryptocurrencies, forex, and commodities with real-time notifications and home screen widgets.
 
-RSI Widget App is a cross-platform mobile application that:
-- Shows RSI chart for selected instrument (stocks, crypto, FX)
-- Sends notifications when RSI crosses specified levels
-- Works autonomously as a widget on phone screen
-- Supports iOS and Android with unified codebase
+## 📱 Features
 
-## Features
+### Core Capabilities
+- **Multiple Technical Indicators**: RSI, Stochastic Oscillator (%K and %D), Williams %R
+- **Real-time Alerts**: Push notifications when indicators cross predefined levels
+- **Home Screen Widgets**: iOS WidgetKit and Android AppWidget with live indicator charts
+- **Multi-Market Support**: Stocks, cryptocurrencies, forex, commodities, and indexes
+- **Multiple Timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
+- **Watchlist**: Track multiple instruments simultaneously
+- **Markets Browser**: Browse popular instruments by category
 
-### Main Capabilities
-- **RSI Chart**: Display RSI with configurable levels (30/70, 20/80, custom)
-- **Alerts**: Notifications on RSI level crossings with hysteresis
-- **Widgets**: iOS WidgetKit and Android AppWidget with mini-charts
-- **Multiple Instruments**: Stocks, forex, cryptocurrencies
-- **Timeframes**: 1m, 5m, 15m, 1h, 4h, 1d
+### Advanced Features
+- **Cross-Device Sync**: Firebase authentication and cloud synchronization
+- **Smart Price Formatting**: Automatic precision based on price magnitude
+- **Localization**: Full support for English, Russian, and Ukrainian
+- **Dark/Light Themes**: Material Design 3 with customizable appearance
+- **Offline Support**: Local caching with Isar database
+- **Background Processing**: Automatic indicator checks and notifications
 
-### Technical Features
-- **Cross-platform**: Flutter for iOS and Android
-- **Local Database**: Isar for data caching
-- **Push Notifications**: Firebase Cloud Messaging
-- **Backend**: Cloudflare Workers with D1 database
-- **Data Sources**: Yahoo Finance (free)
+### Alert System
+- **Level Crossing Alerts**: Notify when indicator crosses specific levels
+- **Zone Entry/Exit**: Alerts for entering or exiting indicator zones
+- **Cooldown Period**: Prevent notification spam with configurable cooldown
+- **Repeatable Alerts**: Option to receive multiple triggers
+- **Sound & Vibration**: Customizable notification preferences
+- **Candle Close Mode**: Trigger only on candle close (reduces noise)
 
-## Architecture
+## 🏗️ Architecture
 
-### Client (Flutter)
-- **UI**: Material Design with dark theme
-- **Charts**: fl_chart for RSI display
-- **Database**: Isar for local storage
-- **Notifications**: flutter_local_notifications + Firebase
+### Client Application (Flutter)
+- **Framework**: Flutter 3.5+ with Dart 3.5+
+- **UI**: Material Design 3 with custom themes
+- **Charts**: fl_chart for interactive indicator visualization
+- **Database**: Isar 3.1.0+ for local data persistence
+- **State Management**: Custom AppState with InheritedWidget
+- **Dependency Injection**: GetIt for service management
 
-### Backend (Cloudflare Workers)
-- **Cron Jobs**: Alert checks every minute
-- **RSI Engine**: RSI calculation using Wilder's algorithm
-- **FCM**: Push notification sending
-- **Database**: D1 (SQLite) for rule storage
+### Backend Services (Cloudflare Workers)
+- **Runtime**: Cloudflare Workers with TypeScript
+- **Database**: D1 (SQLite) for alert and device storage
+- **Cron Jobs**: Automated indicator checks every minute
+- **Push Notifications**: Firebase Cloud Messaging integration
+- **Data Sources**: Yahoo Finance API (free tier)
 
 ### Widgets
 - **iOS**: WidgetKit with SwiftUI
-- **Android**: AppWidget with RemoteViews
+- **Android**: AppWidget with RemoteViews and custom layouts
 
-## Installation
+## 🚀 Getting Started
 
-### Requirements
-- Flutter 3.3.0+
-- Dart 3.0+
-- iOS 12.0+ / Android API 21+
-- Firebase project
-- Cloudflare Workers account
+### Prerequisites
+- Flutter SDK 3.5.0 or higher
+- Dart SDK 3.5.0 or higher
+- Android Studio / Xcode (for platform-specific builds)
+- Firebase project (for authentication and push notifications)
+- Cloudflare Workers account (for backend services)
 
-### Project Setup
+### Installation
 
-1. **Clone repository**
+1. **Clone the repository**
 ```bash
-git clone https://github.com/your-repo/rsi-widget.git
+git clone https://github.com/your-username/rsi-widget.git
 cd rsi-widget
 ```
 
-2. **Install dependencies**
+2. **Install Flutter dependencies**
 ```bash
 flutter pub get
 ```
 
-3. **Code generation**
+3. **Generate code** (for Isar, Freezed, JSON serialization)
 ```bash
-flutter packages pub run build_runner build
+flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
-### Firebase Setup
+4. **Configure Firebase**
+   - Create a project in [Firebase Console](https://console.firebase.google.com)
+   - Add Android app with package name: `com.indicharts.app`
+   - Add iOS app with bundle ID: `com.indicharts.app`
+   - Download configuration files:
+     - `android/app/google-services.json`
+     - `ios/Runner/GoogleService-Info.plist`
+   - Enable Authentication (Google Sign-In)
+   - Enable Cloud Messaging
 
-1. Create project in [Firebase Console](https://console.firebase.google.com)
-2. Add iOS and Android apps
-3. Download configuration files:
-   - `ios/Runner/GoogleService-Info.plist`
-   - `android/app/google-services.json`
-4. Enable Cloud Messaging in Firebase console
-
-### Cloudflare Workers Setup
-
-1. Install Wrangler CLI:
-```bash
-npm install -g wrangler
-```
-
-2. Login to account:
-```bash
-wrangler login
-```
-
-3. Create D1 database:
-```bash
-wrangler d1 create rsi-db
-```
-
-4. Apply schema:
-```bash
-wrangler d1 execute rsi-db --file=workers/schema.sql
-```
-
-5. Create KV namespace:
-```bash
-wrangler kv:namespace create "KV"
-```
-
-6. Set secrets:
-```bash
-wrangler secret put FCM_SERVER_KEY
-```
-
-7. Deploy Workers:
+5. **Set up Cloudflare Workers**
 ```bash
 cd workers
+npm install
+wrangler login
+wrangler d1 create rsi-db
+wrangler d1 execute rsi-db --file=schema.sql
+wrangler secret put FCM_SERVER_KEY
 wrangler deploy
 ```
 
-### App Configuration
-
-1. **Update configuration** in `lib/main.dart`:
+6. **Update backend URL** in `lib/services/yahoo_proto.dart`:
 ```dart
-// Replace with your Workers URL
 final yahooService = YahooProtoSource('https://your-worker.workers.dev');
 ```
 
-2. **Configure Firebase** in `lib/services/firebase_service.dart`
-
-3. **Build application**:
+7. **Run the application**
 ```bash
-# iOS
-flutter build ios
-
-# Android
-flutter build apk
-```
-
-## Usage
-
-### Creating Alert
-1. Open application
-2. Tap "+" to create alert
-3. Select symbol (AAPL, MSFT, EURUSD=X, etc.)
-4. Configure timeframe and RSI levels
-5. Save alert
-
-### Adding Widget
-1. **iOS**: Long press on screen → "+" → RSI Widget
-2. **Android**: Long press on screen → Widgets → RSI Widget
-
-### Notification Settings
-1. Open Settings in app
-2. Enable notifications
-3. Configure sound and vibration
-
-## API
-
-### Cloudflare Workers Endpoints
-
-- `GET /yf/candles` - Get candles
-- `GET /yf/quote` - Current price
-- `GET /yf/info` - Symbol information
-- `POST /device/register` - Device registration
-- `POST /alerts/create` - Create alert
-- `GET /alerts/:userId` - Get user alerts
-
-### Data Models
-
-```dart
-class AlertRule {
-  String symbol;
-  String timeframe;
-  int rsiPeriod;
-  List<double> levels;
-  String mode; // cross|enter|exit
-  double hysteresis;
-  int cooldownSec;
-  bool active;
-}
-```
-
-## Development
-
-### Project Structure
-```
-lib/
-├── main.dart                 # Entry point
-├── models.dart              # Data models
-├── services/                # Services
-│   ├── rsi_service.dart     # RSI calculations
-│   ├── yahoo_proto.dart     # Yahoo Finance API
-│   ├── firebase_service.dart # Firebase
-│   └── notification_service.dart # Notifications
-├── screens/                 # Screens
-│   ├── home_screen.dart     # Main screen
-│   ├── alerts_screen.dart   # Alert management
-│   └── settings_screen.dart # Settings
-└── widgets/                 # Widgets
-    └── rsi_chart.dart       # RSI chart
-
-workers/
-├── src/
-│   ├── index.ts            # Workers entry point
-│   ├── rsi-engine.ts       # RSI engine
-│   ├── fcm-service.ts      # FCM service
-│   └── yahoo-service.ts    # Yahoo service
-├── schema.sql              # D1 schema
-└── wrangler.toml           # Workers configuration
-```
-
-### Development Commands
-
-```bash
-# Run in development mode
 flutter run
+```
 
-# Code generation
-flutter packages pub run build_runner build --delete-conflicting-outputs
+## 📖 Usage
 
-# Testing
-flutter test
+### Creating an Alert
 
-# Code analysis
-flutter analyze
+1. Open the app and navigate to the main screen
+2. Select an instrument (e.g., AAPL, BTC-USD, EURUSD=X)
+3. Choose a timeframe (1m, 5m, 15m, 1h, 4h, 1d)
+4. Select an indicator (RSI, Stochastic, or Williams %R)
+5. Configure indicator period and alert levels
+6. Set alert type (Level Cross, Enter Zone, or Exit Zone)
+7. Configure cooldown and notification preferences
+8. Save the alert
 
-# Release build
-flutter build apk --release
+### Adding a Widget
+
+**iOS:**
+1. Long press on the home screen
+2. Tap the "+" button
+3. Search for "INDI CHARTS" or "Indicator Widget"
+4. Select widget size and add to home screen
+
+**Android:**
+1. Long press on the home screen
+2. Tap "Widgets"
+3. Find "RSI Watchlist" widget
+4. Select size and position
+
+### Managing Watchlist
+
+1. Navigate to Watchlist screen
+2. Add instruments from the main screen or markets browser
+3. Configure mass alerts for all watchlist items
+4. View indicator values and charts for all instruments
+
+## 🔧 Configuration
+
+### Android Release Build
+
+1. Create keystore (see `RELEASE_SETUP.md` for details):
+```bash
+keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+2. Create `android/key.properties`:
+```properties
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=upload-keystore.jks
+```
+
+3. Build release bundle:
+```bash
+flutter build appbundle --release
+```
+
+### iOS Release Build
+
+1. Configure signing in Xcode
+2. Build release:
+```bash
 flutter build ios --release
 ```
 
-## License
+## 📁 Project Structure
 
-MIT License - see [LICENSE](LICENSE) file
+```
+lib/
+├── main.dart                    # Application entry point
+├── models.dart                  # Data models (Isar schemas)
+├── models/
+│   └── indicator_type.dart      # Indicator type definitions
+├── services/                    # Business logic services
+│   ├── rsi_service.dart         # RSI calculations
+│   ├── stochastic_service.dart  # Stochastic calculations
+│   ├── williams_service.dart    # Williams %R calculations
+│   ├── indicator_service.dart   # Universal indicator service
+│   ├── yahoo_proto.dart         # Yahoo Finance API client
+│   ├── firebase_service.dart    # Firebase integration
+│   ├── notification_service.dart # Local notifications
+│   ├── auth_service.dart        # Authentication
+│   ├── user_service.dart        # User management
+│   └── ...
+├── screens/                     # UI screens
+│   ├── home_screen.dart         # Main indicator screen
+│   ├── alerts_screen.dart       # Alert management
+│   ├── watchlist_screen.dart    # Watchlist management
+│   ├── markets_screen.dart      # Markets browser
+│   ├── create_alert_screen.dart # Alert creation/editing
+│   └── settings_screen.dart     # App settings
+├── widgets/                     # Reusable widgets
+│   ├── rsi_chart.dart          # Indicator chart widget
+│   ├── indicator_chart.dart     # Universal chart widget
+│   └── ...
+├── utils/                       # Utilities
+│   ├── price_formatter.dart    # Smart price formatting
+│   ├── context_extensions.dart # BuildContext extensions
+│   └── ...
+└── localization/
+    └── app_localizations.dart   # Localization strings
 
-## Support
+workers/
+├── src/
+│   ├── index.ts                # Workers entry point
+│   ├── rsi-engine.ts          # Indicator calculation engine
+│   ├── fcm-service.ts          # Firebase Cloud Messaging
+│   ├── yahoo-service.ts       # Yahoo Finance integration
+│   └── ...
+├── schema.sql                  # D1 database schema
+└── wrangler.toml              # Workers configuration
 
-- Email: support@rsiwidget.app
-- GitHub Issues: [github.com/rsiwidget/issues](https://github.com/rsiwidget/issues)
-- Telegram: @rsiwidget_support
+android/
+├── app/
+│   ├── src/main/
+│   │   ├── AndroidManifest.xml
+│   │   ├── kotlin/com/indicharts/app/
+│   │   │   ├── MainActivity.kt
+│   │   │   ├── RSIWidgetProvider.kt
+│   │   │   └── RSIWidgetService.kt
+│   │   └── res/
+│   │       └── xml/widget_info.xml
+│   └── build.gradle
+└── ...
 
-## Contributing
+ios/
+├── Runner/
+│   ├── AppDelegate.swift
+│   └── Info.plist
+└── RSIWidget/
+    └── RSIWidget.swift
+```
+
+## 🧪 Development
+
+### Running in Development Mode
+```bash
+flutter run
+```
+
+### Code Generation
+```bash
+# Generate Isar, Freezed, and JSON serialization code
+flutter pub run build_runner build --delete-conflicting-outputs
+
+# Watch mode (auto-regenerate on changes)
+flutter pub run build_runner watch --delete-conflicting-outputs
+```
+
+### Testing
+```bash
+flutter test
+```
+
+### Code Analysis
+```bash
+flutter analyze
+```
+
+### Building Release
+```bash
+# Android App Bundle (recommended for Google Play)
+flutter build appbundle --release
+
+# Android APK
+flutter build apk --release
+
+# iOS
+flutter build ios --release
+```
+
+## 🌐 Localization
+
+The app supports three languages:
+- **English** (en)
+- **Russian** (ru)
+- **Ukrainian** (uk)
+
+All user-facing strings, notifications, and alerts are fully localized. To add a new language, update `lib/localization/app_localizations.dart`.
+
+## 🔐 Permissions
+
+### Android
+- `INTERNET` - Required for fetching market data
+- `POST_NOTIFICATIONS` - Requested only when creating alerts (doesn't block UI on startup)
+
+### iOS
+- Notification permissions - Requested when creating alerts
+
+## 📊 Supported Indicators
+
+### RSI (Relative Strength Index)
+- Default period: 14
+- Default levels: 30, 70
+- Range: 0-100
+
+### Stochastic Oscillator
+- %K period: 14 (default)
+- %D period: 3 (default)
+- Range: 0-100
+
+### Williams %R
+- Default period: 14
+- Default levels: -80, -20
+- Range: -100 to 0
+
+## 🔌 API Endpoints
+
+### Cloudflare Workers API
+
+- `GET /yf/candles?symbol={symbol}&tf={timeframe}&limit={limit}` - Get candle data
+- `GET /yf/quote?symbol={symbol}` - Get current price
+- `GET /yf/info?symbol={symbol}` - Get symbol information
+- `POST /device/register` - Register device for push notifications
+- `GET /alerts/:userId` - Get user alerts
+- `POST /alerts/create` - Create alert
+- `POST /alerts/check` - Check alert triggers (cron job)
+
+## 🛠️ Technologies
+
+### Frontend
+- **Flutter** - Cross-platform framework
+- **Isar** - Local NoSQL database
+- **fl_chart** - Chart visualization
+- **Firebase** - Authentication and push notifications
+- **Material Design 3** - UI components
+
+### Backend
+- **Cloudflare Workers** - Serverless runtime
+- **D1 Database** - SQLite in the cloud
+- **Firebase Cloud Messaging** - Push notifications
+- **Yahoo Finance API** - Market data source
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Roadmap
+## 📧 Support
 
-- [ ] Support for more data sources
-- [ ] Sync between devices
+- **Email**: ads.contact.manager@gmail.com
+- **Telegram**: @rsiwidget_support
+- **GitHub Issues**: [Create an issue](https://github.com/your-username/rsi-widget/issues)
+
+## 🗺️ Roadmap
+
+- [x] Multiple technical indicators (RSI, Stochastic, Williams %R)
+- [x] Cross-device synchronization
+- [x] Home screen widgets
+- [x] Multi-language support
+- [x] Smart price formatting
+- [ ] Additional indicators (MACD, Bollinger Bands)
 - [ ] Alert backtesting
-- [ ] Theme customization
-- [ ] Settings export/import
-- [ ] Analytics and statistics
+- [ ] Export/import settings
+- [ ] Advanced charting features
+- [ ] Portfolio tracking
+
+## 🙏 Acknowledgments
+
+- Yahoo Finance for providing free market data
+- Flutter team for the excellent framework
+- Cloudflare for Workers platform
+- Firebase for authentication and messaging services
+
+---
+
+**Made with ❤️ for traders and investors**
