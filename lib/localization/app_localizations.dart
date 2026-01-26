@@ -283,6 +283,18 @@ class AppLocalizations {
       'alert_above': 'above',
       'alert_below': 'below',
       'alert_between': 'between',
+      
+      // Alert messages
+      'alert_message_cross_up': '{{indicator}} crossed level {{level}} upward',
+      'alert_message_cross_down': '{{indicator}} crossed level {{level}} downward',
+      'alert_message_enter_zone': '{{indicator}} entered zone {{lower}}-{{upper}}',
+      'alert_message_exit_zone': '{{indicator}} exited zone {{lower}}-{{upper}}',
+      
+      // Watchlist mass alerts
+      'watchlist_mass_alerts_title': 'Watchlist Alert',
+      'watchlist_mass_alerts_empty': 'No Watchlist Alerts to delete',
+      'watchlist_mass_alerts_error': 'Error deleting Watchlist Alerts',
+      'watchlist_mass_alerts_delete_error': 'Error deleting Watchlist Alerts',
       'notification_connected_title': 'Connected to server',
       'notification_disconnected_title': 'Disconnected from server',
       'notification_receiving_data': 'Receiving RSI data',
@@ -564,6 +576,18 @@ class AppLocalizations {
       'alert_above': 'выше',
       'alert_below': 'ниже',
       'alert_between': 'между',
+      
+      // Alert messages
+      'alert_message_cross_up': '{{indicator}} пересек уровень {{level}} вверх',
+      'alert_message_cross_down': '{{indicator}} пересек уровень {{level}} вниз',
+      'alert_message_enter_zone': '{{indicator}} вошел в зону {{lower}}-{{upper}}',
+      'alert_message_exit_zone': '{{indicator}} вышел из зоны {{lower}}-{{upper}}',
+      
+      // Watchlist mass alerts
+      'watchlist_mass_alerts_title': 'Алерт списка наблюдения',
+      'watchlist_mass_alerts_empty': 'Нет алертов списка наблюдения для удаления',
+      'watchlist_mass_alerts_error': 'Ошибка удаления алертов списка наблюдения',
+      'watchlist_mass_alerts_delete_error': 'Ошибка удаления алертов списка наблюдения',
       'notification_connected_title': 'Подключено к серверу',
       'notification_disconnected_title': 'Отключено от сервера',
       'notification_receiving_data': 'Получение данных RSI',
@@ -844,6 +868,18 @@ class AppLocalizations {
       'alert_above': 'вище',
       'alert_below': 'нижче',
       'alert_between': 'між',
+      
+      // Alert messages
+      'alert_message_cross_up': '{{indicator}} перетнув рівень {{level}} вгору',
+      'alert_message_cross_down': '{{indicator}} перетнув рівень {{level}} вниз',
+      'alert_message_enter_zone': '{{indicator}} увійшов у зону {{lower}}-{{upper}}',
+      'alert_message_exit_zone': '{{indicator}} вийшов із зони {{lower}}-{{upper}}',
+      
+      // Watchlist mass alerts
+      'watchlist_mass_alerts_title': 'Алерт списку спостереження',
+      'watchlist_mass_alerts_empty': 'Немає алертів списку спостереження для видалення',
+      'watchlist_mass_alerts_error': 'Помилка видалення алертів списку спостереження',
+      'watchlist_mass_alerts_delete_error': 'Помилка видалення алертів списку спостереження',
       'notification_connected_title': 'Підключено до сервера',
       'notification_disconnected_title': 'Відключено від сервера',
       'notification_receiving_data': 'Отримання даних RSI',

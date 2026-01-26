@@ -1854,12 +1854,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Card(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       child: ExpansionTile(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.notifications_active, size: 20),
-            SizedBox(width: 8),
+            const Icon(Icons.notifications_active, size: 20),
+            const SizedBox(width: 8),
             Text(
-              'Watchlist Alert',
+              loc.t('watchlist_mass_alerts_title'),
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -2632,7 +2632,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       if (alerts.isEmpty) {
         if (mounted) {
-          context.showInfo('No Watchlist Alerts to delete');
+          context.showInfo(context.loc.t('watchlist_mass_alerts_empty'));
         }
         return;
       }
