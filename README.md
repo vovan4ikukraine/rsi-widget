@@ -344,10 +344,6 @@ All user-facing strings, notifications, and alerts are fully localized. To add a
 - **Firebase Cloud Messaging** - Push notifications
 - **Yahoo Finance API** - Market data source
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -361,21 +357,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 📧 Support
 
 - **Email**: ads.contact.manager@gmail.com
-- **Telegram**: @rsiwidget_support
-- **GitHub Issues**: [Create an issue](https://github.com/your-username/rsi-widget/issues)
-
-## 🗺️ Roadmap
-
-- [x] Multiple technical indicators (RSI, Stochastic, Williams %R)
-- [x] Cross-device synchronization
-- [x] Home screen widgets
-- [x] Multi-language support
-- [x] Smart price formatting
-- [ ] Additional indicators (MACD, Bollinger Bands)
-- [ ] Alert backtesting
-- [ ] Export/import settings
-- [ ] Advanced charting features
-- [ ] Portfolio tracking
 
 ## 🙏 Acknowledgments
 
