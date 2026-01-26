@@ -164,9 +164,7 @@ To exercise these rights, please contact us using the information provided below
 
 If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us:
 
-- **Email**: ads.contact.manager@gmail.com
-- **Telegram**: @rsiwidget_support
-- **GitHub Issues**: [Create an issue](https://github.com/your-username/rsi-widget/issues)
+- **Email**: vovan4ikukraine@gmail.com
 
 We will respond to your request within 30 days.
 
@@ -174,7 +172,7 @@ We will respond to your request within 30 days.
 
 **Data Controller**: INDI CHARTS Development Team
 
-**Contact Information**: ads.contact.manager@gmail.com
+**Contact Information**: vovan4ikukraine@gmail.com
 
 ---
 
