@@ -97,6 +97,9 @@ coverage/
 workers/dist/
 workers/.wrangler/
 
+# Test/example worker (not used in production)
+my-worker/
+
 # Generated files
 lib/models.g.dart
 lib/models.freezed.dart
