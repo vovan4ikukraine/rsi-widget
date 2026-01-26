@@ -22,6 +22,7 @@ import '../widgets/indicator_selector.dart';
 import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
+import '../utils/price_formatter.dart';
 import '../constants/app_constants.dart';
 import '../di/app_container.dart';
 import '../repositories/i_alert_repository.dart';
@@ -1292,7 +1293,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (_currentPrice != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      _currentPrice!.toStringAsFixed(2),
+                      PriceFormatter.formatPrice(_currentPrice!),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey[500],

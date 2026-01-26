@@ -18,6 +18,7 @@ import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/indicator_level_validator.dart';
+import '../utils/price_formatter.dart';
 import '../constants/app_constants.dart';
 import '../di/app_container.dart';
 import '../repositories/i_alert_repository.dart';
@@ -1792,7 +1793,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     children: [
                       if (indicatorData.price != null) ...[
                         Text(
-                          indicatorData.price!.toStringAsFixed(2),
+                          PriceFormatter.formatPrice(indicatorData.price!),
                           style: TextStyle(
                             fontSize: 9,
                             color: Colors.grey[500],
