@@ -584,7 +584,7 @@ class AppLocalizations {
       'alert_message_exit_zone': '{{indicator}} вышел из зоны {{lower}}-{{upper}}',
       
       // Watchlist mass alerts
-      'watchlist_mass_alerts_title': 'Алерт списка наблюдения',
+      'watchlist_mass_alerts_title': 'Уведомления в списке',
       'watchlist_mass_alerts_empty': 'Нет алертов списка наблюдения для удаления',
       'watchlist_mass_alerts_error': 'Ошибка удаления алертов списка наблюдения',
       'watchlist_mass_alerts_delete_error': 'Ошибка удаления алертов списка наблюдения',
@@ -876,7 +876,7 @@ class AppLocalizations {
       'alert_message_exit_zone': '{{indicator}} вийшов із зони {{lower}}-{{upper}}',
       
       // Watchlist mass alerts
-      'watchlist_mass_alerts_title': 'Алерт списку спостереження',
+      'watchlist_mass_alerts_title': 'Повідомлення у списку',
       'watchlist_mass_alerts_empty': 'Немає алертів списку спостереження для видалення',
       'watchlist_mass_alerts_error': 'Помилка видалення алертів списку спостереження',
       'watchlist_mass_alerts_delete_error': 'Помилка видалення алертів списку спостереження',
