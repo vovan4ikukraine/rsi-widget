@@ -84,6 +84,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   int _massAlertCooldownSec = 600;
   bool _massAlertRepeatable = true;
   bool _massAlertOnClose = false;
+  /// Blocks the Watchlist alert switch until create/delete/save finish (prevents spam toggling).
+  bool _isMassAlertOperationInProgress = false;
 
   // Helper getter for current indicator (from AppState)
   IndicatorType get _massAlertIndicator => _appState?.selectedIndicator ?? IndicatorType.rsi;
@@ -1878,25 +1880,36 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             : null,
         leading: Switch(
           value: _massAlertEnabled,
-          onChanged: (value) async {
-            // If trying to enable, validate form first
-            if (value && _massAlertFormKey.currentState != null) {
-              if (!_massAlertFormKey.currentState!.validate()) {
-                // Validation failed, don't enable switch
-                return;
-              }
-            }
-            setState(() {
-              _massAlertEnabled = value; // Uses the setter which updates the map
-            });
-            await _saveState();
-            if (value) {
-              await _createMassAlerts();
-            } else {
-              // Deactivate mass alerts for THIS INDICATOR only
-              await _deleteMassAlerts();
-            }
-          },
+          onChanged: _isMassAlertOperationInProgress
+              ? null
+              : (value) async {
+                  if (_isMassAlertOperationInProgress) return;
+                  // If trying to enable, validate form first
+                  if (value && _massAlertFormKey.currentState != null) {
+                    if (!_massAlertFormKey.currentState!.validate()) {
+                      return;
+                    }
+                  }
+                  // Set flag immediately (before setState) so rapid taps are ignored
+                  _isMassAlertOperationInProgress = true;
+                  setState(() {
+                    _massAlertEnabled = value; // Uses the setter which updates the map
+                  });
+                  try {
+                    await _saveState();
+                    if (value) {
+                      await _createMassAlerts();
+                    } else {
+                      await _deleteMassAlerts();
+                    }
+                  } finally {
+                    if (mounted) {
+                      setState(() {
+                        _isMassAlertOperationInProgress = false;
+                      });
+                    }
+                  }
+                },
         ),
         children: [
           Form(
@@ -2540,16 +2553,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
       }
 
-      // Sync all created alerts in parallel (outside transaction)
+      // Sync all created alerts and wait for completion so switch stays disabled
       if (createdAlerts.isNotEmpty) {
-        unawaited(Future.wait(
+        await Future.wait(
           createdAlerts.map((alert) => AlertSyncService.syncAlert(alert,
             lowerLevelEnabled: _massAlertLowerLevelEnabled,
             upperLevelEnabled: _massAlertUpperLevelEnabled,
             lowerLevelValue: _massAlertLowerLevel,
             upperLevelValue: _massAlertUpperLevel,
           )),
-        ));
+        );
       }
 
       // Update UI and show success message
@@ -2659,21 +2672,20 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       debugPrint('_deleteMassAlerts: Deleted ${alertsToDelete.length} alerts from local database');
 
-      // Update UI immediately (don't wait for server sync)
+      // Sync deletions and wait so switch stays disabled until server is updated
+      if (alertsToDelete.isNotEmpty) {
+        await Future.wait(
+          alertsToDelete.map(
+              (alert) => AlertSyncService.deleteAlert(alert, hardDelete: true)),
+        );
+      }
+
       if (mounted) {
         final loc = context.loc;
         SnackBarHelper.showInfo(
           context,
           '${loc.t('watchlist_title')} ${loc.t('create_alert_deleted')}: ${alertsToDelete.length}',
         );
-      }
-
-      // Sync deletions in parallel (non-blocking, after UI update)
-      if (alertsToDelete.isNotEmpty) {
-        unawaited(Future.wait(
-          alertsToDelete.map(
-              (alert) => AlertSyncService.deleteAlert(alert, hardDelete: true)),
-        ));
       }
     } catch (e) {
       debugPrint('Error deleting mass alerts: $e');
