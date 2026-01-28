@@ -292,6 +292,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Watchlist Alert',
+      'watchlist_creating_alerts': 'Creating alerts for {{count}} instrument(s)...',
       'watchlist_mass_alerts_empty': 'No Watchlist Alerts to delete',
       'watchlist_mass_alerts_error': 'Error deleting Watchlist Alerts',
       'watchlist_mass_alerts_delete_error': 'Error deleting Watchlist Alerts',
@@ -585,6 +586,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Уведомления в списке',
+      'watchlist_creating_alerts': 'Создание уведомлений для {{count}} инструмента(ов)...',
       'watchlist_mass_alerts_empty': 'Нет алертов списка наблюдения для удаления',
       'watchlist_mass_alerts_error': 'Ошибка удаления алертов списка наблюдения',
       'watchlist_mass_alerts_delete_error': 'Ошибка удаления алертов списка наблюдения',
@@ -877,6 +879,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Повідомлення у списку',
+      'watchlist_creating_alerts': 'Створення сповіщень для {{count}} інструмента(ів)...',
       'watchlist_mass_alerts_empty': 'Немає алертів списку спостереження для видалення',
       'watchlist_mass_alerts_error': 'Помилка видалення алертів списку спостереження',
       'watchlist_mass_alerts_delete_error': 'Помилка видалення алертів списку спостереження',

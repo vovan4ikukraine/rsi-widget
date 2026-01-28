@@ -283,37 +283,37 @@ class NotificationService {
         'notification_watchlist_title',
         params: {'symbol': symbol},
       );
-      
-      // Localize message if it contains "above", "below", or "between"
-      String localizedMessage = message ?? '';
-      if (localizedMessage.isNotEmpty) {
-        final above = await AppLocalizations.tByLanguage(languageCode, 'alert_above');
-        final below = await AppLocalizations.tByLanguage(languageCode, 'alert_below');
-        final between = await AppLocalizations.tByLanguage(languageCode, 'alert_between');
-        
-        localizedMessage = localizedMessage
-            .replaceAll(' above ', ' $above ')
-            .replaceAll(' below ', ' $below ')
-            .replaceAll(' between ', ' $between ')
-            .replaceAll('above ', '$above ')
-            .replaceAll('below ', '$below ')
-            .replaceAll('between ', '$between ')
-            .replaceAll(' above', ' $above')
-            .replaceAll(' below', ' $below')
-            .replaceAll(' between', ' $between');
+
+      // Always build body from localized templates so notifications appear in user language
+      final indicatorName = (indicator ?? 'RSI').toUpperCase();
+      final levelStr = level.toStringAsFixed(0);
+      final rsiStr = rsi.toStringAsFixed(2);
+      String body;
+      if (type == 'above') {
+        body = await AppLocalizations.tByLanguage(
+          languageCode,
+          'alert_message_cross_up',
+          params: {'indicator': indicatorName, 'level': levelStr},
+        );
+      } else if (type == 'below') {
+        body = await AppLocalizations.tByLanguage(
+          languageCode,
+          'alert_message_cross_down',
+          params: {'indicator': indicatorName, 'level': levelStr},
+        );
       } else {
-        localizedMessage = await AppLocalizations.tByLanguage(
+        final typeKey = type == 'between' ? 'alert_between' : (type == 'above' ? 'alert_above' : 'alert_below');
+        final typeLocalized = await AppLocalizations.tByLanguage(languageCode, typeKey);
+        body = await AppLocalizations.tByLanguage(
           languageCode,
           'notification_rsi_alert_body',
           params: {
-            'rsi': rsi.toStringAsFixed(2),
-            'level': level.toStringAsFixed(0),
-            'type': type,
+            'rsi': rsiStr,
+            'level': levelStr,
+            'type': typeLocalized,
           },
         );
       }
-      
-      final body = localizedMessage;
 
       final channelName = await AppLocalizations.tByLanguage(
         languageCode,

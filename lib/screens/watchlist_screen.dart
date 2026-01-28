@@ -2375,7 +2375,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Show loading indicator
       if (mounted) {
         context.showLoading(
-          'Creating alerts for ${_watchlistItems.length} instrument(s)...',
+          context.loc.t('watchlist_creating_alerts', params: {'count': '${_watchlistItems.length}'}),
         );
       }
 
