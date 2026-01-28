@@ -352,6 +352,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   }
 
   Future<void> _syncUserData() async {
+    debugPrint('_AuthWrapper._syncUserData: Starting sync...');
     try {
       // Save anonymous watchlist and alerts to cache before loading account data
       await DataSyncService.saveWatchlistToCache();
@@ -360,10 +361,14 @@ class _AuthWrapperState extends State<_AuthWrapper> {
       // Fetch account data (completely replaces local data)
       await AlertSyncService.fetchAndSyncAlerts();
       await AlertSyncService.syncPendingAlerts();
+      
+      debugPrint('_AuthWrapper._syncUserData: Calling fetchWatchlist...');
       await DataSyncService.fetchWatchlist();
-    } catch (e) {
+      debugPrint('_AuthWrapper._syncUserData: Sync complete');
+    } catch (e, stackTrace) {
       // Silently handle errors - user can manually sync if needed
-      debugPrint('_AuthWrapper: Error syncing user data: $e');
+      debugPrint('_AuthWrapper._syncUserData: Error syncing user data: $e');
+      debugPrint('$stackTrace');
     }
   }
 

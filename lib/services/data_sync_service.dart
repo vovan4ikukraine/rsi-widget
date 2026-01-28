@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../di/app_container.dart';
@@ -61,6 +63,10 @@ class DataSyncService {
       final prefs = await PreferencesStorage.instance;
       final symbols = items.map((item) => item.symbol).toList();
       await prefs.setStringList('anonymous_watchlist', symbols);
+      
+      // Also seed widget symbols so Android widget works for anonymous users
+      await seedWidgetSymbols(symbols);
+      
       if (kDebugMode) {
         debugPrint(
             'DataSyncService: Saved ${symbols.length} items to anonymous watchlist cache');
@@ -338,8 +344,13 @@ class DataSyncService {
           debugPrint(
               'DataSyncService: Failed to sync watchlist: ${response.statusCode} ${response.body}');
         }
-      } else if (kDebugMode) {
-        debugPrint('DataSyncService: Watchlist synced successfully');
+      } else {
+        if (kDebugMode) {
+          debugPrint('DataSyncService: Watchlist synced successfully');
+        }
+        // Also seed widget symbols so Android widget can fetch data
+        final symbols = localItems.map((item) => item.symbol).toList();
+        await seedWidgetSymbols(symbols);
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -376,6 +387,8 @@ class DataSyncService {
       if (symbols == null) {
         final repo = sl<IWatchlistRepository>();
         await repo.replaceAll([]);
+        // Still seed widget (with empty list) so it knows there's no data
+        await seedWidgetSymbols([]);
         return;
       }
 
@@ -415,15 +428,60 @@ class DataSyncService {
       final repo = sl<IWatchlistRepository>();
       await repo.replaceAll(items);
 
-      if (kDebugMode) {
-        debugPrint(
-            'DataSyncService: Watchlist fetched and replaced successfully (${serverSymbols.length} items)');
-      }
+      debugPrint('DataSyncService.fetchWatchlist: Saved ${serverSymbols.length} symbols to DB, now seeding widget...');
+
+      // Seed widget SharedPreferences so Android widget can work immediately
+      await seedWidgetSymbols(serverSymbols.toList());
+
+      debugPrint('DataSyncService.fetchWatchlist: Watchlist fetched and widget seeded successfully (${serverSymbols.length} items)');
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('DataSyncService: Error fetching watchlist: $e');
         debugPrint('$stackTrace');
       }
+    }
+  }
+
+  static const MethodChannel _widgetChannel = MethodChannel('com.indicharts.app/widget');
+
+  /// Seed widget SharedPreferences with symbols so Android widget can fetch data.
+  /// This is called after fetchWatchlist to ensure widget has symbols even on first login.
+  /// Uses MethodChannel to write directly to native SharedPreferences (rsi_widget_data).
+  static Future<void> seedWidgetSymbols([List<String>? symbols]) async {
+    // Only Android has the widget
+    if (!Platform.isAndroid) {
+      debugPrint('DataSyncService.seedWidgetSymbols: Not Android, skipping');
+      return;
+    }
+    
+    try {
+      List<String> symbolsToSeed;
+      if (symbols != null) {
+        symbolsToSeed = symbols;
+      } else {
+        // If no symbols passed, read from repository
+        final repo = sl<IWatchlistRepository>();
+        final items = await repo.getAll();
+        symbolsToSeed = items.map((item) => item.symbol).toList();
+      }
+      
+      debugPrint('DataSyncService.seedWidgetSymbols: Attempting to seed ${symbolsToSeed.length} symbols: $symbolsToSeed');
+      
+      if (symbolsToSeed.isEmpty) {
+        debugPrint('DataSyncService.seedWidgetSymbols: No symbols to seed, skipping');
+        return;
+      }
+      
+      // Call MethodChannel to save symbols directly to native SharedPreferences
+      // This triggers widget refresh so it fetches data for these symbols
+      final result = await _widgetChannel.invokeMethod('seedWidgetSymbols', {
+        'symbols': symbolsToSeed,
+      });
+      
+      debugPrint('DataSyncService.seedWidgetSymbols: MethodChannel returned $result');
+    } catch (e, stackTrace) {
+      debugPrint('DataSyncService.seedWidgetSymbols: Error - $e');
+      debugPrint('$stackTrace');
     }
   }
 

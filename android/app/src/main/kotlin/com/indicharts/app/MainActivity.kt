@@ -69,12 +69,55 @@ class MainActivity: FlutterActivity() {
                         }
                         
                         // Send broadcast to update widget
-                        val intent = Intent(RSIWidgetProvider.ACTION_UPDATE_WIDGET)
+                        // Use explicit broadcast (required for Android 8.0+ implicit broadcast restrictions)
+                        val intent = Intent(this@MainActivity, RSIWidgetProvider::class.java)
+                        intent.action = RSIWidgetProvider.ACTION_UPDATE_WIDGET
                         sendBroadcast(intent)
                         
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error updating widget", e)
+                        result.error("ERROR", e.message, null)
+                    }
+                }
+                "seedWidgetSymbols" -> {
+                    // Lightweight method to just seed symbols for widget without full data
+                    // This allows native WidgetDataService to fetch the data itself
+                    try {
+                        val symbols = call.argument<List<String>>("symbols") ?: emptyList()
+                        Log.d(TAG, "Seeding widget with ${symbols.size} symbols: $symbols")
+                        
+                        val prefs = getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+                        prefs.edit().apply {
+                            putString("watchlist_symbols", JSONArray(symbols).toString())
+                            
+                            // Also set default indicator settings if not already set
+                            // This ensures WidgetDataService can fetch data even on first run
+                            if (!prefs.contains("widget_indicator")) {
+                                putString("widget_indicator", "rsi")
+                            }
+                            if (!prefs.contains("timeframe")) {
+                                putString("timeframe", "15m")
+                            }
+                            if (!prefs.contains("rsi_widget_period")) {
+                                putInt("rsi_widget_period", 14)
+                            }
+                            if (!prefs.contains("watchlist_rsi_period")) {
+                                putInt("watchlist_rsi_period", 14)
+                            }
+                            
+                            commit()
+                        }
+                        
+                        // Trigger widget refresh so it fetches data for these symbols
+                        // Use explicit broadcast (required for Android 8.0+ implicit broadcast restrictions)
+                        val intent = Intent(this@MainActivity, RSIWidgetProvider::class.java)
+                        intent.action = RSIWidgetProvider.ACTION_REFRESH_WIDGET
+                        sendBroadcast(intent)
+                        
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error seeding widget symbols", e)
                         result.error("ERROR", e.message, null)
                     }
                 }
