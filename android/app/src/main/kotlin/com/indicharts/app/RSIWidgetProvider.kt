@@ -94,6 +94,16 @@ class RSIWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
+
+        // When the widget is first added, SharedPreferences may still contain empty "[]".
+        // Trigger a refresh so the widget doesn't stay blank for the first few update cycles.
+        val prefs = context.getSharedPreferences("rsi_widget_data", Context.MODE_PRIVATE)
+        val watchlistJson = prefs.getString("watchlist_data", "[]") ?: "[]"
+        val isLoading = prefs.getBoolean(PREF_IS_LOADING, false)
+        if (!isLoading && (watchlistJson.isBlank() || watchlistJson == "[]")) {
+            Log.d(TAG, "Widget data is empty onUpdate -> triggering refresh job")
+            startRefreshJob(context)
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -209,6 +219,8 @@ class RSIWidgetProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         Log.d(TAG, "Widget enabled")
+        // Kick off initial refresh as soon as widget is added.
+        startRefreshJob(context)
     }
 
     override fun onDisabled(context: Context) {
