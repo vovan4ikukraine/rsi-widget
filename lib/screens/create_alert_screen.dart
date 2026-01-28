@@ -42,8 +42,10 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   final _formKey = GlobalKey<FormState>();
   final _symbolController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _indicatorPeriodController = TextEditingController();
   final _lowerLevelController = TextEditingController();
   final _upperLevelController = TextEditingController();
+  final FocusNode _indicatorPeriodFocusNode = FocusNode();
   final YahooProtoSource _yahooService =
       YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
 
@@ -87,6 +89,9 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       
       // Use initial period if provided, otherwise use default
       _indicatorPeriod = widget.initialPeriod ?? indicatorType.defaultPeriod;
+      if (_indicatorPeriodController.text.isEmpty) {
+        _indicatorPeriodController.text = _indicatorPeriod.toString();
+      }
       
       _levels = List.from(indicatorType.defaultLevels);
       _lowerLevelEnabled = _levels.isNotEmpty;
@@ -120,6 +125,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _descriptionController.text = alert.description ?? '';
     _selectedTimeframe = alert.timeframe;
     _indicatorPeriod = alert.period;
+    _indicatorPeriodController.text = _indicatorPeriod.toString();
     _levels = List.from(alert.levels);
     _lowerLevelEnabled = _levels.isNotEmpty;
     _upperLevelEnabled = _levels.length > 1;
@@ -145,6 +151,18 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _symbolController.dispose();
+    _descriptionController.dispose();
+    _indicatorPeriodController.dispose();
+    _lowerLevelController.dispose();
+    _upperLevelController.dispose();
+    _indicatorPeriodFocusNode.dispose();
+    _symbolSearchService.cancelPending();
+    super.dispose();
+  }
+
   Future<void> _loadPopularSymbols() async {
     try {
       final popular = await _symbolSearchService.getPopularSymbols();
@@ -155,16 +173,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     } catch (e) {
       debugPrint('Failed to load curated symbols: $e');
     }
-  }
-
-  @override
-  void dispose() {
-    _symbolController.dispose();
-    _descriptionController.dispose();
-    _lowerLevelController.dispose();
-    _upperLevelController.dispose();
-    _symbolSearchService.cancelPending();
-    super.dispose();
   }
 
   @override
@@ -589,8 +597,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                       ),
                       const Spacer(),
                       TextFormField(
-                        key: ValueKey('period_$_indicatorPeriod'),
-                        initialValue: _indicatorPeriod.toString(),
+                        controller: _indicatorPeriodController,
+                        focusNode: _indicatorPeriodFocusNode,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.timeline),
@@ -598,11 +606,11 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                         onChanged: (value) {
+                          // Allow typing/erasing without rebuilding the widget (prevents focus jump).
+                          if (value.isEmpty) return;
                           final period = int.tryParse(value);
                           if (period != null && period >= 1 && period <= 100) {
-                            setState(() {
-                              _indicatorPeriod = period;
-                            });
+                            _indicatorPeriod = period;
                           }
                         },
                       ),
@@ -676,10 +684,12 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                   _lowerLevelEnabled = value ?? true;
                   if (!_lowerLevelEnabled && _levels.isNotEmpty) {
                     _levels.removeAt(0);
-                    _lowerLevelController.clear();
                   } else if (_lowerLevelEnabled && _levels.isEmpty) {
-                    _levels.insert(0, defaultLevels.first);
-                    _lowerLevelController.text = defaultLevels.first.toInt().toString();
+                    // Restore previous value if user already entered it; otherwise use default.
+                    final restored = int.tryParse(_lowerLevelController.text)?.toDouble();
+                    final valueToUse = restored ?? defaultLevels.first;
+                    _levels.insert(0, valueToUse);
+                    _lowerLevelController.text = valueToUse.toInt().toString();
                   }
                 });
               },

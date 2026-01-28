@@ -85,6 +85,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController _upperLevelController = TextEditingController();
   final TextEditingController _symbolController = TextEditingController();
   final TextEditingController _stochDPeriodController = TextEditingController();
+  // Keep stable focus nodes to prevent keyboard closing / focus jumping on rebuilds.
+  final FocusNode _indicatorPeriodFocusNode = FocusNode();
+  final FocusNode _stochDPeriodFocusNode = FocusNode();
+  final FocusNode _lowerLevelFocusNode = FocusNode();
+  final FocusNode _upperLevelFocusNode = FocusNode();
   bool _isSearchingSymbols = false;
   late final SymbolSearchService _symbolSearchService;
   List<SymbolInfo> _popularSymbols = [];
@@ -236,6 +241,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _upperLevelController.dispose();
     _symbolController.dispose();
     _stochDPeriodController.dispose();
+    _indicatorPeriodFocusNode.dispose();
+    _stochDPeriodFocusNode.dispose();
+    _lowerLevelFocusNode.dispose();
+    _upperLevelFocusNode.dispose();
     _symbolSearchService.cancelPending();
     super.dispose();
   }
@@ -1598,6 +1607,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             const Spacer(),
                             TextField(
                               controller: _indicatorPeriodController,
+                              focusNode: _indicatorPeriodFocusNode,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
@@ -1621,6 +1631,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               const Spacer(),
                               TextField(
                                 controller: _stochDPeriodController,
+                                focusNode: _stochDPeriodFocusNode,
                                 decoration: const InputDecoration(
                                   border: OutlineInputBorder(),
                                   isDense: true,
@@ -1644,6 +1655,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             const Spacer(),
                             TextField(
                               controller: _lowerLevelController,
+                              focusNode: _lowerLevelFocusNode,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
@@ -1668,6 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             const Spacer(),
                             TextField(
                               controller: _upperLevelController,
+                              focusNode: _upperLevelFocusNode,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
