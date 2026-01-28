@@ -17,6 +17,7 @@ import '../services/alert_sync_service.dart';
 import '../services/data_sync_service.dart';
 import '../services/auth_service.dart';
 import '../services/error_service.dart';
+import '../services/notification_service.dart';
 import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 import '../widgets/wpr_level_input_formatter.dart';
@@ -108,6 +109,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(AlertSyncService.syncPendingAlerts());
     // Always refresh data on app open to ensure freshness
     unawaited(_refreshIndicatorData());
+
+    // Ask notification permission once, but only after first frame (prevents UI "freeze" on first install).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(NotificationService.requestOnFirstAppOpenIfNeeded());
+    });
   }
 
   @override

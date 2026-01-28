@@ -87,6 +87,35 @@ class NotificationService {
     }
   }
 
+  /// Ask for notification permission once on first app open (Android 13+).
+  /// Runs from UI layer (after first frame) to avoid "frozen" interaction issues.
+  static Future<void> requestOnFirstAppOpenIfNeeded() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadyAsked = prefs.getBool('notif_permission_asked') ?? false;
+      if (alreadyAsked) return;
+
+      await prefs.setBool('notif_permission_asked', true);
+
+      // Ensure plugin is initialized before requesting.
+      if (!_initialized) {
+        await initialize();
+      }
+
+      if (Platform.isAndroid) {
+        final androidPlugin =
+            _notifications.resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.requestNotificationsPermission();
+      }
+      // iOS already requests via DarwinInitializationSettings if enabled.
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error requesting notifications on first app open: $e');
+      }
+    }
+  }
+
   /// Handle notification tap
   static void _onNotificationTapped(NotificationResponse response) {
     if (kDebugMode) {

@@ -106,16 +106,11 @@ class FirebaseService {
     try {
       if (_messaging == null) return null;
 
-      // Request permissions
-      await _messaging!.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
+      // IMPORTANT:
+      // Do NOT request notification permission here.
+      // On first install Android 13+ will show a system permission dialog.
+      // If this is triggered during app startup/background init, it can lead to a "frozen" UI state.
+      // Permission request is handled from UI (after first frame) instead.
 
       _fcmToken = await _messaging!.getToken();
 
