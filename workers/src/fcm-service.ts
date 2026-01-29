@@ -268,11 +268,18 @@ export class FcmService {
         // This prevents accumulation of stale notifications when device is offline
         const collapseKey = `alert_${trigger.ruleId}`;
 
+        // Determine notification title based on source
+        const isWatchlistAlert = trigger.source === 'watchlist';
+        const timeframeSuffix = trigger.timeframe ? ` (${trigger.timeframe})` : '';
+        const title = isWatchlistAlert 
+            ? `Watchlist: ${trigger.symbol}${timeframeSuffix}`
+            : `${trigger.symbol}${timeframeSuffix}`;
+
         const message: FcmV1Message = {
             message: {
                 token: token,
                 notification: {
-                    title: `Watchlist: ${trigger.symbol}`,
+                    title: title,
                     body: trigger.message,
                 },
                 data: {
@@ -283,6 +290,10 @@ export class FcmService {
                     type: trigger.type,
                     message: trigger.message,
                     timestamp: trigger.timestamp.toString(),
+                    indicator: trigger.indicator || 'rsi',
+                    timeframe: trigger.timeframe || '',
+                    source: trigger.source || 'custom',
+                    isWatchlistAlert: isWatchlistAlert ? 'true' : 'false',
                 },
                 android: {
                     priority: 'high',
@@ -379,7 +390,7 @@ export class FcmService {
     }
 
     /**
-     * Remove invalid token
+     * Remove invalid token and clean up anonymous user alerts if no other devices
      */
     async removeInvalidToken(token: string, db?: D1Database): Promise<void> {
         if (!db) {
@@ -388,13 +399,79 @@ export class FcmService {
         }
 
         try {
+            // First, get the user_id for this token
+            const device = await db.prepare(`
+                SELECT user_id FROM device WHERE fcm_token = ?
+            `).bind(token).first<{ user_id: string }>();
+
+            // Delete the device with invalid token
             await db.prepare(`
                 DELETE FROM device WHERE fcm_token = ?
             `).bind(token).run();
 
             console.log(`Removed invalid token: ${token.substring(0, 10)}...`);
+
+            // If this was an anonymous user, check if they have other devices
+            if (device?.user_id && this.isAnonymousUser(device.user_id)) {
+                const otherDevices = await db.prepare(`
+                    SELECT COUNT(*) as count FROM device WHERE user_id = ?
+                `).bind(device.user_id).first<{ count: number }>();
+
+                // If no other devices, clean up alerts for this anonymous user
+                // (they likely uninstalled the app)
+                if (!otherDevices || otherDevices.count === 0) {
+                    await this.cleanupAnonymousUserAlerts(device.user_id, db);
+                }
+            }
         } catch (error) {
             console.error('Error removing invalid token:', error);
+        }
+    }
+
+    /**
+     * Check if user is anonymous (userId starts with 'user_')
+     */
+    private isAnonymousUser(userId: string): boolean {
+        return !!userId && userId.startsWith('user_');
+    }
+
+    /**
+     * Clean up all alerts for an anonymous user (only alerts, not watchlist or preferences)
+     */
+    async cleanupAnonymousUserAlerts(userId: string, db: D1Database): Promise<void> {
+        try {
+            console.log(`Cleaning up alerts for anonymous user: ${userId}`);
+
+            // Get all alert IDs for this user
+            const alerts = await db.prepare(`
+                SELECT id FROM alert_rule WHERE user_id = ?
+            `).bind(userId).all();
+
+            const alertIds = (alerts.results as any[]).map(a => a.id);
+
+            if (alertIds.length === 0) {
+                console.log(`No alerts to clean up for user: ${userId}`);
+                return;
+            }
+
+            // Delete alert events
+            await db.prepare(`
+                DELETE FROM alert_event WHERE rule_id IN (SELECT id FROM alert_rule WHERE user_id = ?)
+            `).bind(userId).run();
+
+            // Delete alert states
+            await db.prepare(`
+                DELETE FROM alert_state WHERE rule_id IN (SELECT id FROM alert_rule WHERE user_id = ?)
+            `).bind(userId).run();
+
+            // Delete alert rules
+            await db.prepare(`
+                DELETE FROM alert_rule WHERE user_id = ?
+            `).bind(userId).run();
+
+            console.log(`Cleaned up ${alertIds.length} alerts for anonymous user: ${userId}`);
+        } catch (error) {
+            console.error(`Error cleaning up alerts for anonymous user ${userId}:`, error);
         }
     }
 }

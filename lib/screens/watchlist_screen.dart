@@ -2099,6 +2099,32 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                 },
         ),
         children: [
+          // Warning for anonymous users
+          if (!AuthService.isSignedIn)
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      loc.t('watchlist_alert_anonymous_warning'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Form(
             key: _massAlertFormKey,
             child: Padding(

@@ -16,6 +16,7 @@ export interface AlertRule {
     active: number;
     created_at: number;
     alert_on_close?: boolean;  // true = only closed candles, false = crossing (incl. forming)
+    source?: string;  // 'watchlist' or 'custom' - for notification differentiation
 }
 
 export interface AlertState {
@@ -37,6 +38,8 @@ export interface AlertTrigger {
     symbol: string;
     indicatorValue: number;  // Universal: indicator value that triggered
     indicator?: string;      // Optional: indicator type
+    timeframe?: string;      // Timeframe (e.g., '15m', '1h')
+    source?: string;         // 'watchlist' or 'custom' - for notification differentiation
     level: number;
     type: 'cross_up' | 'cross_down' | 'enter_zone' | 'exit_zone';
     timestamp: number;
@@ -621,6 +624,8 @@ export class IndicatorEngine {
                         symbol: rule.symbol,
                         indicatorValue: currentValue,
                         indicator: indicator,
+                        timeframe: rule.timeframe,
+                        source: rule.source || 'custom',
                         rsi: currentValue,  // Keep for backward compatibility
                         level: lowerLevel,
                         type: 'cross_down',
@@ -639,6 +644,8 @@ export class IndicatorEngine {
                         symbol: rule.symbol,
                         indicatorValue: currentValue,
                         indicator: indicator,
+                        timeframe: rule.timeframe,
+                        source: rule.source || 'custom',
                         rsi: currentValue,  // Keep for backward compatibility
                         level: upperLevel,
                         type: 'cross_up',
@@ -660,6 +667,8 @@ export class IndicatorEngine {
                     symbol: rule.symbol,
                     indicatorValue: currentValue,
                     indicator: indicator,
+                    timeframe: rule.timeframe,
+                    source: rule.source || 'custom',
                     rsi: currentValue,  // Keep for backward compatibility
                     level: rule.levels[1],
                     type: 'enter_zone',
@@ -680,6 +689,8 @@ export class IndicatorEngine {
                     symbol: rule.symbol,
                     indicatorValue: currentValue,
                     indicator: indicator,
+                    timeframe: rule.timeframe,
+                    source: rule.source || 'custom',
                     rsi: currentValue,  // Keep for backward compatibility
                     level: rule.levels[1],
                     type: 'exit_zone',

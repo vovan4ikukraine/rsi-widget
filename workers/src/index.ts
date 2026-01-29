@@ -104,6 +104,15 @@ async function ensureTables(db: D1Database, env?: any) {
         }
     }
 
+    // Migration: Add source column ('watchlist' or 'custom') for notification differentiation
+    try {
+        await db.prepare(`ALTER TABLE alert_rule ADD COLUMN source TEXT DEFAULT 'custom'`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: source column may already exist', env);
+        }
+    }
+
     // Migration: Copy rsi_period to period for existing records
     await db.prepare(`
       UPDATE alert_rule 
@@ -130,6 +139,29 @@ async function ensureTables(db: D1Database, env?: any) {
         lower_level REAL,
         upper_level REAL,
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+      )
+    `).run();
+
+    // Table for storing watchlist alert settings per user per indicator
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS watchlist_alert_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        indicator TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        timeframe TEXT NOT NULL DEFAULT '15m',
+        period INTEGER NOT NULL DEFAULT 14,
+        stoch_d_period INTEGER,
+        mode TEXT NOT NULL DEFAULT 'cross',
+        lower_level REAL NOT NULL DEFAULT 30,
+        upper_level REAL NOT NULL DEFAULT 70,
+        lower_level_enabled INTEGER NOT NULL DEFAULT 1,
+        upper_level_enabled INTEGER NOT NULL DEFAULT 1,
+        cooldown_sec INTEGER NOT NULL DEFAULT 600,
+        repeatable INTEGER NOT NULL DEFAULT 1,
+        on_close INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        UNIQUE(user_id, indicator)
       )
     `).run();
 
@@ -525,7 +557,8 @@ app.post('/alerts/create', async (c) => {
             mode,
             cooldownSec,
             description,  // Optional description (used for watchlist alerts: "WATCHLIST:")
-            alertOnClose  // Optional: true = alert only on candle close, false = on crossing (default)
+            alertOnClose,  // Optional: true = alert only on candle close, false = on crossing (default)
+            source  // Optional: 'watchlist' or 'custom' (default) - for notification differentiation
         } = await c.req.json();
 
         if (!userId || !symbol || !timeframe || !levels) {
@@ -614,6 +647,8 @@ app.post('/alerts/create', async (c) => {
         }
 
         const alertOnCloseVal = alertOnClose === true || alertOnClose === 1 ? 1 : 0;
+        // Validate source (default to 'custom')
+        const alertSource = source === 'watchlist' ? 'watchlist' : 'custom';
 
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
@@ -621,13 +656,13 @@ app.post('/alerts/create', async (c) => {
         const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 
-        cooldown_sec, active, created_at, description, alert_on_close
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        cooldown_sec, active, created_at, description, alert_on_close, source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
     `).bind(
             userId, symbol.toUpperCase(), timeframe, alertIndicator, alertPeriod,
             indicatorParamsJson, alertPeriod, // rsi_period for backward compatibility
             JSON.stringify(validLevels), alertMode,
-            cooldown, Date.now(), description || null, alertOnCloseVal
+            cooldown, Date.now(), description || null, alertOnCloseVal, alertSource
         ).run();
 
         // Update device activity (user action)
@@ -1035,11 +1070,83 @@ const worker: ExportedHandler<Env> = {
 
                 Logger.info('RSI check completed', env);
             }
+
+            // Periodically cleanup inactive anonymous users (run once per hour, not every minute)
+            // Check if current minute is 0 (top of the hour)
+            const currentMinute = new Date().getMinutes();
+            if (currentMinute === 0) {
+                await cleanupInactiveAnonymousUsers(db, env);
+            }
         } catch (error) {
             Logger.error('Error in scheduled RSI check:', error, env);
         }
     }
 };
+
+/**
+ * Clean up alerts for inactive anonymous users (30 days without activity)
+ * Only deletes alerts, not devices/sessions
+ */
+async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<void> {
+    try {
+        const thirtyDaysAgo = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60);
+        
+        // Find anonymous users (user_id starts with 'user_') with no recent activity
+        // and who have no devices with recent last_seen
+        const inactiveAnonymousUsers = await db.prepare(`
+            SELECT DISTINCT ar.user_id 
+            FROM alert_rule ar
+            WHERE ar.user_id LIKE 'user_%'
+            AND NOT EXISTS (
+                SELECT 1 FROM device d 
+                WHERE d.user_id = ar.user_id 
+                AND (d.last_seen > ? OR d.last_seen IS NULL)
+            )
+        `).bind(thirtyDaysAgo).all();
+
+        const users = inactiveAnonymousUsers.results as { user_id: string }[];
+        
+        if (users.length === 0) {
+            Logger.debug('No inactive anonymous users to clean up', env);
+            return;
+        }
+
+        Logger.info(`Found ${users.length} inactive anonymous user(s) to clean up`, env);
+
+        let totalAlertsDeleted = 0;
+        for (const user of users) {
+            try {
+                // Delete alert events first (foreign key)
+                await db.prepare(`
+                    DELETE FROM alert_event 
+                    WHERE rule_id IN (SELECT id FROM alert_rule WHERE user_id = ?)
+                `).bind(user.user_id).run();
+
+                // Delete alert states (foreign key)
+                await db.prepare(`
+                    DELETE FROM alert_state 
+                    WHERE rule_id IN (SELECT id FROM alert_rule WHERE user_id = ?)
+                `).bind(user.user_id).run();
+
+                // Delete alert rules
+                const result = await db.prepare(`
+                    DELETE FROM alert_rule WHERE user_id = ?
+                `).bind(user.user_id).run();
+
+                const deletedCount = result.meta?.changes || 0;
+                totalAlertsDeleted += deletedCount;
+                
+                Logger.debug(`Cleaned up ${deletedCount} alerts for inactive anonymous user: ${user.user_id}`, env);
+            } catch (error) {
+                Logger.error(`Error cleaning up user ${user.user_id}:`, error, env);
+            }
+        }
+
+        Logger.info(`Cleanup complete: ${totalAlertsDeleted} alerts deleted from ${users.length} inactive anonymous user(s)`, env);
+    } catch (error) {
+        Logger.error('Error in cleanupInactiveAnonymousUsers:', error, env);
+    }
+}
 
     // User watchlist endpoints
     app.post('/user/watchlist', async (c) => {
@@ -1268,6 +1375,128 @@ const worker: ExportedHandler<Env> = {
         } catch (error) {
             Logger.error('Error fetching preferences:', error, c.env);
             return c.json({ error: 'Failed to fetch preferences' }, 500);
+        }
+    });
+
+    // Watchlist alert settings endpoints
+    app.post('/user/watchlist-alert-settings', async (c) => {
+        try {
+            const {
+                userId,
+                indicator,
+                enabled,
+                timeframe,
+                period,
+                stochDPeriod,
+                mode,
+                lowerLevel,
+                upperLevel,
+                lowerLevelEnabled,
+                upperLevelEnabled,
+                cooldownSec,
+                repeatable,
+                onClose
+            } = await c.req.json();
+
+            if (!userId || !indicator) {
+                return c.json({ error: 'Missing userId or indicator' }, 400);
+            }
+
+            // Validate indicator
+            const validIndicators = ['rsi', 'stoch', 'wpr'];
+            if (!validIndicators.includes(indicator)) {
+                return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+            }
+
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
+
+            // Upsert settings for this user/indicator
+            await db.prepare(`
+                INSERT INTO watchlist_alert_settings (
+                    user_id, indicator, enabled, timeframe, period, stoch_d_period,
+                    mode, lower_level, upper_level, lower_level_enabled, upper_level_enabled,
+                    cooldown_sec, repeatable, on_close, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, indicator) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    timeframe = excluded.timeframe,
+                    period = excluded.period,
+                    stoch_d_period = excluded.stoch_d_period,
+                    mode = excluded.mode,
+                    lower_level = excluded.lower_level,
+                    upper_level = excluded.upper_level,
+                    lower_level_enabled = excluded.lower_level_enabled,
+                    upper_level_enabled = excluded.upper_level_enabled,
+                    cooldown_sec = excluded.cooldown_sec,
+                    repeatable = excluded.repeatable,
+                    on_close = excluded.on_close,
+                    updated_at = excluded.updated_at
+            `).bind(
+                userId,
+                indicator,
+                enabled ? 1 : 0,
+                timeframe || '15m',
+                period || 14,
+                stochDPeriod || null,
+                mode || 'cross',
+                lowerLevel ?? 30,
+                upperLevel ?? 70,
+                lowerLevelEnabled !== false ? 1 : 0,
+                upperLevelEnabled !== false ? 1 : 0,
+                cooldownSec || 600,
+                repeatable !== false ? 1 : 0,
+                onClose ? 1 : 0,
+                Date.now()
+            ).run();
+
+            // Update device activity
+            await updateDeviceActivity(db, userId);
+
+            return c.json({ success: true });
+        } catch (error) {
+            Logger.error('Error syncing watchlist alert settings:', error, c.env);
+            return c.json({ error: 'Failed to sync watchlist alert settings' }, 500);
+        }
+    });
+
+    app.get('/user/watchlist-alert-settings/:userId', async (c) => {
+        try {
+            const userId = c.req.param('userId');
+
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
+
+            const result = await db.prepare(`
+                SELECT * FROM watchlist_alert_settings WHERE user_id = ?
+            `).bind(userId).all();
+
+            // Update device activity
+            await updateDeviceActivity(db, userId);
+
+            // Group by indicator
+            const settings: Record<string, any> = {};
+            for (const row of result.results as any[]) {
+                settings[row.indicator] = {
+                    enabled: row.enabled === 1,
+                    timeframe: row.timeframe,
+                    period: row.period,
+                    stochDPeriod: row.stoch_d_period,
+                    mode: row.mode,
+                    lowerLevel: row.lower_level,
+                    upperLevel: row.upper_level,
+                    lowerLevelEnabled: row.lower_level_enabled === 1,
+                    upperLevelEnabled: row.upper_level_enabled === 1,
+                    cooldownSec: row.cooldown_sec,
+                    repeatable: row.repeatable === 1,
+                    onClose: row.on_close === 1
+                };
+            }
+
+            return c.json(settings);
+        } catch (error) {
+            Logger.error('Error fetching watchlist alert settings:', error, c.env);
+            return c.json({ error: 'Failed to fetch watchlist alert settings' }, 500);
         }
     });
 

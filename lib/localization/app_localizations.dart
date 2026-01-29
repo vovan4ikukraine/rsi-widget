@@ -293,6 +293,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Watchlist Alert',
+      'watchlist_alert_anonymous_warning': 'Sign in to sync alerts across devices. Anonymous alerts will be lost if you reinstall the app.',
       'watchlist_creating_alerts': 'Creating alerts for {{count}} instrument(s)...',
       'watchlist_mass_alerts_empty': 'No Watchlist Alerts to delete',
       'watchlist_mass_alerts_error': 'Error deleting Watchlist Alerts',
@@ -588,6 +589,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Уведомления в списке',
+      'watchlist_alert_anonymous_warning': 'Войдите в аккаунт для синхронизации алертов между устройствами. Анонимные алерты будут потеряны при переустановке приложения.',
       'watchlist_creating_alerts': 'Создание уведомлений для {{count}} инструмента(ов)...',
       'watchlist_mass_alerts_empty': 'Нет алертов списка наблюдения для удаления',
       'watchlist_mass_alerts_error': 'Ошибка удаления алертов списка наблюдения',
@@ -882,6 +884,7 @@ class AppLocalizations {
       
       // Watchlist mass alerts
       'watchlist_mass_alerts_title': 'Повідомлення у списку',
+      'watchlist_alert_anonymous_warning': 'Увійдіть в акаунт для синхронізації алертів між пристроями. Анонімні алерти будуть втрачені при перевстановленні додатка.',
       'watchlist_creating_alerts': 'Створення сповіщень для {{count}} інструмента(ів)...',
       'watchlist_mass_alerts_empty': 'Немає алертів списку спостереження для видалення',
       'watchlist_mass_alerts_error': 'Помилка видалення алертів списку спостереження',
