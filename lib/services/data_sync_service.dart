@@ -589,4 +589,123 @@ class DataSyncService {
       return null;
     }
   }
+
+  /// Sync watchlist alert settings to server
+  /// Stores enabled state and settings per indicator type
+  static Future<void> syncWatchlistAlertSettings({
+    required String indicator, // 'rsi', 'stoch', 'wpr'
+    required bool enabled,
+    required String timeframe,
+    required int period,
+    int? stochDPeriod, // Only for Stochastic
+    required String mode, // 'cross', 'enter', 'exit'
+    required double lowerLevel,
+    required double upperLevel,
+    required bool lowerLevelEnabled,
+    required bool upperLevelEnabled,
+    required int cooldownSec,
+    required bool repeatable,
+    required bool onClose,
+  }) async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, settings are already in SharedPreferences
+      // No need to save to cache as WatchlistScreen already handles this
+      return;
+    }
+
+    final userId = await UserService.ensureUserId();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/watchlist-alert-settings');
+      final payload = <String, dynamic>{
+        'userId': userId,
+        'indicator': indicator,
+        'enabled': enabled,
+        'timeframe': timeframe,
+        'period': period,
+        'mode': mode,
+        'lowerLevel': lowerLevel,
+        'upperLevel': upperLevel,
+        'lowerLevelEnabled': lowerLevelEnabled,
+        'upperLevelEnabled': upperLevelEnabled,
+        'cooldownSec': cooldownSec,
+        'repeatable': repeatable,
+        'onClose': onClose,
+      };
+      
+      if (stochDPeriod != null) {
+        payload['stochDPeriod'] = stochDPeriod;
+      }
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to sync watchlist alert settings: ${response.statusCode} ${response.body}');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('DataSyncService: Watchlist alert settings synced successfully for $indicator');
+        }
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error syncing watchlist alert settings: $e');
+        debugPrint('$stackTrace');
+      }
+    }
+  }
+
+  /// Fetch watchlist alert settings from server
+  /// Returns settings for all indicators
+  static Future<Map<String, dynamic>?> fetchWatchlistAlertSettings() async {
+    if (!AuthService.isSignedIn) {
+      // In anonymous mode, settings are in SharedPreferences
+      // Return null so WatchlistScreen uses local values
+      return null;
+    }
+
+    final userId = await UserService.ensureUserId();
+
+    try {
+      final uri = Uri.parse('$_baseUrl/user/watchlist-alert-settings/$userId');
+      final response = await http.get(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: Failed to fetch watchlist alert settings: ${response.statusCode} ${response.body}');
+        }
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Fetched watchlist alert settings: $decoded');
+      }
+      
+      // Server returns settings grouped by indicator:
+      // {
+      //   "rsi": { "enabled": true, "timeframe": "15m", "period": 14, ... },
+      //   "stoch": { "enabled": false, "timeframe": "15m", "period": 6, ... },
+      //   "wpr": { "enabled": false, "timeframe": "15m", "period": 14, ... }
+      // }
+      return decoded as Map<String, dynamic>?;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error fetching watchlist alert settings: $e');
+        debugPrint('$stackTrace');
+      }
+      return null;
+    }
+  }
 }

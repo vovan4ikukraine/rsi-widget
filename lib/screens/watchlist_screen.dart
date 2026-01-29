@@ -603,7 +603,174 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         'watchlist_${indicatorType.toJson()}_period', _indicatorPeriod);
     await prefs.setString('watchlist_timeframe', _timeframe);
 
+    // Fetch watchlist alert settings from server (if signed in)
+    // This ensures settings are synced across devices
+    await _fetchWatchlistAlertSettingsFromServer();
+
     _loadWatchlist();
+  }
+
+  /// Fetch watchlist alert settings from server and merge with local settings
+  Future<void> _fetchWatchlistAlertSettingsFromServer() async {
+    if (!AuthService.isSignedIn) return;
+
+    final serverSettings = await DataSyncService.fetchWatchlistAlertSettings();
+    if (serverSettings == null || serverSettings.isEmpty) return;
+
+    final prefs = await PreferencesStorage.instance;
+
+    // Update local settings with server values for each indicator
+    for (final indicatorKey in ['rsi', 'stoch', 'wpr']) {
+      final indicatorSettings = serverSettings[indicatorKey] as Map<String, dynamic>?;
+      if (indicatorSettings == null) continue;
+
+      // Map indicator key to IndicatorType
+      IndicatorType? indicatorType;
+      if (indicatorKey == 'rsi') {
+        indicatorType = IndicatorType.rsi;
+      } else if (indicatorKey == 'stoch') {
+        indicatorType = IndicatorType.stoch;
+      } else if (indicatorKey == 'wpr') {
+        indicatorType = IndicatorType.williams;
+      }
+      if (indicatorType == null) continue;
+
+      // Update enabled state
+      final enabled = indicatorSettings['enabled'] as bool? ?? false;
+      await prefs.setBool('watchlist_mass_alert_${indicatorKey}_enabled', enabled);
+      _massAlertEnabledByIndicator[indicatorType] = enabled;
+
+      // Update other settings
+      final timeframe = indicatorSettings['timeframe'] as String?;
+      if (timeframe != null) {
+        await prefs.setString('watchlist_mass_alert_timeframe', timeframe);
+        if (mounted) {
+          setState(() {
+            _massAlertTimeframe = timeframe;
+          });
+        }
+      }
+
+      final period = indicatorSettings['period'] as int?;
+      if (period != null) {
+        await prefs.setInt('watchlist_mass_alert_${indicatorKey}_period', period);
+        // Update current state if this is the active indicator
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertPeriod = period;
+              _massAlertPeriodController.text = period.toString();
+            });
+          }
+        }
+      }
+
+      final stochDPeriod = indicatorSettings['stochDPeriod'] as int?;
+      if (stochDPeriod != null && indicatorKey == 'stoch') {
+        await prefs.setInt('watchlist_mass_alert_stoch_d_period', stochDPeriod);
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertStochDPeriod = stochDPeriod;
+              _massAlertStochDPeriodController.text = stochDPeriod.toString();
+            });
+          }
+        }
+      }
+
+      final mode = indicatorSettings['mode'] as String?;
+      if (mode != null) {
+        await prefs.setString('watchlist_mass_alert_mode', mode);
+        if (mounted) {
+          setState(() {
+            _massAlertMode = mode;
+          });
+        }
+      }
+
+      final lowerLevel = (indicatorSettings['lowerLevel'] as num?)?.toDouble();
+      if (lowerLevel != null) {
+        await prefs.setDouble('watchlist_mass_alert_${indicatorKey}_lower_level', lowerLevel);
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertLowerLevel = lowerLevel;
+              _massAlertLowerLevelController.text = lowerLevel.toStringAsFixed(0);
+            });
+          }
+        }
+      }
+
+      final upperLevel = (indicatorSettings['upperLevel'] as num?)?.toDouble();
+      if (upperLevel != null) {
+        await prefs.setDouble('watchlist_mass_alert_${indicatorKey}_upper_level', upperLevel);
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertUpperLevel = upperLevel;
+              _massAlertUpperLevelController.text = upperLevel.toStringAsFixed(0);
+            });
+          }
+        }
+      }
+
+      final lowerLevelEnabled = indicatorSettings['lowerLevelEnabled'] as bool?;
+      if (lowerLevelEnabled != null) {
+        await prefs.setBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled', lowerLevelEnabled);
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertLowerLevelEnabled = lowerLevelEnabled;
+            });
+          }
+        }
+      }
+
+      final upperLevelEnabled = indicatorSettings['upperLevelEnabled'] as bool?;
+      if (upperLevelEnabled != null) {
+        await prefs.setBool('watchlist_mass_alert_${indicatorKey}_upper_level_enabled', upperLevelEnabled);
+        if (indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
+          if (mounted) {
+            setState(() {
+              _massAlertUpperLevelEnabled = upperLevelEnabled;
+            });
+          }
+        }
+      }
+
+      final cooldownSec = indicatorSettings['cooldownSec'] as int?;
+      if (cooldownSec != null) {
+        await prefs.setInt('watchlist_mass_alert_cooldown_sec', cooldownSec);
+        if (mounted) {
+          setState(() {
+            _massAlertCooldownSec = cooldownSec;
+            _massAlertCooldownController.text = cooldownSec.toString();
+          });
+        }
+      }
+
+      final repeatable = indicatorSettings['repeatable'] as bool?;
+      if (repeatable != null) {
+        await prefs.setBool('watchlist_mass_alert_repeatable', repeatable);
+        if (mounted) {
+          setState(() {
+            _massAlertRepeatable = repeatable;
+          });
+        }
+      }
+
+      final onClose = indicatorSettings['onClose'] as bool?;
+      if (onClose != null) {
+        await prefs.setBool('watchlist_mass_alert_on_close', onClose);
+        if (mounted) {
+          setState(() {
+            _massAlertOnClose = onClose;
+          });
+        }
+      }
+    }
+
+    debugPrint('WatchlistScreen: Fetched and applied watchlist alert settings from server');
   }
 
   Future<void> _saveState() async {
@@ -655,6 +822,24 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setBool(
         'watchlist_mass_alert_on_close', _massAlertOnClose);
 
+    // Sync watchlist alert settings to server (for cross-device sync)
+    // Only sync for the current indicator
+    unawaited(DataSyncService.syncWatchlistAlertSettings(
+      indicator: indicatorKey,
+      enabled: _massAlertEnabled,
+      timeframe: _massAlertTimeframe,
+      period: _massAlertPeriod,
+      stochDPeriod: _massAlertStochDPeriod,
+      mode: _massAlertMode,
+      lowerLevel: _massAlertLowerLevel,
+      upperLevel: _massAlertUpperLevel,
+      lowerLevelEnabled: _massAlertLowerLevelEnabled,
+      upperLevelEnabled: _massAlertUpperLevelEnabled,
+      cooldownSec: _massAlertCooldownSec,
+      repeatable: _massAlertRepeatable,
+      onClose: _massAlertOnClose,
+    ));
+
     // NOTE: Widget is NOT updated here - only in _applySettings() when user explicitly applies changes
     // This prevents widget from changing when indicator is switched in AppState
   }
@@ -666,6 +851,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       _loadWatchlist();
       // Check if timeframe changed in widget and update data
       _checkWidgetTimeframe();
+      // Re-fetch watchlist alert settings from server (in case they changed on another device)
+      unawaited(_fetchWatchlistAlertSettingsFromServer());
     }
   }
 
