@@ -330,7 +330,8 @@ class AlertRepository implements IAlertRepository {
             ..description = ruleData['description'] as String?
             ..alertOnClose = (ruleData['alert_on_close'] as int? ?? 0) == 1
             ..repeatable = true
-            ..soundEnabled = true;
+            ..soundEnabled = true
+            ..source = ruleData['source'] as String? ?? 'custom';
           await isar.alertRules.put(alert);
         } else {
           final levelsData = ruleData['levels'] is String
@@ -359,7 +360,8 @@ class AlertRepository implements IAlertRepository {
                 ruleData['description'] as String? ?? ex.description
             ..alertOnClose = ruleData['alert_on_close'] != null
                 ? (ruleData['alert_on_close'] as int? ?? 0) == 1
-                : ex.alertOnClose;
+                : ex.alertOnClose
+            ..source = ruleData['source'] as String? ?? ex.source;
           await isar.alertRules.put(ex);
         }
         existingRemoteIds.remove(remoteId);

@@ -1500,6 +1500,163 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
         }
     });
 
+    /**
+     * PUT /user/watchlist-alert — Server-authoritative enable/disable.
+     * Replaces all watchlist alerts for user+indicator on enable; deletes them on disable.
+     * Fixes: (1) turn off on D1 / turn on on D2 not creating alerts; (2) duplicates or
+     * conflicting settings when both devices toggle quickly.
+     */
+    app.put('/user/watchlist-alert', async (c) => {
+        try {
+            const {
+                userId,
+                indicator,
+                enabled,
+                timeframe,
+                period,
+                stochDPeriod,
+                mode,
+                lowerLevel,
+                upperLevel,
+                lowerLevelEnabled,
+                upperLevelEnabled,
+                cooldownSec,
+                repeatable,
+                onClose
+            } = await c.req.json();
+
+            if (!userId || !indicator) {
+                return c.json({ error: 'Missing userId or indicator' }, 400);
+            }
+
+            const validIndicators = ['rsi', 'stoch', 'wpr'];
+            if (!validIndicators.includes(indicator)) {
+                return c.json({ error: `Invalid indicator: must be one of ${validIndicators.join(', ')}` }, 400);
+            }
+
+            const db = c.env?.DB as D1Database;
+            await ensureTables(db);
+
+            // Server-side indicator for alert_rule: wpr -> williams
+            const alertIndicator = indicator === 'wpr' ? 'williams' : indicator;
+            const validTimeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
+            const alertTimeframe = validTimeframes.includes(timeframe) ? timeframe : '15m';
+            const alertPeriod = typeof period === 'number' && period >= 1 && period <= 100 ? period : 14;
+            const alertMode = ['cross', 'enter', 'exit'].includes(mode) ? mode : 'cross';
+            const cooldown = typeof cooldownSec === 'number' && cooldownSec >= 0 && cooldownSec <= 86400 ? cooldownSec : 600;
+            const lowerEnabled = lowerLevelEnabled !== false;
+            const upperEnabled = upperLevelEnabled !== false;
+            const lower = typeof lowerLevel === 'number' && isFinite(lowerLevel) ? lowerLevel : 30;
+            const upper = typeof upperLevel === 'number' && isFinite(upperLevel) ? upperLevel : 70;
+            const isWilliams = alertIndicator === 'williams';
+            const minL = isWilliams ? -99 : 1;
+            const maxL = isWilliams ? -1 : 99;
+            const levelsArr: (number | null)[] = [
+                lowerEnabled && lower >= minL && lower <= maxL ? lower : null,
+                upperEnabled && upper >= minL && upper <= maxL ? upper : null
+            ];
+            const validLevels = levelsArr.filter((x): x is number => x != null);
+            if (enabled && validLevels.length === 0) {
+                return c.json({ error: 'At least one level must be enabled' }, 400);
+            }
+
+            const now = Date.now();
+            const description = `WATCHLIST: Mass alert for ${alertIndicator}`;
+            const alertOnCloseVal = onClose ? 1 : 0;
+            let indicatorParamsJson: string | null = null;
+            if (alertIndicator === 'stoch' && typeof stochDPeriod === 'number' && stochDPeriod >= 1 && stochDPeriod <= 100) {
+                indicatorParamsJson = JSON.stringify({ dPeriod: stochDPeriod });
+            }
+
+            // Fetch watchlist symbols
+            const watchlistResult = await db.prepare(`
+                SELECT symbol FROM user_watchlist WHERE user_id = ? ORDER BY created_at
+            `).bind(userId).all();
+            const symbols = (watchlistResult.results as any[]).map((r: any) => String(r.symbol).toUpperCase()).filter(Boolean);
+
+            // Get existing watchlist rule ids for this user+indicator
+            const existing = await db.prepare(`
+                SELECT id FROM alert_rule WHERE user_id = ? AND source = 'watchlist' AND indicator = ?
+            `).bind(userId, alertIndicator).all();
+            const ruleIds = (existing.results as any[]).map((r: any) => r.id);
+
+            let deletedCount = 0;
+            if (ruleIds.length > 0) {
+                await db.prepare(`DELETE FROM alert_event WHERE rule_id IN (${ruleIds.map(() => '?').join(',')})`).bind(...ruleIds).run();
+                await db.prepare(`DELETE FROM alert_state WHERE rule_id IN (${ruleIds.map(() => '?').join(',')})`).bind(...ruleIds).run();
+                const delRule = await db.prepare(`
+                    DELETE FROM alert_rule WHERE user_id = ? AND source = 'watchlist' AND indicator = ?
+                `).bind(userId, alertIndicator).run();
+                deletedCount = delRule.meta?.changes ?? 0;
+            }
+
+            let createdCount = 0;
+            if (enabled && symbols.length > 0) {
+                const levelsJson = JSON.stringify(validLevels);
+                for (const symbol of symbols) {
+                    if (!/^[A-Z0-9.\-=]+$/i.test(symbol) || symbol.length > 20) continue;
+                    await db.prepare(`
+                        INSERT INTO alert_rule (
+                            user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode,
+                            cooldown_sec, active, created_at, description, alert_on_close, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'watchlist')
+                    `).bind(
+                        userId, symbol, alertTimeframe, alertIndicator, alertPeriod,
+                        indicatorParamsJson, alertPeriod, levelsJson, alertMode,
+                        cooldown, now, description, alertOnCloseVal
+                    ).run();
+                    createdCount++;
+                }
+            }
+
+            // Upsert settings: when enabling, save all; when disabling, only flip enabled (keep existing settings)
+            if (enabled) {
+                await db.prepare(`
+                    INSERT INTO watchlist_alert_settings (
+                        user_id, indicator, enabled, timeframe, period, stoch_d_period,
+                        mode, lower_level, upper_level, lower_level_enabled, upper_level_enabled,
+                        cooldown_sec, repeatable, on_close, updated_at
+                    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, indicator) DO UPDATE SET
+                        enabled = 1,
+                        timeframe = excluded.timeframe,
+                        period = excluded.period,
+                        stoch_d_period = excluded.stoch_d_period,
+                        mode = excluded.mode,
+                        lower_level = excluded.lower_level,
+                        upper_level = excluded.upper_level,
+                        lower_level_enabled = excluded.lower_level_enabled,
+                        upper_level_enabled = excluded.upper_level_enabled,
+                        cooldown_sec = excluded.cooldown_sec,
+                        repeatable = excluded.repeatable,
+                        on_close = excluded.on_close,
+                        updated_at = excluded.updated_at
+                `).bind(
+                    userId, indicator, alertTimeframe, alertPeriod,
+                    indicator === 'stoch' && typeof stochDPeriod === 'number' ? stochDPeriod : null,
+                    alertMode, lower, upper, lowerEnabled ? 1 : 0, upperEnabled ? 1 : 0,
+                    cooldown, repeatable !== false ? 1 : 0, onClose ? 1 : 0, now
+                ).run();
+            } else {
+                await db.prepare(`
+                    INSERT INTO watchlist_alert_settings (
+                        user_id, indicator, enabled, timeframe, period, stoch_d_period,
+                        mode, lower_level, upper_level, lower_level_enabled, upper_level_enabled,
+                        cooldown_sec, repeatable, on_close, updated_at
+                    ) VALUES (?, ?, 0, '15m', 14, NULL, 'cross', 30, 70, 1, 1, 600, 1, 0, ?)
+                    ON CONFLICT(user_id, indicator) DO UPDATE SET enabled = 0, updated_at = excluded.updated_at
+                `).bind(userId, indicator, now).run();
+            }
+
+            await updateDeviceActivity(db, userId);
+
+            return c.json({ success: true, createdCount, deletedCount });
+        } catch (error) {
+            Logger.error('Error in PUT /user/watchlist-alert:', error, c.env);
+            return c.json({ error: 'Failed to update watchlist alert' }, 500);
+        }
+    });
+
     // Admin endpoints
     const adminRoutes = new Hono<{ Bindings: Env }>();
     

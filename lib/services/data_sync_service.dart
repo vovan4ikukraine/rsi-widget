@@ -590,6 +590,79 @@ class DataSyncService {
     }
   }
 
+  /// Server-authoritative enable/disable for watchlist alert (signed-in only).
+  /// Replaces all watchlist alerts on enable; deletes them on disable. Prevents
+  /// cross-device bugs (toggle off on D1 / on on D2; duplicates when both toggle on).
+  static Future<({bool ok, int createdCount, int deletedCount})> putWatchlistAlert({
+    required String indicator,
+    required bool enabled,
+    required String timeframe,
+    required int period,
+    int? stochDPeriod,
+    required String mode,
+    required double lowerLevel,
+    required double upperLevel,
+    required bool lowerLevelEnabled,
+    required bool upperLevelEnabled,
+    required int cooldownSec,
+    required bool repeatable,
+    required bool onClose,
+  }) async {
+    if (!AuthService.isSignedIn) {
+      return (ok: false, createdCount: 0, deletedCount: 0);
+    }
+
+    final userId = await UserService.ensureUserId();
+    try {
+      final uri = Uri.parse('$_baseUrl/user/watchlist-alert');
+      final payload = <String, dynamic>{
+        'userId': userId,
+        'indicator': indicator,
+        'enabled': enabled,
+        'timeframe': timeframe,
+        'period': period,
+        'mode': mode,
+        'lowerLevel': lowerLevel,
+        'upperLevel': upperLevel,
+        'lowerLevelEnabled': lowerLevelEnabled,
+        'upperLevelEnabled': upperLevelEnabled,
+        'cooldownSec': cooldownSec,
+        'repeatable': repeatable,
+        'onClose': onClose,
+      };
+      if (stochDPeriod != null) payload['stochDPeriod'] = stochDPeriod;
+
+      final response = await http.put(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint(
+              'DataSyncService: PUT watchlist-alert failed ${response.statusCode} ${response.body}');
+        }
+        return (ok: false, createdCount: 0, deletedCount: 0);
+      }
+
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>?;
+      final createdCount = decoded?['createdCount'] as int? ?? 0;
+      final deletedCount = decoded?['deletedCount'] as int? ?? 0;
+      if (kDebugMode) {
+        debugPrint(
+            'DataSyncService: PUT watchlist-alert ok created=$createdCount deleted=$deletedCount');
+      }
+      return (ok: true, createdCount: createdCount, deletedCount: deletedCount);
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('DataSyncService: Error PUT watchlist-alert: $e');
+        debugPrint('$stackTrace');
+      }
+      return (ok: false, createdCount: 0, deletedCount: 0);
+    }
+  }
+
   /// Sync watchlist alert settings to server
   /// Stores enabled state and settings per indicator type
   static Future<void> syncWatchlistAlertSettings({
