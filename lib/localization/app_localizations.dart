@@ -279,6 +279,7 @@ class AppLocalizations {
 
       // Notifications
       'notification_watchlist_title': 'Watchlist: {{symbol}}',
+      'notification_alert_title': '{{symbol}}',
       'notification_rsi_alert_body': 'RSI {{rsi}} crossed level {{level}} ({{type}})',
       'alert_above': 'above',
       'alert_below': 'below',
@@ -573,6 +574,7 @@ class AppLocalizations {
 
       // Notifications
       'notification_watchlist_title': 'Список наблюдения: {{symbol}}',
+      'notification_alert_title': '{{symbol}}',
       'notification_rsi_alert_body': 'RSI {{rsi}} пересек уровень {{level}} ({{type}})',
       'alert_above': 'выше',
       'alert_below': 'ниже',
@@ -866,6 +868,7 @@ class AppLocalizations {
 
       // Notifications
       'notification_watchlist_title': 'Список спостереження: {{symbol}}',
+      'notification_alert_title': '{{symbol}}',
       'notification_rsi_alert_body': 'RSI {{rsi}} перетнув рівень {{level}} ({{type}})',
       'alert_above': 'вище',
       'alert_below': 'нижче',

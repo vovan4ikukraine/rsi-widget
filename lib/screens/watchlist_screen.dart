@@ -2705,6 +2705,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           ..repeatable = _massAlertRepeatable
           ..soundEnabled = true
           ..alertOnClose = _massAlertOnClose
+          ..source = 'watchlist' // Mark as watchlist alert for notification differentiation
           ..description =
               '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName'
           ..createdAt = createdAt;
@@ -3018,6 +3019,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ..repeatable = _massAlertRepeatable
             ..soundEnabled = true
             ..alertOnClose = _massAlertOnClose
+            ..source = 'watchlist' // Mark as watchlist alert for notification differentiation
             ..description =
                 '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName'
             ..createdAt = createdAt;

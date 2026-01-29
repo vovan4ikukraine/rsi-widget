@@ -267,6 +267,12 @@ class FirebaseService {
     final data = message.data;
 
     if (notification != null) {
+      // Check if this is a watchlist alert (created via mass alert feature)
+      // Server should send 'isWatchlistAlert' or 'source' field
+      final isWatchlistAlert = data['isWatchlistAlert'] == 'true' || 
+                               data['isWatchlistAlert'] == true ||
+                               data['source'] == 'watchlist';
+      
       NotificationService.showRsiAlert(
         symbol: data['symbol'] ?? 'N/A',
         rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
@@ -274,6 +280,8 @@ class FirebaseService {
         type: data['type'] ?? 'unknown',
         message: notification.body ?? data['message'],
         indicator: data['indicator'], // Pass indicator from FCM data
+        timeframe: data['timeframe'], // Pass timeframe from FCM data
+        isWatchlistAlert: isWatchlistAlert,
       );
     }
   }

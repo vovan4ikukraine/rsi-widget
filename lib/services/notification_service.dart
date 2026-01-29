@@ -294,6 +294,8 @@ class NotificationService {
     required String type,
     String? message,
     String? indicator,
+    String? timeframe,
+    bool isWatchlistAlert = false,
   }) async {
     if (!_initialized) {
       await initialize();
@@ -306,12 +308,28 @@ class NotificationService {
       final soundEnabled = prefs.getBool('sound_enabled') ?? true;
       final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
 
-      // Get localized strings
-      final title = await AppLocalizations.tByLanguage(
-        languageCode,
-        'notification_watchlist_title',
-        params: {'symbol': symbol},
-      );
+      // Build title based on alert type
+      String title;
+      if (isWatchlistAlert) {
+        // Watchlist Alert: "Watchlist: AAPL"
+        title = await AppLocalizations.tByLanguage(
+          languageCode,
+          'notification_watchlist_title',
+          params: {'symbol': symbol},
+        );
+      } else {
+        // Custom Alert: just "AAPL" or "Alert: AAPL"
+        title = await AppLocalizations.tByLanguage(
+          languageCode,
+          'notification_alert_title',
+          params: {'symbol': symbol},
+        );
+      }
+      
+      // Add timeframe to title if available
+      if (timeframe != null && timeframe.isNotEmpty) {
+        title = '$title ($timeframe)';
+      }
 
       // Always build body from localized templates so notifications appear in user language
       final indicatorName = (indicator ?? 'RSI').toUpperCase();

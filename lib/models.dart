@@ -71,6 +71,10 @@ class AlertRule {
   bool repeatable = true;
   bool soundEnabled = true;
   String? customSound;
+  
+  /// Source of the alert: 'watchlist' for mass alerts, 'custom' for user-created alerts
+  /// Used to distinguish notification titles
+  String source = 'custom';
 }
 
 @collection

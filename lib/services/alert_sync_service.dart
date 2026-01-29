@@ -186,6 +186,7 @@ class AlertSyncService {
       'cooldownSec': alert.cooldownSec,
       if (alert.description != null && alert.description!.isNotEmpty) 'description': alert.description,
       'alertOnClose': alert.alertOnClose,
+      'source': alert.source, // 'watchlist' or 'custom' - for notification differentiation
     };
 
     if (kDebugMode) {
@@ -280,6 +281,7 @@ class AlertSyncService {
       'cooldown_sec': alert.cooldownSec,
       'active': alert.active ? 1 : 0,
       'alert_on_close': alert.alertOnClose,
+      'source': alert.source, // 'watchlist' or 'custom' - for notification differentiation
     };
 
     final response = await http.put(
