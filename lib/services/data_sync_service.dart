@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -12,6 +13,7 @@ import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
 import 'user_service.dart';
 import 'auth_service.dart';
+import 'alert_sync_service.dart';
 
 /// Service for syncing user data (watchlist, chart preferences) with server
 class DataSyncService {
@@ -351,6 +353,8 @@ class DataSyncService {
         // Also seed widget symbols so Android widget can fetch data
         final symbols = localItems.map((item) => item.symbol).toList();
         await seedWidgetSymbols(symbols);
+        // Re-apply watchlist alerts so server rules match new list (add/remove symbol)
+        unawaited(refreshWatchlistAlertsForEnabledIndicators());
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -661,6 +665,52 @@ class DataSyncService {
       }
       return (ok: false, createdCount: 0, deletedCount: 0);
     }
+  }
+
+  /// After watchlist change (add/remove symbol), re-apply watchlist alerts for each
+  /// enabled indicator so server rules match the new list. Call after syncWatchlist().
+  static Future<void> refreshWatchlistAlertsForEnabledIndicators() async {
+    if (!AuthService.isSignedIn) return;
+
+    final settings = await fetchWatchlistAlertSettings();
+    if (settings == null || settings.isEmpty) return;
+
+    for (final indicator in ['rsi', 'stoch', 'wpr']) {
+      final s = settings[indicator] as Map<String, dynamic>?;
+      if (s == null) continue;
+      final enabled = s['enabled'] as bool? ?? false;
+      if (!enabled) continue;
+
+      final timeframe = s['timeframe'] as String? ?? '15m';
+      final period = (s['period'] as num?)?.toInt() ?? 14;
+      final stochDPeriod = (s['stochDPeriod'] as num?)?.toInt();
+      final mode = s['mode'] as String? ?? 'cross';
+      final lowerLevel = (s['lowerLevel'] as num?)?.toDouble() ?? 30;
+      final upperLevel = (s['upperLevel'] as num?)?.toDouble() ?? 70;
+      final lowerLevelEnabled = s['lowerLevelEnabled'] as bool? ?? true;
+      final upperLevelEnabled = s['upperLevelEnabled'] as bool? ?? true;
+      final cooldownSec = (s['cooldownSec'] as num?)?.toInt() ?? 600;
+      final repeatable = s['repeatable'] as bool? ?? true;
+      final onClose = s['onClose'] as bool? ?? false;
+
+      await putWatchlistAlert(
+        indicator: indicator,
+        enabled: true,
+        timeframe: timeframe,
+        period: period,
+        stochDPeriod: stochDPeriod,
+        mode: mode,
+        lowerLevel: lowerLevel,
+        upperLevel: upperLevel,
+        lowerLevelEnabled: lowerLevelEnabled,
+        upperLevelEnabled: upperLevelEnabled,
+        cooldownSec: cooldownSec,
+        repeatable: repeatable,
+        onClose: onClose,
+      );
+    }
+
+    await AlertSyncService.fetchAndSyncAlerts();
   }
 
   /// Sync watchlist alert settings to server
