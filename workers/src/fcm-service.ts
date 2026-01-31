@@ -268,20 +268,13 @@ export class FcmService {
         // This prevents accumulation of stale notifications when device is offline
         const collapseKey = `alert_${trigger.ruleId}`;
 
-        // Determine notification title based on source
+        // Send only data payload so client builds notification in user's language.
+        // If we sent notification payload, system would show it in English when app is in background.
         const isWatchlistAlert = trigger.source === 'watchlist';
-        const timeframeSuffix = trigger.timeframe ? ` (${trigger.timeframe})` : '';
-        const title = isWatchlistAlert 
-            ? `Watchlist: ${trigger.symbol}${timeframeSuffix}`
-            : `${trigger.symbol}${timeframeSuffix}`;
 
         const message: FcmV1Message = {
             message: {
                 token: token,
-                notification: {
-                    title: title,
-                    body: trigger.message,
-                },
                 data: {
                     alert_id: trigger.ruleId.toString(),
                     symbol: trigger.symbol,

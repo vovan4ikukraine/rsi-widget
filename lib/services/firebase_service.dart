@@ -240,16 +240,28 @@ class FirebaseService {
       return;
     }
 
+    final data = message.data;
+    if (!data.containsKey('alert_id')) return;
+
     if (kDebugMode) {
-      debugPrint('Handling message in background: ${message.messageId}');
+      debugPrint('Showing background notification: ${message.messageId}');
     }
 
-    // Can process message data here
-    final data = message.data;
-    if (data.containsKey('alert_id')) {
-      // Handle alert
-      _handleAlertData(data);
-    }
+    // Build notification in user's language (server sends data-only)
+    final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
+        data['isWatchlistAlert'] == true ||
+        data['source'] == 'watchlist';
+
+    await NotificationService.showRsiAlert(
+      symbol: data['symbol'] ?? 'N/A',
+      rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
+      level: double.tryParse(data['level'] ?? '0') ?? 0.0,
+      type: data['type'] ?? 'unknown',
+      message: message.notification?.body ?? data['message'] ?? '',
+      indicator: data['indicator'],
+      timeframe: data['timeframe'],
+      isWatchlistAlert: isWatchlistAlert,
+    );
   }
 
   /// Handle messages in foreground
@@ -262,28 +274,24 @@ class FirebaseService {
       return;
     }
 
-    // Show local notification via NotificationService
-    final notification = message.notification;
     final data = message.data;
+    if (!data.containsKey('alert_id')) return;
 
-    if (notification != null) {
-      // Check if this is a watchlist alert (created via mass alert feature)
-      // Server should send 'isWatchlistAlert' or 'source' field
-      final isWatchlistAlert = data['isWatchlistAlert'] == 'true' || 
-                               data['isWatchlistAlert'] == true ||
-                               data['source'] == 'watchlist';
-      
-      NotificationService.showRsiAlert(
-        symbol: data['symbol'] ?? 'N/A',
-        rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
-        level: double.tryParse(data['level'] ?? '0') ?? 0.0,
-        type: data['type'] ?? 'unknown',
-        message: notification.body ?? data['message'],
-        indicator: data['indicator'], // Pass indicator from FCM data
-        timeframe: data['timeframe'], // Pass timeframe from FCM data
-        isWatchlistAlert: isWatchlistAlert,
-      );
-    }
+    // Build notification in user's language (always use data; no notification payload from server)
+    final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
+        data['isWatchlistAlert'] == true ||
+        data['source'] == 'watchlist';
+
+    NotificationService.showRsiAlert(
+      symbol: data['symbol'] ?? 'N/A',
+      rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
+      level: double.tryParse(data['level'] ?? '0') ?? 0.0,
+      type: data['type'] ?? 'unknown',
+      message: message.notification?.body ?? data['message'] ?? '',
+      indicator: data['indicator'],
+      timeframe: data['timeframe'],
+      isWatchlistAlert: isWatchlistAlert,
+    );
   }
 
   /// Handle notification tap
@@ -333,15 +341,6 @@ class FirebaseService {
         debugPrint('Error checking notification freshness: $e');
       }
       return true; // Assume fresh on error
-    }
-  }
-
-  /// Handle alert data
-  static void _handleAlertData(Map<String, dynamic> data) {
-    // Alert data is processed automatically through NotificationService
-    // when receiving notification in background
-    if (kDebugMode) {
-      debugPrint('Handling alert: $data');
     }
   }
 

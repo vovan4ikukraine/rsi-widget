@@ -683,8 +683,9 @@ app.get('/alerts/:userId', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
+        // Return ALL alerts (active and inactive) so paused alerts remain visible
         const result = await db.prepare(`
-      SELECT * FROM alert_rule WHERE user_id = ? AND active = 1
+      SELECT * FROM alert_rule WHERE user_id = ?
     `).bind(userId).all();
 
         // Update device activity (user action)

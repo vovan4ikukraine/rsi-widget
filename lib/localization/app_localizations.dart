@@ -574,7 +574,7 @@ class AppLocalizations {
       'watchlist_error_loading': 'Ошибка загрузки списка: {{message}}',
 
       // Notifications
-      'notification_watchlist_title': 'Список наблюдения: {{symbol}}',
+      'notification_watchlist_title': 'Watchlist: {{symbol}}',
       'notification_alert_title': '{{symbol}}',
       'notification_rsi_alert_body': 'RSI {{rsi}} пересек уровень {{level}} ({{type}})',
       'alert_above': 'выше',
@@ -869,7 +869,7 @@ class AppLocalizations {
       'chart_zone_overbought': 'Перекуплено',
 
       // Notifications
-      'notification_watchlist_title': 'Список спостереження: {{symbol}}',
+      'notification_watchlist_title': 'Watchlist: {{symbol}}',
       'notification_alert_title': '{{symbol}}',
       'notification_rsi_alert_body': 'RSI {{rsi}} перетнув рівень {{level}} ({{type}})',
       'alert_above': 'вище',
