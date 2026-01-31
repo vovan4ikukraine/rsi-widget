@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../localization/app_localizations.dart';
 import '../services/yahoo_proto.dart';
@@ -216,8 +217,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 title: Text(loc.t('settings_support')),
                 subtitle: Text(loc.t('settings_support_sub')),
+                leading: const Icon(Icons.email_outlined),
                 trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _showSupportDialog(loc),
+                onTap: () => _launchSupportEmail(loc),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_telegram_group')),
+                subtitle: Text(loc.t('settings_telegram_group_sub')),
+                leading: const Icon(Icons.groups_outlined),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () => _launchTelegramGroup(loc),
               ),
             ],
           ),
@@ -476,20 +485,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showSupportDialog(AppLocalizations loc) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('settings_support_dialog_title')),
-        content: Text(loc.t('settings_support_email')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.t('settings_ok')),
-          ),
-        ],
-      ),
-    );
+  Future<void> _launchSupportEmail(AppLocalizations loc) async {
+    final uri = Uri.parse('mailto:ads.contact.manager@gmail.com');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (mounted) {
+        context.showError(loc.t('settings_launch_email_error'));
+      }
+    }
+  }
+
+  Future<void> _launchTelegramGroup(AppLocalizations loc) async {
+    const url = 'https://t.me/crypto_psycho_diary';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        context.showError(loc.t('settings_launch_link_error'));
+      }
+    }
   }
 
   Future<void> _signInFromSettings(AppLocalizations loc) async {
