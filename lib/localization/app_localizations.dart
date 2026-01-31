@@ -9,7 +9,7 @@ class AppLocalizations {
 
   static const _localizedValues = <String, Map<String, String>>{
     'en': {
-      'app_title': 'RSI Widget',
+      'app_title': 'INDI CHARTS',
 
       // Settings
       'settings_title': 'Settings',

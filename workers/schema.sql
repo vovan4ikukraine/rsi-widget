@@ -1,4 +1,4 @@
--- Database schema for RSI Widget App
+-- Database schema for INDI CHARTS App
 
 -- Instruments table
 CREATE TABLE IF NOT EXISTS instrument (
