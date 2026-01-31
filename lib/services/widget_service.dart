@@ -21,7 +21,7 @@ class WidgetService {
   Future<void> updateWidget({
     String? timeframe,
     int? rsiPeriod,
-    bool sortDescending = true,
+    bool sortDescending = false, // Default: ascending (smaller to larger)
     IndicatorType? indicator,
     Map<String, dynamic>? indicatorParams,
   }) async {

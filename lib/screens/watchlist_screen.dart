@@ -35,7 +35,7 @@ class WatchlistScreen extends StatefulWidget {
   State<WatchlistScreen> createState() => _WatchlistScreenState();
 }
 
-enum _RsiSortOrder { none, descending, ascending }
+enum _RsiSortOrder { ascending, descending }
 
 class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
@@ -53,7 +53,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   bool _isLoadingData = false; // Flag to prevent duplicate data loading calls
   bool _settingsExpanded = false;
   bool _isActionInProgress = false;
-  _RsiSortOrder _currentSortOrder = _RsiSortOrder.none;
+  _RsiSortOrder _currentSortOrder = _RsiSortOrder.ascending;
   AppState? _appState; // App state for selected indicator
 
   // Settings for all charts
@@ -340,19 +340,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         return 'ascending';
       case _RsiSortOrder.descending:
         return 'descending';
-      case _RsiSortOrder.none:
-        return 'none';
     }
   }
 
   _RsiSortOrder _sortOrderFromString(String? value) {
     switch (value) {
-      case 'ascending':
-        return _RsiSortOrder.ascending;
       case 'descending':
         return _RsiSortOrder.descending;
+      case 'ascending':
       default:
-        return _RsiSortOrder.none;
+        return _RsiSortOrder.ascending; // Default: smaller to larger
     }
   }
 
@@ -394,19 +391,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         unawaited(
           _updateWidgetOrder(order == _RsiSortOrder.descending),
         );
-      }
-      return;
-    }
-
-    if (order == _RsiSortOrder.none) {
-      setState(() {
-        _currentSortOrder = order;
-      });
-      if (persistPreference) {
-        unawaited(_saveSortOrderPreference(order));
-      }
-      if (notifyWidget) {
-        unawaited(_updateWidgetOrder(true));
       }
       return;
     }
@@ -503,7 +487,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               ? _RsiSortOrder.descending
               : _RsiSortOrder.ascending;
         } else {
-          _currentSortOrder = _RsiSortOrder.none;
+          _currentSortOrder = _RsiSortOrder.ascending; // Default: smaller to larger
         }
 
         // Load mass alert settings (independent from view settings)
@@ -964,13 +948,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             'WatchlistScreen: _watchlistItems contains: ${_watchlistItems.map((e) => e.symbol).toList()}');
       });
 
-      if (_currentSortOrder != _RsiSortOrder.none) {
-        _applySortOrder(
-          _currentSortOrder,
-          persistPreference: false,
-          notifyWidget: false,
-        );
-      }
+      _applySortOrder(
+        _currentSortOrder,
+        persistPreference: false,
+        notifyWidget: false,
+      );
 
       // Load indicator data for all symbols
       await _loadAllIndicatorData();
@@ -1018,13 +1000,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         );
       }
     } finally {
-      if (_currentSortOrder != _RsiSortOrder.none) {
-        _applySortOrder(
-          _currentSortOrder,
-          persistPreference: false,
-          notifyWidget: false,
-        );
-      }
+      _applySortOrder(
+        _currentSortOrder,
+        persistPreference: false,
+        notifyWidget: false,
+      );
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -1737,37 +1717,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           children: [
                             IconButton(
                               icon: Icon(
-                                () {
-                                  switch (_currentSortOrder) {
-                                    case _RsiSortOrder.descending:
-                                      return Icons.north;
-                                    case _RsiSortOrder.ascending:
-                                      return Icons.south;
-                                    case _RsiSortOrder.none:
-                                      return Icons.unfold_more;
-                                  }
-                                }(),
-                                color: () {
-                                  switch (_currentSortOrder) {
-                                    case _RsiSortOrder.descending:
-                                      return Colors.green;
-                                    case _RsiSortOrder.ascending:
-                                      return Colors.red;
-                                    case _RsiSortOrder.none:
-                                      return Colors.grey[600];
-                                  }
-                                }(),
+                                _currentSortOrder == _RsiSortOrder.descending
+                                    ? Icons.north
+                                    : Icons.south,
+                                color: _currentSortOrder == _RsiSortOrder.descending
+                                    ? Colors.green
+                                    : Colors.red,
                               ),
-                              tooltip: () {
-                                switch (_currentSortOrder) {
-                                  case _RsiSortOrder.descending:
-                                    return loc.t('watchlist_sort_desc');
-                                  case _RsiSortOrder.ascending:
-                                    return loc.t('watchlist_sort_asc');
-                                  case _RsiSortOrder.none:
-                                    return loc.t('watchlist_sort_desc');
-                                }
-                              }(),
+                              tooltip: _currentSortOrder == _RsiSortOrder.descending
+                                  ? loc.t('watchlist_sort_desc')
+                                  : loc.t('watchlist_sort_asc'),
                               onPressed: (_isLoading || _isActionInProgress)
                                   ? null
                                   : () {
@@ -2602,6 +2561,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   /// Apply watchlist alert settings via server (signed-in, enabled). No loading/toast. Used when settings change.
   Future<void> _applyWatchlistAlertViaServer() async {
     if (!_massAlertEnabled || _watchlistItems.isEmpty) return;
+    if (!_validateMassAlertSettingsForCreate()) return; // Prevent 400 when levels are invalid (0, 100, etc.)
     final result = await DataSyncService.putWatchlistAlert(
       indicator: _watchlistApiIndicator,
       enabled: true,

@@ -398,7 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (widget.isar == null) return;
     
     final prefs = await PreferencesStorage.instance;
-    final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? true;
+    final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? false; // Default: ascending
 
     if (!mounted) return;
     final dialogContext = context;
