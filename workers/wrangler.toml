@@ -43,6 +43,6 @@ database_id = "194d0734-7455-4615-9d86-c1b45f23f774"
 [env.dev.vars]
 ENVIRONMENT = "development"
 YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
-FCM_PROJECT_ID = "rsi-alert-dev"
+FCM_PROJECT_ID = "rsi-widget-app-dev"
 
 # env.dev secrets: wrangler secret put FCM_SERVICE_ACCOUNT_JSON --env dev
