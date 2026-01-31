@@ -849,7 +849,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
               ),
               const SizedBox(height: 4),
               TextFormField(
-                initialValue: _cooldownSec.toString(),
+                initialValue: (_cooldownSec ~/ 60).toString(),
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.timer),
@@ -857,11 +857,11 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                 onChanged: (value) {
-                  final cooldown = int.tryParse(value);
-                  if (cooldown != null &&
-                      cooldown >= 0 &&
-                      cooldown <= 86400) {
-                    _cooldownSec = cooldown;
+                  final minutes = int.tryParse(value);
+                  if (minutes != null &&
+                      minutes >= 0 &&
+                      minutes <= 1440) {
+                    _cooldownSec = minutes * 60;
                   }
                 },
               ),

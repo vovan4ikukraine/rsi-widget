@@ -304,7 +304,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           final massAlertUpperText = _massAlertUpperLevel.toStringAsFixed(0);
           _massAlertLowerLevelController.text = massAlertLowerText;
           _massAlertUpperLevelController.text = massAlertUpperText;
-          _massAlertCooldownController.text = _massAlertCooldownSec.toString();
+          _massAlertCooldownController.text = (_massAlertCooldownSec ~/ 60).toString();
         });
       }
 
@@ -597,7 +597,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         final massAlertUpperText = _massAlertUpperLevel.toStringAsFixed(0);
         _massAlertLowerLevelController.text = massAlertLowerText;
         _massAlertUpperLevelController.text = massAlertUpperText;
-        _massAlertCooldownController.text = _massAlertCooldownSec.toString();
+        _massAlertCooldownController.text = (_massAlertCooldownSec ~/ 60).toString();
       });
     }
 
@@ -749,7 +749,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         if (mounted) {
           setState(() {
             _massAlertCooldownSec = cooldownSec;
-            _massAlertCooldownController.text = cooldownSec.toString();
+            _massAlertCooldownController.text = (cooldownSec ~/ 60).toString();
           });
         }
       }
@@ -2312,17 +2312,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               keyboardType: TextInputType.number,
                               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
                               onChanged: (value) {
-                                final cooldown = int.tryParse(value);
-                                if (cooldown != null &&
-                                    cooldown >= 0 &&
-                                    cooldown <= 86400 &&
-                                    cooldown != _massAlertCooldownSec) {
-                                  setState(() {
-                                    _massAlertCooldownSec = cooldown;
-                                  });
-                                  _saveState();
-                                  if (_massAlertEnabled) {
-                                    unawaited(_updateMassAlerts());
+                                final minutes = int.tryParse(value);
+                                if (minutes != null &&
+                                    minutes >= 0 &&
+                                    minutes <= 1440) {
+                                  final cooldownSec = minutes * 60;
+                                  if (cooldownSec != _massAlertCooldownSec) {
+                                    setState(() {
+                                      _massAlertCooldownSec = cooldownSec;
+                                    });
+                                    _saveState();
+                                    if (_massAlertEnabled) {
+                                      unawaited(_updateMassAlerts());
+                                    }
                                   }
                                 }
                               },
