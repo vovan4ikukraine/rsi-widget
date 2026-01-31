@@ -38,7 +38,7 @@ id = "e4508ff0eefe45eebeb91bf0c2c9532e"
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "rsi-db-dev"
-database_id = "db3da120-8008-44f5-9590-6a5e24f3f8e0"
+database_id = "194d0734-7455-4615-9d86-c1b45f23f774"
 
 [env.dev.vars]
 ENVIRONMENT = "development"
