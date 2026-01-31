@@ -454,16 +454,6 @@ class _AlertsScreenState extends State<AlertsScreen>
                     ),
                   ),
                   PopupMenuItem(
-                    value: 'duplicate',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.copy),
-                        const SizedBox(width: 8),
-                        Text(loc.t('common_duplicate')),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
@@ -530,9 +520,6 @@ class _AlertsScreenState extends State<AlertsScreen>
       case 'edit':
         _editAlert(alert);
         break;
-      case 'duplicate':
-        _duplicateAlert(alert);
-        break;
       case 'delete':
         _deleteAlert(alert);
         break;
@@ -558,39 +545,6 @@ class _AlertsScreenState extends State<AlertsScreen>
       context.showSuccess(
         alert.active ? loc.t('alerts_enabled') : loc.t('alerts_disabled'),
       );
-    } catch (e) {
-      if (!mounted) return;
-      context.showError(
-        context.loc.t('alerts_error_generic', params: {'message': '$e'}),
-      );
-    }
-  }
-
-  Future<void> _duplicateAlert(AlertRule alert) async {
-    try {
-      final newAlert = AlertRule()
-        ..symbol = alert.symbol
-        ..timeframe = alert.timeframe
-        ..indicator = alert.indicator
-        ..period = alert.period
-        ..indicatorParams = alert.indicatorParams != null
-            ? Map<String, dynamic>.from(alert.indicatorParams!)
-            : null
-        ..levels = List.from(alert.levels)
-        ..mode = alert.mode
-        ..cooldownSec = alert.cooldownSec
-        ..active = true
-        ..alertOnClose = alert.alertOnClose
-        ..createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000
-        ..description = '${alert.description ?? ''} (copy)';
-
-      await _alertRepository.saveAlert(newAlert);
-      await AlertSyncService.syncAlert(newAlert);
-
-      await _loadData();
-
-      if (!mounted) return;
-      context.showSuccess(context.loc.t('alerts_duplicate_success'));
     } catch (e) {
       if (!mounted) return;
       context.showError(
