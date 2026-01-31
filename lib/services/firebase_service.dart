@@ -5,6 +5,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../config/app_config.dart';
 import 'notification_service.dart';
 
 /// Service for working with Firebase
@@ -180,8 +182,7 @@ class FirebaseService {
     if (_fcmToken == null || _userId == null) return;
 
     try {
-      const endpoint =
-          'https://rsi-workers.vovan4ikukraine.workers.dev/device/register';
+      const endpoint = '${AppConfig.apiBaseUrl}/device/register';
       final response = await http.post(
         Uri.parse(endpoint),
         headers: {'Content-Type': 'application/json'},

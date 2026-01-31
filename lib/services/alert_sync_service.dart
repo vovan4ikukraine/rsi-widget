@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
 import '../di/app_container.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
@@ -13,7 +14,7 @@ import 'auth_service.dart';
 
 /// Handles syncing alert rules with the remote Cloudflare Worker backend.
 class AlertSyncService {
-  static const _baseUrl = 'https://rsi-workers.vovan4ikukraine.workers.dev';
+  static String get _baseUrl => AppConfig.apiBaseUrl;
 
   static Future<void> syncAlert(
     AlertRule alert, {

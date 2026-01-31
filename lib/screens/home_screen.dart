@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import '../models.dart';
+import '../config/app_config.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
@@ -53,7 +54,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final YahooProtoSource _yahooService = YahooProtoSource(
-    'https://rsi-workers.vovan4ikukraine.workers.dev',
+    AppConfig.apiBaseUrl,
   );
   static const MethodChannel _channel = MethodChannel(
     'com.indicharts.app/widget',

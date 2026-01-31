@@ -5,8 +5,9 @@ import 'package:http/http.dart' as http;
 import '../data/popular_symbols.dart';
 import 'user_service.dart';
 
-final yahooService =
-    YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+import '../config/app_config.dart';
+
+final yahooService = YahooProtoSource(AppConfig.apiBaseUrl);
 
 /// Adapter for getting data from Yahoo Finance through proxy
 class YahooProtoSource {

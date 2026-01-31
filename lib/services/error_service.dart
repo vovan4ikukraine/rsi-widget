@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../localization/app_localizations.dart';
 import 'user_service.dart';
 import 'yahoo_proto.dart';
@@ -20,8 +21,7 @@ enum ErrorType {
 
 /// Service for handling errors and logging them to server
 class ErrorService {
-  static const String _endpoint =
-      'https://rsi-workers.vovan4ikukraine.workers.dev';
+  static String get _endpoint => AppConfig.apiBaseUrl;
   static const Duration _logTimeout = Duration(seconds: 5);
 
   /// Get user-friendly error message from exception

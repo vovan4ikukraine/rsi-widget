@@ -14,6 +14,7 @@ import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/indicator_level_validator.dart';
+import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../di/app_container.dart';
 import '../repositories/i_alert_repository.dart';
@@ -47,7 +48,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   final _upperLevelController = TextEditingController();
   final FocusNode _indicatorPeriodFocusNode = FocusNode();
   final YahooProtoSource _yahooService =
-      YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+      YahooProtoSource(AppConfig.apiBaseUrl);
 
   String _selectedTimeframe = '15m';
   int _indicatorPeriod = AppConstants.defaultIndicatorPeriod;

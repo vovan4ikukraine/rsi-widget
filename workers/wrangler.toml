@@ -2,8 +2,9 @@ name = "rsi-workers"
 main = "src/index.ts"
 compatibility_date = "2025-10-01"
 
+# Default: prod. Deploy with: wrangler deploy (prod) or wrangler deploy --env dev
 [triggers]
-crons = ["*/1 * * * *"]  # Every minute (needed for timely alerts, KV usage optimized via smart caching)
+crons = ["*/1 * * * *"]
 
 [[kv_namespaces]]
 binding = "KV"
@@ -20,7 +21,28 @@ ENVIRONMENT = "production"
 YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
 FCM_PROJECT_ID = "rsi-widget-app"
 
-# Secrets (set via wrangler secret put)
-# FCM_SERVICE_ACCOUNT_JSON - Full Service Account JSON content (paste entire JSON file)
-# YAHOO_API_KEY (if needed)
-# ADMIN_API_KEY - API key for admin dashboard authentication (set via: wrangler secret put ADMIN_API_KEY)
+# Secrets: FCM_SERVICE_ACCOUNT_JSON, ADMIN_API_KEY (wrangler secret put)
+
+# --- DEV environment (separate D1, KV - create in Cloudflare dashboard) ---
+# Deploy: wrangler deploy --env dev
+[env.dev]
+name = "rsi-workers-dev"
+
+[env.dev.triggers]
+crons = ["*/1 * * * *"]
+
+[[env.dev.kv_namespaces]]
+binding = "KV"
+id = "e4508ff0eefe45eebeb91bf0c2c9532e"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "rsi-db-dev"
+database_id = "db3da120-8008-44f5-9590-6a5e24f3f8e0"
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+YAHOO_ENDPOINT = "https://query1.finance.yahoo.com/v8/finance/chart"
+FCM_PROJECT_ID = "rsi-alert-dev"
+
+# env.dev secrets: wrangler secret put FCM_SERVICE_ACCOUNT_JSON --env dev

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/app_config.dart';
 import '../di/app_container.dart';
 import '../models.dart';
 import '../repositories/i_alert_repository.dart';
@@ -17,7 +18,7 @@ import 'alert_sync_service.dart';
 
 /// Service for syncing user data (watchlist, chart preferences) with server
 class DataSyncService {
-  static const _baseUrl = 'https://rsi-workers.vovan4ikukraine.workers.dev';
+  static String get _baseUrl => AppConfig.apiBaseUrl;
 
   /// Save chart preferences to local cache (for anonymous mode)
   static Future<void> savePreferencesToCache({

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/app_config.dart';
 import '../localization/app_localizations.dart';
 import '../services/yahoo_proto.dart';
 import '../services/auth_service.dart';
@@ -38,7 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _isSignedIn = AuthService.isSignedIn;
     _widgetService = WidgetService(
-      yahooService: YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev'),
+      yahooService: YahooProtoSource(AppConfig.apiBaseUrl),
     );
     _loadSettings();
 

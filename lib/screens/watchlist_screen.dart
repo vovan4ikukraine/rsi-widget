@@ -19,6 +19,7 @@ import '../utils/context_extensions.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/indicator_level_validator.dart';
 import '../utils/price_formatter.dart';
+import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../di/app_container.dart';
 import '../repositories/i_alert_repository.dart';
@@ -40,7 +41,7 @@ enum _RsiSortOrder { ascending, descending }
 class _WatchlistScreenState extends State<WatchlistScreen>
     with WidgetsBindingObserver {
   final YahooProtoSource _yahooService =
-      YahooProtoSource('https://rsi-workers.vovan4ikukraine.workers.dev');
+      YahooProtoSource(AppConfig.apiBaseUrl);
   late final WidgetService _widgetService;
   late final IAlertRepository _alertRepository;
   late final IWatchlistRepository _watchlistRepository;

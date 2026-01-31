@@ -15,6 +15,7 @@ import '../state/app_state.dart';
 import '../widgets/indicator_selector.dart';
 import '../widgets/wpr_level_input_formatter.dart';
 import '../utils/price_formatter.dart';
+import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 
 enum _MarketsSortOrder { none, descending, ascending, marketCap }
@@ -31,7 +32,7 @@ class MarketsScreen extends StatefulWidget {
 class _MarketsScreenState extends State<MarketsScreen>
     with SingleTickerProviderStateMixin {
   final YahooProtoSource _yahooService = YahooProtoSource(
-    'https://rsi-workers.vovan4ikukraine.workers.dev',
+    AppConfig.apiBaseUrl,
   );
   late TabController _tabController;
   AppState? _appState;

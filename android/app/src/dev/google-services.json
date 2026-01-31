@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "649337959543",
+    "project_id": "rsi-widget-app-dev",
+    "storage_bucket": "rsi-widget-app-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:649337959543:android:bb7b7808e3f9559274c272",
+        "android_client_info": {
+          "package_name": "com.indicharts.app.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNB1WYfftH_Yk-wktGZlSkDUjrpvwIkuQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

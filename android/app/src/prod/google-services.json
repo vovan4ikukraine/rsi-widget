@@ -1,0 +1,114 @@
+{
+  "project_info": {
+    "project_number": "401352715829",
+    "project_id": "rsi-widget-app",
+    "storage_bucket": "rsi-widget-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:401352715829:android:cd75d8e4be130271b38b7c",
+        "android_client_info": {
+          "package_name": "com.example.rsi_widget"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "401352715829-7qsdod7e5ef3hotvdit8g5qj3s80noa8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.rsi_widget",
+            "certificate_hash": "685c8354deb9041465d28a7d2f606bb0ecf87303"
+          }
+        },
+        {
+          "client_id": "401352715829-iacpg3t1fjjc94h5psjkv4rmavrbrsrq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.rsi_widget",
+            "certificate_hash": "2e7f94259ed0513160517125dedc25a9a6d29ff2"
+          }
+        },
+        {
+          "client_id": "401352715829-tphh26q0nia115h4vcukp815r3a40rkp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6H0iSxQcu82DD4CgNjT2Xa0uxtdbPyAU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "401352715829-tphh26q0nia115h4vcukp815r3a40rkp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "401352715829-264mae0mpja1eki8meuhvel4nnj2csc6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.indigo.indicharts"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:401352715829:android:75838030ba2821b2b38b7c",
+        "android_client_info": {
+          "package_name": "com.indicharts.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "401352715829-oc7gfeb6ghti6dqb6tl5fs1pctri61tf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.indicharts.app",
+            "certificate_hash": "2e7f94259ed0513160517125dedc25a9a6d29ff2"
+          }
+        },
+        {
+          "client_id": "401352715829-pqq4r7v5beelr99j0cdc65j0nsmcag3j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.indicharts.app",
+            "certificate_hash": "da9202d50afeb50b46354ee9db4031981a7acc0e"
+          }
+        },
+        {
+          "client_id": "401352715829-tphh26q0nia115h4vcukp815r3a40rkp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6H0iSxQcu82DD4CgNjT2Xa0uxtdbPyAU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "401352715829-tphh26q0nia115h4vcukp815r3a40rkp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "401352715829-264mae0mpja1eki8meuhvel4nnj2csc6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.indigo.indicharts"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
