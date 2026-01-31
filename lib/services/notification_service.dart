@@ -302,7 +302,7 @@ class NotificationService {
     }
 
     try {
-      // Get language from SharedPreferences for localization
+      // Get language from SharedPreferences for localization (default en as fallback)
       final prefs = await SharedPreferences.getInstance();
       final languageCode = prefs.getString('language') ?? 'en';
       final soundEnabled = prefs.getBool('sound_enabled') ?? true;
@@ -332,20 +332,29 @@ class NotificationService {
       }
 
       // Always build body from localized templates so notifications appear in user language
+      // Server sends type: cross_up, cross_down, enter_zone, exit_zone (not above/below)
       final indicatorName = (indicator ?? 'RSI').toUpperCase();
       final levelStr = level.toStringAsFixed(0);
       final rsiStr = rsi.toStringAsFixed(2);
       String body;
-      if (type == 'above') {
+      if (type == 'cross_up' || type == 'above') {
         body = await AppLocalizations.tByLanguage(
           languageCode,
           'alert_message_cross_up',
           params: {'indicator': indicatorName, 'level': levelStr},
         );
-      } else if (type == 'below') {
+      } else if (type == 'cross_down' || type == 'below') {
         body = await AppLocalizations.tByLanguage(
           languageCode,
           'alert_message_cross_down',
+          params: {'indicator': indicatorName, 'level': levelStr},
+        );
+      } else if (type == 'enter_zone' || type == 'exit_zone') {
+        // Zone enter/exit: use generic body with localized type
+        final typeKey = type == 'enter_zone' ? 'alert_message_cross_up' : 'alert_message_cross_down';
+        body = await AppLocalizations.tByLanguage(
+          languageCode,
+          typeKey,
           params: {'indicator': indicatorName, 'level': levelStr},
         );
       } else {
