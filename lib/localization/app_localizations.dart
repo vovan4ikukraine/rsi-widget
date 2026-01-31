@@ -215,6 +215,11 @@ class AppLocalizations {
       'alerts_delete_success': 'Alert deleted',
       'alerts_error_loading': 'Error loading data: {{message}}',
       'alerts_error_generic': 'Error: {{message}}',
+      'alerts_bulk_delete_confirm': 'Delete {{count}} alert(s)?',
+      'alerts_bulk_processing': 'Processing {{count}} alert(s)...',
+      'alerts_bulk_enabled': '{{count}} alert(s) enabled',
+      'alerts_bulk_disabled': '{{count}} alert(s) disabled',
+      'alerts_bulk_deleted': '{{count}} alert(s) deleted',
 
       // Create Alert
       'create_alert_title_new': 'Create Alert',
@@ -525,6 +530,11 @@ class AppLocalizations {
       'alerts_delete_success': 'Алерт удалён',
       'alerts_error_loading': 'Ошибка загрузки данных: {{message}}',
       'alerts_error_generic': 'Ошибка: {{message}}',
+      'alerts_bulk_delete_confirm': 'Удалить {{count}} алерт(ов)?',
+      'alerts_bulk_processing': 'Обработка {{count}} алерт(ов)...',
+      'alerts_bulk_enabled': '{{count}} алерт(ов) включено',
+      'alerts_bulk_disabled': '{{count}} алерт(ов) выключено',
+      'alerts_bulk_deleted': '{{count}} алерт(ов) удалено',
 
       // Create Alert
       'create_alert_title_new': 'Создать алерт',
@@ -821,6 +831,11 @@ class AppLocalizations {
       'alerts_delete_success': 'Алерт видалено',
       'alerts_error_loading': 'Помилка завантаження даних: {{message}}',
       'alerts_error_generic': 'Помилка: {{message}}',
+      'alerts_bulk_delete_confirm': 'Видалити {{count}} алерт(ів)?',
+      'alerts_bulk_processing': 'Обробка {{count}} алерт(ів)...',
+      'alerts_bulk_enabled': '{{count}} алерт(ів) увімкнено',
+      'alerts_bulk_disabled': '{{count}} алерт(ів) вимкнено',
+      'alerts_bulk_deleted': '{{count}} алерт(ів) видалено',
 
       // Create Alert
       'create_alert_title_new': 'Створити алерт',

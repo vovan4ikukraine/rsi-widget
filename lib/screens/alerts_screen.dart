@@ -669,7 +669,9 @@ class _AlertsScreenState extends State<AlertsScreen>
 
     // Show loading indicator
     if (mounted) {
-      context.showLoading('Processing ${selectedAlerts.length} alert(s)...');
+      context.showLoading(
+        loc.t('alerts_bulk_processing', params: {'count': '${selectedAlerts.length}'}),
+      );
     }
 
     try {
@@ -701,7 +703,9 @@ class _AlertsScreenState extends State<AlertsScreen>
             });
 
             context.hideSnackBar();
-            context.showSuccess('${selectedAlerts.length} alert(s) enabled');
+            context.showSuccess(
+              loc.t('alerts_bulk_enabled', params: {'count': '${selectedAlerts.length}'}),
+            );
           }
           return;
 
@@ -734,7 +738,7 @@ class _AlertsScreenState extends State<AlertsScreen>
             context.hideSnackBar();
             SnackBarHelper.showInfo(
               context,
-              '${selectedAlerts.length} alert(s) disabled',
+              loc.t('alerts_bulk_disabled', params: {'count': '${selectedAlerts.length}'}),
             );
           }
           return;
@@ -744,7 +748,9 @@ class _AlertsScreenState extends State<AlertsScreen>
             context: context,
             builder: (context) => AlertDialog(
               title: Text(loc.t('common_delete')),
-              content: Text('Delete ${selectedAlerts.length} alert(s)?'),
+              content: Text(
+                loc.t('alerts_bulk_delete_confirm', params: {'count': '${selectedAlerts.length}'}),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -761,7 +767,12 @@ class _AlertsScreenState extends State<AlertsScreen>
             ),
           );
 
-          if (confirmed == true) {
+          if (confirmed != true) {
+            if (mounted) context.hideSnackBar();
+            return;
+          }
+
+          {
             // Delete all alerts
             final alertIds = selectedAlerts.map((a) => a.id).toList();
             await _alertRepository.deleteAlerts(alertIds);
@@ -781,8 +792,10 @@ class _AlertsScreenState extends State<AlertsScreen>
               });
 
             context.hideSnackBar();
-            context.showError('${selectedAlerts.length} alert(s) deleted');
-            }
+            context.showSuccess(
+              loc.t('alerts_bulk_deleted', params: {'count': '${selectedAlerts.length}'}),
+            );
+          }
           }
           return;
 
@@ -798,6 +811,7 @@ class _AlertsScreenState extends State<AlertsScreen>
       );
       
       if (mounted) {
+        context.hideSnackBar();
         context.showError(ErrorService.getUserFriendlyError(e, loc));
       }
     }
