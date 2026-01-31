@@ -172,6 +172,7 @@ async function ensureTables(db: D1Database, env?: any) {
         indicator_state TEXT,
         last_bar_ts INTEGER,
         last_fire_ts INTEGER,
+        last_fire_bar_ts INTEGER,
         last_side TEXT,
         last_rsi REAL,
         last_au REAL,
@@ -194,6 +195,14 @@ async function ensureTables(db: D1Database, env?: any) {
     } catch (e: any) {
         if (!e.message?.includes('duplicate column')) {
             Logger.warn('Migration: indicator_state column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN last_fire_bar_ts INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_fire_bar_ts column may already exist', env);
         }
     }
 

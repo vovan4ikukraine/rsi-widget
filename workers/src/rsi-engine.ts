@@ -25,6 +25,7 @@ export interface AlertState {
     indicator_state?: string;       // JSON: state for incremental calculation
     last_bar_ts?: number;
     last_fire_ts?: number;
+    last_fire_bar_ts?: number;      // Bar timestamp when we last fired (one fire per candle when alert_on_close=false)
     last_side?: string;
     // Deprecated fields (kept for backward compatibility)
     last_rsi?: number;
@@ -340,12 +341,25 @@ export class IndicatorEngine {
 
             if (ruleTriggers.length > 0) {
                 // Check cooldown
-                const canFire = this.checkCooldown(rule, state);
-                console.log(`Rule ${rule.id}: cooldown check -> ${canFire}`);
+                const canFireCooldown = this.checkCooldown(rule, state);
+                const currentBarTs = candles[candles.length - 1].timestamp;
+
+                // When alert_on_close is false: only one fire per candle (reduce noise on forming candle)
+                const useFormingCandle = !(rule as any).alert_on_close;
+                const sameCandleAlreadyFired = useFormingCandle &&
+                    state.last_fire_bar_ts !== undefined &&
+                    state.last_fire_bar_ts === currentBarTs;
+                const canFire = canFireCooldown && !sameCandleAlreadyFired;
+
+                if (sameCandleAlreadyFired) {
+                    console.log(`Rule ${rule.id}: same candle already fired (bar_ts=${currentBarTs}), skipping`);
+                }
+                console.log(`Rule ${rule.id}: cooldown check -> ${canFireCooldown}, canFire -> ${canFire}`);
 
                 if (canFire) {
-                    // Save state with fire timestamp
+                    // Save state with fire timestamp and bar timestamp
                     stateUpdates.last_fire_ts = Date.now();
+                    stateUpdates.last_fire_bar_ts = currentBarTs;
                     stateUpdates.last_side = this.getIndicatorZone(currentValue, rule.levels);
 
                     // Save events
@@ -355,7 +369,7 @@ export class IndicatorEngine {
 
                     triggers.push(...ruleTriggers);
                 }
-                // Even if cooldown blocks firing, update indicator state to prevent duplicate detection
+                // Even if cooldown/same-candle blocks firing, update indicator state to prevent duplicate detection
             }
 
             // Update state regardless of whether triggers fired
@@ -808,6 +822,7 @@ export class IndicatorEngine {
             last_rsi: undefined,
             last_bar_ts: undefined,
             last_fire_ts: undefined,
+            last_fire_bar_ts: undefined,
             last_side: undefined,
         };
 
