@@ -497,7 +497,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _launchTelegramGroup(AppLocalizations loc) async {
-    const url = 'https://t.me/crypto_psycho_diary';
+    const url = 'https://t.me/+KdhTzvHT5YY3ZTFk';
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
