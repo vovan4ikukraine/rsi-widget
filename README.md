@@ -2,7 +2,7 @@
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.5+-blue.svg)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.5+-blue.svg)](https://dart.dev)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 A professional cross-platform mobile application for technical indicator analysis, alerts, and widgets. Monitor RSI, Stochastic, and Williams %R indicators for stocks, cryptocurrencies, forex, and commodities with real-time notifications and home screen widgets.
 
@@ -357,6 +357,25 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 📧 Support
 
 - **Email**: ads.contact.manager@gmail.com
+
+## 📄 License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+### What this means:
+
+- ✅ **You can**: Use, modify, and distribute this software
+- ✅ **You must**: Share your changes and make source code available if you run a modified version as a service
+- ⚠️ **For commercial use**: Contact the copyright holder for licensing terms
+
+### Why AGPL-3.0?
+
+This license ensures that:
+- Any modifications or forks must remain open source
+- If someone deploys a modified backend, they must share the source code
+- Commercial entities cannot use this code without proper licensing
+
+For commercial licensing inquiries, please contact the project maintainers.
 
 ## 🙏 Acknowledgments
 

@@ -1,5 +1,5 @@
 {
-    "name": "rsi-workers",
+    "name": "INDI CHARTS",
     "version": "1.0.0",
     "description": "Cloudflare Workers backend for RSI Widget App",
     "main": "src/index.ts",
@@ -23,8 +23,8 @@
         "alerts",
         "widget"
     ],
-    "author": "RSI Widget Team",
-    "license": "MIT",
+    "author": "INDIGO PRODUCTION",
+    "license": "AGPL-3.0",
     "devDependencies": {
         "@cloudflare/workers-types": "^4.20251014.0",
         "@types/node": "^20.19.23",
