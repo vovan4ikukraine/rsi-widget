@@ -84,9 +84,9 @@ coverage/
 !**/ios/**/default.pbxuser
 !**/ios/**/default.perspectivev3
 
-# Firebase
+# Firebase (incl. flavor paths android/app/src/dev|prod/google-services.json)
 **/ios/Runner/GoogleService-Info.plist
-**/android/app/google-services.json
+**/android/app/**/google-services.json
 
 # Environment variables
 .env
