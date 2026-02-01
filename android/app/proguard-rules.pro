@@ -6,9 +6,12 @@
 -keep class io.flutter.**  { *; }
 -keep class io.flutter.plugins.**  { *; }
 
-# Firebase
+# Firebase & FCM background handler
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
+-keep class io.flutter.plugins.firebase.** { *; }
+# Keep background message handler entry point (prevents removal)
+-keepattributes *Annotation*
 
 # OkHttp
 -keep class okhttp3.** { *; }

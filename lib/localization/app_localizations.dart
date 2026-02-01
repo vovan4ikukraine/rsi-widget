@@ -298,8 +298,8 @@ class AppLocalizations {
       'alert_between': 'between',
       
       // Alert messages
-      'alert_message_cross_up': '{{indicator}} crossed level {{level}} upward',
-      'alert_message_cross_down': '{{indicator}} crossed level {{level}} downward',
+      'alert_message_cross_up': '{{indicator}} crossed level {{level}} upward ({{rsi}})',
+      'alert_message_cross_down': '{{indicator}} crossed level {{level}} downward ({{rsi}})',
       'alert_message_enter_zone': '{{indicator}} entered zone {{lower}}-{{upper}}',
       'alert_message_exit_zone': '{{indicator}} exited zone {{lower}}-{{upper}}',
       
@@ -606,8 +606,8 @@ class AppLocalizations {
       'alert_between': 'между',
       
       // Alert messages
-      'alert_message_cross_up': '{{indicator}} пересек уровень {{level}} вверх',
-      'alert_message_cross_down': '{{indicator}} пересек уровень {{level}} вниз',
+      'alert_message_cross_up': '{{indicator}} пересек уровень {{level}} вверх ({{rsi}})',
+      'alert_message_cross_down': '{{indicator}} пересек уровень {{level}} вниз ({{rsi}})',
       'alert_message_enter_zone': '{{indicator}} вошел в зону {{lower}}-{{upper}}',
       'alert_message_exit_zone': '{{indicator}} вышел из зоны {{lower}}-{{upper}}',
       
@@ -913,8 +913,8 @@ class AppLocalizations {
       'alert_between': 'між',
       
       // Alert messages
-      'alert_message_cross_up': '{{indicator}} перетнув рівень {{level}} вгору',
-      'alert_message_cross_down': '{{indicator}} перетнув рівень {{level}} вниз',
+      'alert_message_cross_up': '{{indicator}} перетнув рівень {{level}} вгору ({{rsi}})',
+      'alert_message_cross_down': '{{indicator}} перетнув рівень {{level}} вниз ({{rsi}})',
       'alert_message_enter_zone': '{{indicator}} увійшов у зону {{lower}}-{{upper}}',
       'alert_message_exit_zone': '{{indicator}} вийшов із зони {{lower}}-{{upper}}',
       

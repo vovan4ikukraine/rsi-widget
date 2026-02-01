@@ -268,13 +268,22 @@ export class FcmService {
         // This prevents accumulation of stale notifications when device is offline
         const collapseKey = `alert_${trigger.ruleId}`;
 
-        // Send only data payload so client builds notification in user's language.
-        // If we sent notification payload, system would show it in English when app is in background.
+        // Include notification payload for reliable delivery when app is background/terminated.
+        // Android deprioritizes data-only messages; notification ensures system shows it.
+        // Client still receives data for tap handling; skips local display when notification present.
         const isWatchlistAlert = trigger.source === 'watchlist';
+        const tf = trigger.timeframe ? ` (${trigger.timeframe})` : '';
+        const notifTitle = isWatchlistAlert
+            ? `Watchlist: ${trigger.symbol}${tf}`
+            : `${trigger.symbol}${tf}`;
 
         const message: FcmV1Message = {
             message: {
                 token: token,
+                notification: {
+                    title: notifTitle,
+                    body: trigger.message || `${trigger.indicator || 'RSI'} alert`,
+                },
                 data: {
                     alert_id: trigger.ruleId.toString(),
                     symbol: trigger.symbol,

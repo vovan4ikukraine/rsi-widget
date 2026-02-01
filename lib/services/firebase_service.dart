@@ -244,11 +244,15 @@ class FirebaseService {
     final data = message.data;
     if (!data.containsKey('alert_id')) return;
 
+    // When server sends notification payload, system already displays it (reliable on background).
+    // Skip our localized build to avoid duplicate.
+    if (message.notification != null) return;
+
     if (kDebugMode) {
       debugPrint('Showing background notification: ${message.messageId}');
     }
 
-    // Build notification in user's language (server sends data-only)
+    // Build notification in user's language (data-only path)
     final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
         data['isWatchlistAlert'] == true ||
         data['source'] == 'watchlist';
@@ -267,32 +271,51 @@ class FirebaseService {
 
   /// Handle messages in foreground
   static void _handleForegroundMessage(RemoteMessage message) {
+    if (kDebugMode) {
+      debugPrint('FCM foreground: handling message ${message.messageId}');
+    }
+
     // Filter out stale notifications (older than 10 minutes)
     if (!_isNotificationFresh(message)) {
       if (kDebugMode) {
-        debugPrint('Skipping stale notification: ${message.messageId}');
+        debugPrint('FCM foreground: skipping stale notification (age > 10 min)');
       }
       return;
     }
 
     final data = message.data;
-    if (!data.containsKey('alert_id')) return;
+    if (!data.containsKey('alert_id')) {
+      if (kDebugMode) {
+        debugPrint('FCM foreground: no alert_id in data, skipping');
+      }
+      return;
+    }
 
-    // Build notification in user's language (always use data; no notification payload from server)
+    // Foreground: always build our localized notification (ignore server notification if any)
     final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
         data['isWatchlistAlert'] == true ||
         data['source'] == 'watchlist';
 
-    NotificationService.showRsiAlert(
-      symbol: data['symbol'] ?? 'N/A',
-      rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
-      level: double.tryParse(data['level'] ?? '0') ?? 0.0,
-      type: data['type'] ?? 'unknown',
-      message: message.notification?.body ?? data['message'] ?? '',
-      indicator: data['indicator'],
-      timeframe: data['timeframe'],
-      isWatchlistAlert: isWatchlistAlert,
-    );
+    try {
+      NotificationService.showRsiAlert(
+        symbol: data['symbol'] ?? 'N/A',
+        rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
+        level: double.tryParse(data['level'] ?? '0') ?? 0.0,
+        type: data['type'] ?? 'unknown',
+        message: message.notification?.body ?? data['message'] ?? '',
+        indicator: data['indicator'],
+        timeframe: data['timeframe'],
+        isWatchlistAlert: isWatchlistAlert,
+      );
+      if (kDebugMode) {
+        debugPrint('FCM foreground: showRsiAlert called for ${data['symbol']}');
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('FCM foreground: error showing notification: $e');
+        debugPrint('Stack: $st');
+      }
+    }
   }
 
   /// Handle notification tap

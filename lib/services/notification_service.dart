@@ -341,13 +341,13 @@ class NotificationService {
         body = await AppLocalizations.tByLanguage(
           languageCode,
           'alert_message_cross_up',
-          params: {'indicator': indicatorName, 'level': levelStr},
+          params: {'indicator': indicatorName, 'level': levelStr, 'rsi': rsiStr},
         );
       } else if (type == 'cross_down' || type == 'below') {
         body = await AppLocalizations.tByLanguage(
           languageCode,
           'alert_message_cross_down',
-          params: {'indicator': indicatorName, 'level': levelStr},
+          params: {'indicator': indicatorName, 'level': levelStr, 'rsi': rsiStr},
         );
       } else if (type == 'enter_zone' || type == 'exit_zone') {
         // Zone enter/exit: use generic body with localized type
@@ -355,7 +355,7 @@ class NotificationService {
         body = await AppLocalizations.tByLanguage(
           languageCode,
           typeKey,
-          params: {'indicator': indicatorName, 'level': levelStr},
+          params: {'indicator': indicatorName, 'level': levelStr, 'rsi': rsiStr},
         );
       } else {
         final typeKey = type == 'between' ? 'alert_between' : (type == 'above' ? 'alert_above' : 'alert_below');
