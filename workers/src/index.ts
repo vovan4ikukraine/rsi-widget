@@ -172,6 +172,8 @@ async function ensureTables(db: D1Database, env?: any) {
         indicator_state TEXT,
         last_bar_ts INTEGER,
         last_fire_ts INTEGER,
+        last_fire_ts_lower INTEGER,
+        last_fire_ts_upper INTEGER,
         last_fire_bar_ts INTEGER,
         last_fire_bar_ts_lower INTEGER,
         last_fire_bar_ts_upper INTEGER,
@@ -221,6 +223,22 @@ async function ensureTables(db: D1Database, env?: any) {
     } catch (e: any) {
         if (!e.message?.includes('duplicate column')) {
             Logger.warn('Migration: last_fire_bar_ts_upper column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN last_fire_ts_lower INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_fire_ts_lower column may already exist', env);
+        }
+    }
+
+    try {
+        await db.prepare(`ALTER TABLE alert_state ADD COLUMN last_fire_ts_upper INTEGER`).run();
+    } catch (e: any) {
+        if (!e.message?.includes('duplicate column')) {
+            Logger.warn('Migration: last_fire_ts_upper column may already exist', env);
         }
     }
 

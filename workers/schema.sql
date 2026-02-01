@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS alert_state (
   last_rsi REAL,
   last_bar_ts INTEGER,
   last_fire_ts INTEGER,
+  last_fire_ts_lower INTEGER,
+  last_fire_ts_upper INTEGER,
   last_side TEXT,
   last_au REAL,
   last_ad REAL,

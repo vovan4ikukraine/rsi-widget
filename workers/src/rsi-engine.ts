@@ -25,6 +25,8 @@ export interface AlertState {
     indicator_state?: string;       // JSON: state for incremental calculation
     last_bar_ts?: number;
     last_fire_ts?: number;
+    last_fire_ts_lower?: number;    // Lower level last fire ts (cross mode, per-level cooldown)
+    last_fire_ts_upper?: number;    // Upper level last fire ts (cross mode, per-level cooldown)
     last_fire_bar_ts?: number;      // Bar timestamp when we last fired (zone modes; fallback for cross)
     last_fire_bar_ts_lower?: number;  // Lower level last fired bar ts (cross mode, per-level)
     last_fire_bar_ts_upper?: number;  // Upper level last fired bar ts (cross mode, per-level)
@@ -342,8 +344,6 @@ export class IndicatorEngine {
             }
 
             if (ruleTriggers.length > 0) {
-                // Check cooldown
-                const canFireCooldown = this.checkCooldown(rule, state);
                 const currentBarTs = candles[candles.length - 1].timestamp;
 
                 // When alert_on_close is false: one fire per candle per LEVEL (lower/upper independent)
@@ -380,19 +380,44 @@ export class IndicatorEngine {
                     allowedTriggers = ruleTriggers;
                 }
 
-                const canFire = canFireCooldown && allowedTriggers.length > 0;
-                console.log(`Rule ${rule.id}: cooldown check -> ${canFireCooldown}, allowed triggers -> ${allowedTriggers.length}, canFire -> ${canFire}`);
+                // Cooldown: per-level for cross mode, per-rule for zone mode
+                if (isCrossMode) {
+                    allowedTriggers = allowedTriggers.filter((t) => {
+                        const ok = this.checkCooldownForTrigger(rule, state, t);
+                        if (!ok) {
+                            console.log(`Rule ${rule.id}: ${t.type} level cooldown not passed, skipping`);
+                        }
+                        return ok;
+                    });
+                } else {
+                    const canFireCooldown = this.checkCooldown(rule, state);
+                    if (!canFireCooldown) {
+                        allowedTriggers = [];
+                        console.log(`Rule ${rule.id}: cooldown not passed, skipping`);
+                    }
+                }
+
+                const canFire = allowedTriggers.length > 0;
+                console.log(`Rule ${rule.id}: allowed triggers -> ${allowedTriggers.length}, canFire -> ${canFire}`);
 
                 if (canFire) {
-                    stateUpdates.last_fire_ts = Date.now();
+                    const now = Date.now();
+                    stateUpdates.last_fire_ts = now;
                     stateUpdates.last_side = this.getIndicatorZone(currentValue, rule.levels);
+
+                    if (isCrossMode) {
+                        const hasLower = allowedTriggers.some((t) => t.type === 'cross_down');
+                        const hasUpper = allowedTriggers.some((t) => t.type === 'cross_up');
+                        if (hasLower) stateUpdates.last_fire_ts_lower = now;
+                        if (hasUpper) stateUpdates.last_fire_ts_upper = now;
+                    }
 
                     if (useFormingCandle && isCrossMode) {
                         const hasLower = allowedTriggers.some((t) => t.type === 'cross_down');
                         const hasUpper = allowedTriggers.some((t) => t.type === 'cross_up');
                         if (hasLower) stateUpdates.last_fire_bar_ts_lower = currentBarTs;
                         if (hasUpper) stateUpdates.last_fire_bar_ts_upper = currentBarTs;
-                        stateUpdates.last_fire_bar_ts = currentBarTs; // Keep for backward compat
+                        stateUpdates.last_fire_bar_ts = currentBarTs;
                     } else if (useFormingCandle) {
                         stateUpdates.last_fire_bar_ts = currentBarTs;
                     }
@@ -810,12 +835,25 @@ export class IndicatorEngine {
     }
 
     /**
-     * Check cooldown
+     * Check cooldown (zone mode - single last_fire_ts for rule)
      */
     checkCooldown(rule: AlertRule, state: AlertState): boolean {
         if (!state.last_fire_ts) return true;
 
         const timeSinceLastFire = Date.now() - state.last_fire_ts;
+        return timeSinceLastFire >= (rule.cooldown_sec * 1000);
+    }
+
+    /**
+     * Check cooldown for a specific trigger (cross mode - per level)
+     */
+    checkCooldownForTrigger(rule: AlertRule, state: AlertState, trigger: AlertTrigger): boolean {
+        const ts = trigger.type === 'cross_down'
+            ? (state.last_fire_ts_lower ?? state.last_fire_ts)
+            : (state.last_fire_ts_upper ?? state.last_fire_ts);
+        if (!ts) return true;
+
+        const timeSinceLastFire = Date.now() - ts;
         return timeSinceLastFire >= (rule.cooldown_sec * 1000);
     }
 
@@ -854,6 +892,8 @@ export class IndicatorEngine {
             last_rsi: undefined,
             last_bar_ts: undefined,
             last_fire_ts: undefined,
+            last_fire_ts_lower: undefined,
+            last_fire_ts_upper: undefined,
             last_fire_bar_ts: undefined,
             last_fire_bar_ts_lower: undefined,
             last_fire_bar_ts_upper: undefined,
