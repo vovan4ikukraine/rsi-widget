@@ -273,11 +273,53 @@ class _AlertsScreenState extends State<AlertsScreen>
                   // Alerts list
                   Expanded(
                     child: _filteredAlerts.isEmpty
-                        ? _buildEmptyState(loc)
+                        ? Column(
+                            children: [
+                              // Counter always visible
+                              Padding(
+                                padding: const EdgeInsets.only(left: 16, top: 4, bottom: 8),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    '${_alerts.length}/${AppConstants.maxCustomAlerts}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Empty state
+                              Expanded(child: _buildEmptyState(loc)),
+                            ],
+                          )
                         : ListView.builder(
-                            itemCount: _filteredAlerts.length,
+                            itemCount: _filteredAlerts.length + 1, // +1 for counter
                             itemBuilder: (context, index) {
-                              final alert = _filteredAlerts[index];
+                              // First item is the counter
+                              if (index == 0) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 16, top: 4, bottom: 8),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      '${_alerts.length}/${AppConstants.maxCustomAlerts}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              
+                              // Adjust index for alerts
+                              final alertIndex = index - 1;
+                              if (alertIndex >= _filteredAlerts.length) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              final alert = _filteredAlerts[alertIndex];
                               return _buildAlertCard(loc, alert);
                             },
                           ),
@@ -286,8 +328,10 @@ class _AlertsScreenState extends State<AlertsScreen>
               ),
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _createAlert(),
-        tooltip: loc.t('home_create_alert'),
+        onPressed: _alerts.length >= AppConstants.maxCustomAlerts ? null : () => _createAlert(),
+        tooltip: _alerts.length >= AppConstants.maxCustomAlerts 
+            ? loc.t('create_alert_limit_reached', params: {'max': AppConstants.maxCustomAlerts.toString()})
+            : loc.t('home_create_alert'),
         child: const Icon(Icons.add),
       ),
     );

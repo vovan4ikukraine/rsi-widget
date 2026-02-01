@@ -209,6 +209,8 @@ class AppLocalizations {
       'alerts_duplicate_success': 'Alert duplicated',
       'create_alert_duplicate_error':
           'Alert for {{symbol}} {{timeframe}} with the same settings already exists',
+      'create_alert_limit_reached':
+          'Alerts limit reached ({{max}} alerts). Remove an alert to add a new one.',
       'alerts_delete_title': 'Delete Alert',
       'alerts_delete_message':
           'Are you sure you want to delete alert for {{symbol}}?',
@@ -525,6 +527,8 @@ class AppLocalizations {
       'alerts_duplicate_success': 'Алерт продублирован',
       'create_alert_duplicate_error':
           'Алерт для {{symbol}} {{timeframe}} с такими же настройками уже существует',
+      'create_alert_limit_reached':
+          'Достигнут лимит алертов ({{max}} алертов). Удалите алерт, чтобы добавить новый.',
       'alerts_delete_title': 'Удалить алерт',
       'alerts_delete_message': 'Удалить алерт для {{symbol}}?',
       'alerts_delete_success': 'Алерт удалён',
@@ -826,6 +830,8 @@ class AppLocalizations {
       'alerts_disabled': 'Алерт вимкнено',
       'alerts_duplicate_success': 'Алерт продубльовано',
       'create_alert_duplicate_error': 'Алерт для {{symbol}} {{timeframe}} з такими ж налаштуваннями вже існує',
+      'create_alert_limit_reached':
+          'Досягнуто ліміт алертів ({{max}} алертів). Видаліть алерт, щоб додати новий.',
       'alerts_delete_title': 'Видалити алерт',
       'alerts_delete_message': 'Видалити алерт для {{symbol}}?',
       'alerts_delete_success': 'Алерт видалено',

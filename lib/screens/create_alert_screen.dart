@@ -986,6 +986,21 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
 
       // Check for duplicate alert (only when creating new, not editing)
       if (widget.alert == null) {
+        // Check alert limit before creating new alert
+        final allCustomAlerts = await _alertRepository.getCustomAlerts();
+        if (allCustomAlerts.length >= AppConstants.maxCustomAlerts) {
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+            SnackBarHelper.showInfo(
+              context,
+              loc.t('create_alert_limit_reached', params: {'max': AppConstants.maxCustomAlerts.toString()}),
+            );
+          }
+          return;
+        }
+        
         final allAlerts = await _alertRepository.getAlertsBySymbol(symbol);
         final existingAlerts = allAlerts
             .where((a) =>

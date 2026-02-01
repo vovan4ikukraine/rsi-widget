@@ -698,6 +698,18 @@ app.post('/alerts/create', async (c) => {
         const db = c.env?.DB as D1Database;
         await ensureTables(db);
 
+        // Check custom alerts limit (max 20 per user)
+        if (alertSource === 'custom') {
+            const customAlertsCount = await db.prepare(`
+                SELECT COUNT(*) as count FROM alert_rule 
+                WHERE user_id = ? AND source = 'custom'
+            `).bind(userId).first<{ count: number }>();
+            
+            if (customAlertsCount && customAlertsCount.count >= 20) {
+                return c.json({ error: 'Custom alerts limit exceeded: maximum 20 custom alerts per user' }, 400);
+            }
+        }
+
         const result = await db.prepare(`
       INSERT INTO alert_rule (
         user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode, 

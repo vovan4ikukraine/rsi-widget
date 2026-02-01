@@ -3,6 +3,9 @@ class AppConstants {
   // Watchlist limits
   static const int maxWatchlistItems = 30;
   
+  // Alert limits
+  static const int maxCustomAlerts = 20;
+  
   // Chart and data limits
   static const int minCandlesForChart = 100;
   static const int periodBuffer = 20;
