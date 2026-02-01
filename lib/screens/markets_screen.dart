@@ -864,10 +864,9 @@ class _MarketsScreenState extends State<MarketsScreen>
         ? (prefs.getInt('markets_stoch_d_period') ?? 3)
         : null;
 
-    // Load in smaller batches with delay to avoid overwhelming the server
-    // Reduced batch size from 5 to 3 to prevent 500 errors
-    const batchSize = 3;
-    const delayBetweenBatches = Duration(milliseconds: 500);
+    // Load in batches; load test showed 100 concurrent without 429
+    const batchSize = 8;
+    const delayBetweenBatches = Duration(milliseconds: 150);
 
     for (int i = 0; i < symbolsToLoad.length; i += batchSize) {
       final batch = symbolsToLoad.skip(i).take(batchSize).toList();
@@ -1038,9 +1037,9 @@ class _MarketsScreenState extends State<MarketsScreen>
         ? (prefs.getInt('markets_stoch_d_period') ?? 3)
         : null;
 
-    // Load in batches to avoid overwhelming the server
-    const batchSize = 5;
-    const delayBetweenBatches = Duration(milliseconds: 300);
+    // Load in batches; load test showed 100 concurrent without 429
+    const batchSize = 10;
+    const delayBetweenBatches = Duration(milliseconds: 100);
 
     for (int i = 0; i < symbolsToLoad.length; i += batchSize) {
       final batch = symbolsToLoad.skip(i).take(batchSize).toList();

@@ -1025,17 +1025,14 @@ const worker: ExportedHandler<Env> = {
                 const symbolTimeframePairs = Object.entries(groupedRules);
                 const startTime = Date.now();
 
-                // Rate limiting: max 3.5 requests per second to Yahoo Finance (balanced between speed and safety)
-                // Delay only applies to cache misses (real Yahoo Finance requests)
-                const RATE_LIMIT_DELAY_MS = 285; // ~3.5 requests per second (balanced)
-                let yahooRequestCount = 0;
+                // Parallel processing: N pairs at a time to reduce wall time
+                // Load test: 100 concurrent user requests → no 429, so we allow higher concurrency
+                const PARALLEL_BATCH_SIZE = 20;
                 let cacheHitCount = 0;
                 let cacheMissCount = 0;
                 let totalTriggers = 0;
 
                 // Safety limit: process max 200 symbol/timeframe pairs per cron run
-                // This prevents CPU burst and keeps wall time under Cloudflare's 30-60s limit
-                // Remaining pairs will be processed in next cron run (runs every minute)
                 const MAX_PAIRS_PER_RUN = 200;
                 const pairsToProcess = symbolTimeframePairs.slice(0, MAX_PAIRS_PER_RUN);
                 
@@ -1043,66 +1040,47 @@ const worker: ExportedHandler<Env> = {
                     Logger.warn(`Processing ${MAX_PAIRS_PER_RUN} of ${symbolTimeframePairs.length} pairs to prevent CPU burst`, env);
                 }
 
-                // Check each symbol/timeframe with optimized rate limiting
-                for (let pairIndex = 0; pairIndex < pairsToProcess.length; pairIndex++) {
-                    const [key, rules] = pairsToProcess[pairIndex];
-                    const [symbol, timeframe] = key.split('|');
-
-                    // Add delay between Yahoo Finance requests (only for cache misses)
-                    if (yahooRequestCount > 0) {
-                        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-                    }
-
-                    try {
-                        const result = await indicatorEngine.checkSymbolTimeframe(
-                            symbol,
-                            timeframe,
-                            rules
-                        );
-
-                        // Track cache hits/misses for performance logging
-                        if (result.cacheHit) {
-                            cacheHitCount++;
-                            // Small delay every 20 cache hits to prevent burst when processing many pairs rapidly
-                            // This helps distribute load and prevent rate limiting issues
-                            if (pairIndex > 0 && pairIndex % 20 === 0) {
-                                await new Promise(resolve => setTimeout(resolve, 3));
+                for (let batchStart = 0; batchStart < pairsToProcess.length; batchStart += PARALLEL_BATCH_SIZE) {
+                    const batch = pairsToProcess.slice(batchStart, batchStart + PARALLEL_BATCH_SIZE);
+                    const batchPromises = batch.map(async ([key, rules]) => {
+                        const [symbol, timeframe] = key.split('|');
+                        try {
+                            const result = await indicatorEngine.checkSymbolTimeframe(symbol, timeframe, rules);
+                            if (result.cacheHit) cacheHitCount++; else cacheMissCount++;
+                            return { symbol, timeframe, result };
+                        } catch (error) {
+                            Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
+                            if (error instanceof Error && error.message.includes('429')) {
+                                Logger.warn('Rate limit detected, adding extra delay', env);
+                                await new Promise(resolve => setTimeout(resolve, 5000));
                             }
-                        } else {
-                            cacheMissCount++;
-                            yahooRequestCount++;
+                            return { symbol, timeframe, result: { triggers: [] } };
                         }
+                    });
 
+                    const batchResults = await Promise.all(batchPromises);
+
+                    for (const { symbol, timeframe, result } of batchResults) {
                         if (result.triggers.length > 0) {
                             Logger.info(`Found ${result.triggers.length} triggers for ${symbol} ${timeframe}`, env);
                             totalTriggers += result.triggers.length;
-
-                            // Send notifications in batches to avoid CPU burst
-                            // Reduced to 3 notifications per batch for better CPU distribution
                             const BATCH_SIZE = 3;
                             for (let i = 0; i < result.triggers.length; i += BATCH_SIZE) {
-                                const batch = result.triggers.slice(i, i + BATCH_SIZE);
-                                const notificationPromises = batch.map(trigger =>
+                                const triggerBatch = result.triggers.slice(i, i + BATCH_SIZE);
+                                await Promise.all(triggerBatch.map(trigger =>
                                     fcmService.sendAlert(trigger).catch(error => {
                                         Logger.error(`Error sending notification for trigger ${trigger.ruleId}:`, error, env);
                                     })
-                                );
-                                await Promise.all(notificationPromises);
-                                
-                                // Small delay between batches to prevent CPU burst (reduced from 20ms to 10ms)
-                                // 10ms is enough to prevent burst while keeping wall time low
+                                ));
                                 if (i + BATCH_SIZE < result.triggers.length) {
                                     await new Promise(resolve => setTimeout(resolve, 10));
                                 }
                             }
                         }
-                    } catch (error) {
-                        Logger.error(`Error checking ${symbol} ${timeframe}:`, error, env);
-                        // If we get rate limited (429), add extra delay
-                        if (error instanceof Error && error.message.includes('429')) {
-                            Logger.warn('Rate limit detected, adding extra delay', env);
-                            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-                        }
+                    }
+
+                    if (batchStart + PARALLEL_BATCH_SIZE < pairsToProcess.length) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
                     }
                 }
 

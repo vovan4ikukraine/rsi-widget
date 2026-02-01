@@ -987,10 +987,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
 
     try {
-      // Load data with limited parallelism (max 8 concurrent requests)
-      // This prevents overwhelming the server while still being faster than sequential
-      // Increased from 5 to 8 as client-side cache reduces actual HTTP requests
-      const maxConcurrent = 8;
+      // Load data with limited parallelism (max 16 concurrent requests)
+      // Load test: 100 concurrent → no 429; cache reduces actual HTTP requests
+      const maxConcurrent = 16;
       final symbols = _watchlistItems.map((item) => item.symbol).toList();
 
       for (int i = 0; i < symbols.length; i += maxConcurrent) {

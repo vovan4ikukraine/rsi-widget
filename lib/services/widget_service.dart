@@ -71,70 +71,68 @@ class WidgetService {
         return;
       }
 
-      // Load RSI data for each symbol
+      // Load RSI data for each symbol (parallel batches of 8)
       final widgetData = <Map<String, dynamic>>[];
+      const batchSize = 8;
 
-      for (final item in watchlistItems) {
-        try {
-          // Load candles
-          final candles = await yahooService.fetchCandles(
-            item.symbol,
-            finalTimeframe,
-            limit: _candlesLimitForTimeframe(finalTimeframe, finalPeriod),
-          );
-
-          if (candles.isEmpty) continue;
-
-          // Convert candles to format expected by IndicatorService
-          final candlesList = candles
-              .map(
-                (c) => {
-                  'open': c.open,
-                  'high': c.high,
-                  'low': c.low,
-                  'close': c.close,
-                  'timestamp': c.timestamp,
-                },
-              )
-              .toList();
-
-          // Calculate indicator using IndicatorService
-          final indicatorResults = IndicatorService.calculateIndicatorHistory(
-            candlesList,
-            finalIndicator,
-            finalPeriod,
-            finalIndicatorParams,
-          );
-
-          if (indicatorResults.isEmpty) continue;
-
-          final currentValue = indicatorResults.last.value;
-          final currentPrice = candles.last.close;
-          final previousPrice = candles.length > 1
-              ? candles[candles.length - 2].close
-              : currentPrice;
-          final change = currentPrice - previousPrice;
-
-          // Take last 20 values for chart
-          final indicatorValues = indicatorResults.map((r) => r.value).toList();
-          final chartValues = indicatorValues.length > 20
-              ? indicatorValues.sublist(indicatorValues.length - 20)
-              : indicatorValues;
-
-          widgetData.add({
-            'symbol': item.symbol,
-            'indicatorValue': currentValue,
-            'rsi': currentValue, // Keep for backward compatibility
-            'indicator': finalIndicator.toJson(),
-            'price': currentPrice,
-            'change': change,
-            'rsiValues': chartValues,
-            'indicatorValues': chartValues, // New field for generic indicator
-          });
-        } catch (e) {
-          // Skip symbols with errors
-          debugPrint('Error loading data for ${item.symbol}: $e');
-          continue;
+      for (int i = 0; i < watchlistItems.length; i += batchSize) {
+        final batch = watchlistItems.skip(i).take(batchSize).toList();
+        final batchResults = await Future.wait(
+          batch.map((item) async {
+            try {
+              final candles = await yahooService.fetchCandles(
+                item.symbol,
+                finalTimeframe,
+                limit: _candlesLimitForTimeframe(finalTimeframe, finalPeriod),
+              );
+              if (candles.isEmpty) return null;
+              final candlesList = candles
+                  .map(
+                    (c) => {
+                      'open': c.open,
+                      'high': c.high,
+                      'low': c.low,
+                      'close': c.close,
+                      'timestamp': c.timestamp,
+                    },
+                  )
+                  .toList();
+              final indicatorResults = IndicatorService.calculateIndicatorHistory(
+                candlesList,
+                finalIndicator,
+                finalPeriod,
+                finalIndicatorParams,
+              );
+              if (indicatorResults.isEmpty) return null;
+              final currentValue = indicatorResults.last.value;
+              final currentPrice = candles.last.close;
+              final previousPrice = candles.length > 1
+                  ? candles[candles.length - 2].close
+                  : currentPrice;
+              final change = currentPrice - previousPrice;
+              final indicatorValues = indicatorResults.map((r) => r.value).toList();
+              final chartValues = indicatorValues.length > 20
+                  ? indicatorValues.sublist(indicatorValues.length - 20)
+                  : indicatorValues;
+              return <String, dynamic>{
+                'symbol': item.symbol,
+                'indicatorValue': currentValue,
+                'rsi': currentValue,
+                'indicator': finalIndicator.toJson(),
+                'price': currentPrice,
+                'change': change,
+                'rsiValues': chartValues,
+                'indicatorValues': chartValues,
+              };
+            } catch (e) {
+              debugPrint('Error loading data for ${item.symbol}: $e');
+              return null;
+            }
+          }),
+          eagerError: false,
+        );
+        for (final data in batchResults) {
+          if (data != null) widgetData.add(data);
         }
       }
 
