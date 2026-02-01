@@ -25,7 +25,9 @@ export interface AlertState {
     indicator_state?: string;       // JSON: state for incremental calculation
     last_bar_ts?: number;
     last_fire_ts?: number;
-    last_fire_bar_ts?: number;      // Bar timestamp when we last fired (one fire per candle when alert_on_close=false)
+    last_fire_bar_ts?: number;      // Bar timestamp when we last fired (zone modes; fallback for cross)
+    last_fire_bar_ts_lower?: number;  // Lower level last fired bar ts (cross mode, per-level)
+    last_fire_bar_ts_upper?: number;  // Upper level last fired bar ts (cross mode, per-level)
     last_side?: string;
     // Deprecated fields (kept for backward compatibility)
     last_rsi?: number;
@@ -344,32 +346,62 @@ export class IndicatorEngine {
                 const canFireCooldown = this.checkCooldown(rule, state);
                 const currentBarTs = candles[candles.length - 1].timestamp;
 
-                // When alert_on_close is false: only one fire per candle (reduce noise on forming candle)
+                // When alert_on_close is false: one fire per candle per LEVEL (lower/upper independent)
                 const useFormingCandle = !(rule as any).alert_on_close;
-                const sameCandleAlreadyFired = useFormingCandle &&
-                    state.last_fire_bar_ts !== undefined &&
-                    state.last_fire_bar_ts === currentBarTs;
-                const canFire = canFireCooldown && !sameCandleAlreadyFired;
+                const isCrossMode = rule.mode === 'cross';
 
-                if (sameCandleAlreadyFired) {
-                    console.log(`Rule ${rule.id}: same candle already fired (bar_ts=${currentBarTs}), skipping`);
+                // Filter triggers: each level can fire only once per candle (cross mode)
+                // Zone mode: one fire per candle for the whole rule (use last_fire_bar_ts)
+                let allowedTriggers: AlertTrigger[];
+                if (useFormingCandle && isCrossMode) {
+                    allowedTriggers = ruleTriggers.filter((t) => {
+                        const tsLower = state.last_fire_bar_ts_lower ?? state.last_fire_bar_ts;
+                        const tsUpper = state.last_fire_bar_ts_upper ?? state.last_fire_bar_ts;
+                        const blockedLower = tsLower !== undefined && tsLower === currentBarTs;
+                        const blockedUpper = tsUpper !== undefined && tsUpper === currentBarTs;
+                        if (t.type === 'cross_down' && blockedLower) {
+                            console.log(`Rule ${rule.id}: lower level already fired this candle (bar_ts=${currentBarTs}), skipping`);
+                            return false;
+                        }
+                        if (t.type === 'cross_up' && blockedUpper) {
+                            console.log(`Rule ${rule.id}: upper level already fired this candle (bar_ts=${currentBarTs}), skipping`);
+                            return false;
+                        }
+                        return true;
+                    });
+                } else if (useFormingCandle && !isCrossMode) {
+                    const sameCandleAlreadyFired =
+                        state.last_fire_bar_ts !== undefined && state.last_fire_bar_ts === currentBarTs;
+                    allowedTriggers = sameCandleAlreadyFired ? [] : ruleTriggers;
+                    if (sameCandleAlreadyFired) {
+                        console.log(`Rule ${rule.id}: same candle already fired (bar_ts=${currentBarTs}), skipping`);
+                    }
+                } else {
+                    allowedTriggers = ruleTriggers;
                 }
-                console.log(`Rule ${rule.id}: cooldown check -> ${canFireCooldown}, canFire -> ${canFire}`);
+
+                const canFire = canFireCooldown && allowedTriggers.length > 0;
+                console.log(`Rule ${rule.id}: cooldown check -> ${canFireCooldown}, allowed triggers -> ${allowedTriggers.length}, canFire -> ${canFire}`);
 
                 if (canFire) {
-                    // Save state with fire timestamp and bar timestamp
                     stateUpdates.last_fire_ts = Date.now();
-                    stateUpdates.last_fire_bar_ts = currentBarTs;
                     stateUpdates.last_side = this.getIndicatorZone(currentValue, rule.levels);
 
-                    // Save events
-                    for (const trigger of ruleTriggers) {
-                        await this.saveAlertEvent(rule.id, trigger);
+                    if (useFormingCandle && isCrossMode) {
+                        const hasLower = allowedTriggers.some((t) => t.type === 'cross_down');
+                        const hasUpper = allowedTriggers.some((t) => t.type === 'cross_up');
+                        if (hasLower) stateUpdates.last_fire_bar_ts_lower = currentBarTs;
+                        if (hasUpper) stateUpdates.last_fire_bar_ts_upper = currentBarTs;
+                        stateUpdates.last_fire_bar_ts = currentBarTs; // Keep for backward compat
+                    } else if (useFormingCandle) {
+                        stateUpdates.last_fire_bar_ts = currentBarTs;
                     }
 
-                    triggers.push(...ruleTriggers);
+                    for (const trigger of allowedTriggers) {
+                        await this.saveAlertEvent(rule.id, trigger);
+                    }
+                    triggers.push(...allowedTriggers);
                 }
-                // Even if cooldown/same-candle blocks firing, update indicator state to prevent duplicate detection
             }
 
             // Update state regardless of whether triggers fired
@@ -823,6 +855,8 @@ export class IndicatorEngine {
             last_bar_ts: undefined,
             last_fire_ts: undefined,
             last_fire_bar_ts: undefined,
+            last_fire_bar_ts_lower: undefined,
+            last_fire_bar_ts_upper: undefined,
             last_side: undefined,
         };
 

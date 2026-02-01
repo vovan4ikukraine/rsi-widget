@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS alert_state (
   last_indicator_value REAL,
   indicator_state TEXT,
   last_fire_bar_ts INTEGER,
+  last_fire_bar_ts_lower INTEGER,
+  last_fire_bar_ts_upper INTEGER,
   FOREIGN KEY (rule_id) REFERENCES alert_rule(id) ON DELETE CASCADE
 );
 
