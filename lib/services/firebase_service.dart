@@ -250,6 +250,17 @@ class FirebaseService {
         data['isWatchlistAlert'] == true ||
         data['source'] == 'watchlist';
 
+    // Format trigger time from timestamp (convert to local time)
+    String? triggerTime;
+    final timestampStr = data['timestamp'];
+    if (timestampStr != null) {
+      final timestamp = int.tryParse(timestampStr.toString());
+      if (timestamp != null) {
+        final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        triggerTime = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      }
+    }
+
     await NotificationService.showRsiAlert(
       symbol: data['symbol'] ?? 'N/A',
       rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
@@ -259,6 +270,7 @@ class FirebaseService {
       indicator: data['indicator'],
       timeframe: data['timeframe'],
       isWatchlistAlert: isWatchlistAlert,
+      triggerTime: triggerTime,
     );
   }
 
@@ -283,6 +295,17 @@ class FirebaseService {
         data['source'] == 'watchlist';
 
     try {
+      // Format trigger time from timestamp (convert to local time)
+      String? triggerTime;
+      final timestampStr = data['timestamp'];
+      if (timestampStr != null) {
+        final timestamp = int.tryParse(timestampStr.toString());
+        if (timestamp != null) {
+          final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+          triggerTime = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+        }
+      }
+
       NotificationService.showRsiAlert(
         symbol: data['symbol'] ?? 'N/A',
         rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
@@ -292,6 +315,7 @@ class FirebaseService {
         indicator: data['indicator'],
         timeframe: data['timeframe'],
         isWatchlistAlert: isWatchlistAlert,
+        triggerTime: triggerTime,
       );
       if (kDebugMode) {
         debugPrint('FCM foreground: showRsiAlert called for ${data['symbol']}');

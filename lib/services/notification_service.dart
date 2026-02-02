@@ -296,6 +296,7 @@ class NotificationService {
     String? indicator,
     String? timeframe,
     bool isWatchlistAlert = false,
+    String? triggerTime, // HH:mm format
   }) async {
     if (!_initialized) {
       await initialize();
@@ -369,6 +370,11 @@ class NotificationService {
             'type': typeLocalized,
           },
         );
+      }
+
+      // Add trigger time to body if available
+      if (triggerTime != null && triggerTime.isNotEmpty) {
+        body = '$body • $triggerTime';
       }
 
       final channelName = await AppLocalizations.tByLanguage(

@@ -284,6 +284,10 @@ export class FcmService {
         const ttlSeconds = 900; // 15 minutes
         const expirationTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
 
+        // Format trigger time as HH:mm (UTC)
+        const triggerDate = new Date(trigger.timestamp);
+        const triggerTime = `${String(triggerDate.getUTCHours()).padStart(2, '0')}:${String(triggerDate.getUTCMinutes()).padStart(2, '0')}`;
+
         const message: FcmV1Message = {
             message: {
                 token: token,
@@ -299,6 +303,7 @@ export class FcmService {
                     type: trigger.type,
                     message: trigger.message,
                     timestamp: trigger.timestamp.toString(),
+                    trigger_time: triggerTime, // HH:mm format
                     indicator: trigger.indicator || 'rsi',
                     timeframe: trigger.timeframe || '',
                     source: trigger.source || 'custom',
