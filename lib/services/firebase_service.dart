@@ -233,14 +233,7 @@ class FirebaseService {
   /// Handle messages in background
   static Future<void> _firebaseMessagingBackgroundHandler(
       RemoteMessage message) async {
-    // Filter out stale notifications (older than 10 minutes)
-    if (!_isNotificationFresh(message)) {
-      if (kDebugMode) {
-        debugPrint('Skipping stale background notification: ${message.messageId}');
-      }
-      return;
-    }
-
+    // Server-side TTL (15 min) prevents stale delivery, no client check needed
     final data = message.data;
     if (!data.containsKey('alert_id')) return;
 
@@ -275,14 +268,7 @@ class FirebaseService {
       debugPrint('FCM foreground: handling message ${message.messageId}');
     }
 
-    // Filter out stale notifications (older than 10 minutes)
-    if (!_isNotificationFresh(message)) {
-      if (kDebugMode) {
-        debugPrint('FCM foreground: skipping stale notification (age > 10 min)');
-      }
-      return;
-    }
-
+    // Server-side TTL (15 min) prevents stale delivery, no client check needed
     final data = message.data;
     if (!data.containsKey('alert_id')) {
       if (kDebugMode) {
@@ -320,14 +306,7 @@ class FirebaseService {
 
   /// Handle notification tap
   static void _handleNotificationTap(RemoteMessage message) {
-    // Filter out stale notifications (older than 10 minutes)
-    if (!_isNotificationFresh(message)) {
-      if (kDebugMode) {
-        debugPrint('Skipping stale notification tap: ${message.messageId}');
-      }
-      return;
-    }
-
+    // Server-side TTL (15 min) prevents stale delivery, no client check needed
     final data = message.data;
 
     if (data.containsKey('alert_id')) {
@@ -336,35 +315,6 @@ class FirebaseService {
     } else if (data.containsKey('symbol')) {
       // Navigate to symbol
       _navigateToSymbol(data['symbol']);
-    }
-  }
-
-  /// Check if notification is fresh (not older than maxAgeMinutes)
-  static bool _isNotificationFresh(RemoteMessage message, {int maxAgeMinutes = 10}) {
-    final data = message.data;
-    final timestampStr = data['timestamp'];
-    
-    if (timestampStr == null) {
-      // If no timestamp, assume it's fresh (backward compatibility)
-      return true;
-    }
-
-    try {
-      final timestamp = int.tryParse(timestampStr.toString());
-      if (timestamp == null) {
-        return true; // Assume fresh if can't parse
-      }
-
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final age = now - timestamp;
-      final maxAgeMs = maxAgeMinutes * 60 * 1000;
-
-      return age <= maxAgeMs;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error checking notification freshness: $e');
-      }
-      return true; // Assume fresh on error
     }
   }
 

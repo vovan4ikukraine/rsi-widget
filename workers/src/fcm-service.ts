@@ -11,11 +11,13 @@ export interface FcmV1Message {
         android?: {
             priority: 'normal' | 'high';
             collapse_key?: string;
+            ttl?: string; // Time to live (e.g., "900s" for 15 minutes)
         };
         apns?: {
             headers: {
                 'apns-priority': string;
                 'apns-collapse-id'?: string;
+                'apns-expiration'?: string; // Unix timestamp in seconds
             };
         };
     };
@@ -216,7 +218,7 @@ export class FcmService {
      * Send alert via FCM V1 API
      * Only sends if notification is recent (not older than maxAgeMinutes)
      */
-    async sendAlert(trigger: any, maxAgeMinutes: number = 10): Promise<void> {
+    async sendAlert(trigger: any, maxAgeMinutes: number = 15): Promise<void> {
         try {
             // Check if notification is still relevant (not too old)
             const now = Date.now();
@@ -277,6 +279,11 @@ export class FcmService {
             ? `Watchlist: ${trigger.symbol}${tf}`
             : `${trigger.symbol}${tf}`;
 
+        // TTL: 15 minutes (900 seconds) - FCM won't deliver messages older than this
+        // Prevents stale notifications when device comes online after being offline
+        const ttlSeconds = 900; // 15 minutes
+        const expirationTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
+
         const message: FcmV1Message = {
             message: {
                 token: token,
@@ -300,11 +307,13 @@ export class FcmService {
                 android: {
                     priority: 'high',
                     collapse_key: collapseKey,
+                    ttl: `${ttlSeconds}s`, // Android: duration string (e.g., "600s")
                 },
                 apns: {
                     headers: {
                         'apns-priority': '10',
                         'apns-collapse-id': collapseKey,
+                        'apns-expiration': expirationTimestamp.toString(), // iOS: Unix timestamp
                     },
                 },
             }
