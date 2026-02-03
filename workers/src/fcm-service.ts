@@ -270,9 +270,30 @@ export class FcmService {
         // This prevents accumulation of stale notifications when device is offline
         const collapseKey = `alert_${trigger.ruleId}`;
 
-        // Send only data payload so client builds notification in user's language and local timezone.
-        // TTL (15 min) prevents stale delivery when device comes online after being offline.
+        // Build notification payload on server with UTC time
         const isWatchlistAlert = trigger.source === 'watchlist';
+        
+        // Format time in UTC (HH:mm UTC)
+        const triggerDate = new Date(trigger.timestamp);
+        const hours = String(triggerDate.getUTCHours()).padStart(2, '0');
+        const minutes = String(triggerDate.getUTCMinutes()).padStart(2, '0');
+        const timeStr = `${hours}:${minutes} UTC`;
+
+        // Build title
+        let title: string;
+        if (isWatchlistAlert) {
+            title = `Watchlist: ${trigger.symbol}`;
+        } else {
+            title = trigger.symbol;
+        }
+        
+        // Add timeframe to title if available
+        if (trigger.timeframe) {
+            title = `${title} (${trigger.timeframe})`;
+        }
+
+        // Build body with message and UTC time
+        const body = `${trigger.message} • ${timeStr}`;
 
         // TTL: 15 minutes (900 seconds) - FCM won't deliver messages older than this
         const ttlSeconds = 900; // 15 minutes
@@ -281,6 +302,10 @@ export class FcmService {
         const message: FcmV1Message = {
             message: {
                 token: token,
+                notification: {
+                    title: title,
+                    body: body,
+                },
                 data: {
                     alert_id: trigger.ruleId.toString(),
                     symbol: trigger.symbol,
@@ -297,7 +322,7 @@ export class FcmService {
                 android: {
                     priority: 'high',
                     collapse_key: collapseKey,
-                    ttl: `${ttlSeconds}s`, // Android: duration string (e.g., "600s")
+                    ttl: `${ttlSeconds}s`, // Android: duration string (e.g., "900s")
                 },
                 apns: {
                     headers: {

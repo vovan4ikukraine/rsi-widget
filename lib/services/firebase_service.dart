@@ -233,41 +233,12 @@ class FirebaseService {
   /// Handle messages in background
   static Future<void> _firebaseMessagingBackgroundHandler(
       RemoteMessage message) async {
-    // Server-side TTL (15 min) prevents stale delivery, no client check needed
-    final data = message.data;
-    if (!data.containsKey('alert_id')) return;
-
+    // Server sends notification payload, system will display it automatically
+    // No client-side processing needed for background messages
     if (kDebugMode) {
-      debugPrint('Showing background notification: ${message.messageId}');
+      debugPrint('Background notification received: ${message.messageId}');
+      debugPrint('Notification: ${message.notification?.title} - ${message.notification?.body}');
     }
-
-    // Build notification in user's language and local timezone (data-only from server)
-    final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
-        data['isWatchlistAlert'] == true ||
-        data['source'] == 'watchlist';
-
-    // Format trigger time from timestamp (convert to local time)
-    String? triggerTime;
-    final timestampStr = data['timestamp'];
-    if (timestampStr != null) {
-      final timestamp = int.tryParse(timestampStr.toString());
-      if (timestamp != null) {
-        final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-        triggerTime = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-      }
-    }
-
-    await NotificationService.showRsiAlert(
-      symbol: data['symbol'] ?? 'N/A',
-      rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
-      level: double.tryParse(data['level'] ?? '0') ?? 0.0,
-      type: data['type'] ?? 'unknown',
-      message: data['message'] ?? '',
-      indicator: data['indicator'],
-      timeframe: data['timeframe'],
-      isWatchlistAlert: isWatchlistAlert,
-      triggerTime: triggerTime,
-    );
   }
 
   /// Handle messages in foreground
@@ -276,50 +247,21 @@ class FirebaseService {
       debugPrint('FCM foreground: handling message ${message.messageId}');
     }
 
-    // Server-side TTL (15 min) prevents stale delivery, no client check needed
-    final data = message.data;
-    if (!data.containsKey('alert_id')) {
-      if (kDebugMode) {
-        debugPrint('FCM foreground: no alert_id in data, skipping');
-      }
-      return;
-    }
-
-    // Foreground: build localized notification with local timezone
-    final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
-        data['isWatchlistAlert'] == true ||
-        data['source'] == 'watchlist';
-
-    try {
-      // Format trigger time from timestamp (convert to local time)
-      String? triggerTime;
-      final timestampStr = data['timestamp'];
-      if (timestampStr != null) {
-        final timestamp = int.tryParse(timestampStr.toString());
-        if (timestamp != null) {
-          final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-          triggerTime = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    // Server sends notification payload, show it as local notification
+    if (message.notification != null) {
+      try {
+        NotificationService.showSimpleNotification(
+          title: message.notification!.title ?? 'Alert',
+          body: message.notification!.body ?? '',
+        );
+        if (kDebugMode) {
+          debugPrint('FCM foreground: showing notification: ${message.notification!.title}');
         }
-      }
-
-      NotificationService.showRsiAlert(
-        symbol: data['symbol'] ?? 'N/A',
-        rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
-        level: double.tryParse(data['level'] ?? '0') ?? 0.0,
-        type: data['type'] ?? 'unknown',
-        message: data['message'] ?? '',
-        indicator: data['indicator'],
-        timeframe: data['timeframe'],
-        isWatchlistAlert: isWatchlistAlert,
-        triggerTime: triggerTime,
-      );
-      if (kDebugMode) {
-        debugPrint('FCM foreground: showRsiAlert called for ${data['symbol']}');
-      }
-    } catch (e, st) {
-      if (kDebugMode) {
-        debugPrint('FCM foreground: error showing notification: $e');
-        debugPrint('Stack: $st');
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('FCM foreground: error showing notification: $e');
+          debugPrint('Stack: $st');
+        }
       }
     }
   }

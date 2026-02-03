@@ -438,6 +438,65 @@ class NotificationService {
     }
   }
 
+  /// Show simple notification (for server-sent notifications)
+  static Future<void> showSimpleNotification({
+    required String title,
+    required String body,
+  }) async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final languageCode = prefs.getString('language') ?? 'en';
+      const soundEnabled = true;
+      const vibrationEnabled = true;
+
+      final channelName = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_rsi_alerts',
+      );
+      final channelDesc = await AppLocalizations.tByLanguage(
+        languageCode,
+        'notification_channel_rsi_alerts_desc',
+      );
+
+      final androidDetails = AndroidNotificationDetails(
+        'rsi_alerts',
+        channelName,
+        channelDescription: channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+        enableVibration: vibrationEnabled,
+        playSound: soundEnabled,
+        icon: '@mipmap/ic_launcher',
+      );
+
+      final iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: soundEnabled,
+        sound: 'default',
+      );
+
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch % 100000,
+        title,
+        body,
+        details,
+      );
+    } catch (e) {
+      debugPrint('Error showing simple notification: $e');
+    }
+  }
+
   /// Show general notification
   static Future<void> showNotification({
     required String title,
