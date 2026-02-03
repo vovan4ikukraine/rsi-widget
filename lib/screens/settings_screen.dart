@@ -25,8 +25,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _soundEnabled = true;
-  bool _vibrationEnabled = true;
   String _theme = 'dark';
   String _language = 'ru';
   IndicatorType _widgetIndicator = IndicatorType.rsi;
@@ -64,8 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Use 'widget_indicator' to match Android native code and widget_service.dart
     final savedWidgetIndicator = prefs.getString('widget_indicator');
     setState(() {
-      _soundEnabled = prefs.getBool('sound_enabled') ?? true;
-      _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _theme = prefs.getString('theme') ?? 'dark';
       _language = prefs.getString('language') ?? 'ru';
       _widgetIndicator = savedWidgetIndicator != null
@@ -76,8 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveSettings() async {
     final prefs = await PreferencesStorage.instance;
-    await prefs.setBool('sound_enabled', _soundEnabled);
-    await prefs.setBool('vibration_enabled', _vibrationEnabled);
     await prefs.setString('theme', _theme);
     await prefs.setString('language', _language);
     // Use 'widget_indicator' to match Android native code and widget_service.dart
@@ -98,36 +92,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
-          // Notifications
-          _buildSectionCard(
-            title: loc.t('settings_notifications_title'),
-            icon: Icons.notifications,
-            children: [
-              SwitchListTile(
-                title: Text(loc.t('settings_sound')),
-                subtitle: Text(loc.t('settings_sound_sub')),
-                value: _soundEnabled,
-                onChanged: (value) {
-                  setState(() {
-                    _soundEnabled = value;
-                  });
-                  _saveSettings();
-                },
-              ),
-              SwitchListTile(
-                title: Text(loc.t('settings_vibration')),
-                subtitle: Text(loc.t('settings_vibration_sub')),
-                value: _vibrationEnabled,
-                onChanged: (value) {
-                  setState(() {
-                    _vibrationEnabled = value;
-                  });
-                  _saveSettings();
-                },
-              ),
-            ],
-          ),
-
           // Appearance
           _buildSectionCard(
             title: loc.t('settings_appearance_title'),

@@ -306,8 +306,9 @@ class NotificationService {
       // Get language from SharedPreferences for localization (default en as fallback)
       final prefs = await SharedPreferences.getInstance();
       final languageCode = prefs.getString('language') ?? 'en';
-      final soundEnabled = prefs.getBool('sound_enabled') ?? true;
-      final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
+      // Sound and vibration are controlled by system settings, always use defaults
+      const soundEnabled = true;
+      const vibrationEnabled = true;
 
       // Build title based on alert type
       String title;
@@ -402,7 +403,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: soundEnabled,
-        sound: soundEnabled ? 'default' : null,
+        sound: 'default',
       );
 
       final details = NotificationDetails(
@@ -452,8 +453,9 @@ class NotificationService {
       // Get language from SharedPreferences for localization
       final prefs = await SharedPreferences.getInstance();
       final languageCode = prefs.getString('language') ?? 'en';
-      final soundEnabled = prefs.getBool('sound_enabled') ?? true;
-      final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
+      // Sound and vibration are controlled by system settings, always use defaults
+      const soundEnabled = true;
+      const vibrationEnabled = true;
 
       final channelName = await AppLocalizations.tByLanguage(
         languageCode,
@@ -479,7 +481,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: soundEnabled,
-        sound: soundEnabled ? 'default' : null,
+        sound: 'default',
       );
 
       final details = NotificationDetails(

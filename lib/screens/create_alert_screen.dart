@@ -58,7 +58,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
   bool _upperLevelEnabled = true;
   String _mode = 'cross';
   int _cooldownSec = 600;
-  bool _soundEnabled = true;
   bool _alertOnClose = false;
   bool _isLoading = false;
   bool _isSearchingSymbols = false;
@@ -132,7 +131,6 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
     _upperLevelEnabled = _levels.length > 1;
     _mode = alert.mode;
     _cooldownSec = alert.cooldownSec;
-    _soundEnabled = alert.soundEnabled;
     _alertOnClose = alert.alertOnClose;
 
     // Load indicator-specific parameters
@@ -867,18 +865,8 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
                 },
               ),
             ],
-          ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              title: Text(loc.t('create_alert_sound')),
-              subtitle: Text(loc.t('create_alert_sound_sub')),
-              value: _soundEnabled,
-              onChanged: (value) {
-                setState(() {
-                  _soundEnabled = value;
-                });
-              },
             ),
+            const SizedBox(height: 16),
             SwitchListTile(
               title: Text(loc.t('create_alert_on_close')),
               subtitle: Text(loc.t('create_alert_on_close_sub')),
@@ -1083,7 +1071,7 @@ class _CreateAlertScreenState extends State<CreateAlertScreen> {
       alert.mode = 'cross'; // Always use cross mode with one-way crossing
       alert.cooldownSec = _cooldownSec;
       alert.active = true;
-      alert.soundEnabled = _soundEnabled;
+      alert.soundEnabled = true; // Always enabled, controlled by system settings
       alert.alertOnClose = _alertOnClose;
       alert.description = _descriptionController.text.isEmpty
           ? null
