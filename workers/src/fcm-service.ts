@@ -270,31 +270,17 @@ export class FcmService {
         // This prevents accumulation of stale notifications when device is offline
         const collapseKey = `alert_${trigger.ruleId}`;
 
-        // Include notification payload for reliable delivery when app is background/terminated.
-        // Android deprioritizes data-only messages; notification ensures system shows it.
-        // Client still receives data for tap handling; skips local display when notification present.
+        // Send only data payload so client builds notification in user's language and local timezone.
+        // TTL (15 min) prevents stale delivery when device comes online after being offline.
         const isWatchlistAlert = trigger.source === 'watchlist';
-        const tf = trigger.timeframe ? ` (${trigger.timeframe})` : '';
-        const notifTitle = isWatchlistAlert
-            ? `Watchlist: ${trigger.symbol}${tf}`
-            : `${trigger.symbol}${tf}`;
 
         // TTL: 15 minutes (900 seconds) - FCM won't deliver messages older than this
-        // Prevents stale notifications when device comes online after being offline
         const ttlSeconds = 900; // 15 minutes
         const expirationTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
-
-        // Format trigger time as HH:mm (UTC)
-        const triggerDate = new Date(trigger.timestamp);
-        const triggerTime = `${String(triggerDate.getUTCHours()).padStart(2, '0')}:${String(triggerDate.getUTCMinutes()).padStart(2, '0')}`;
 
         const message: FcmV1Message = {
             message: {
                 token: token,
-                notification: {
-                    title: notifTitle,
-                    body: trigger.message || `${trigger.indicator || 'RSI'} alert`,
-                },
                 data: {
                     alert_id: trigger.ruleId.toString(),
                     symbol: trigger.symbol,
@@ -303,7 +289,6 @@ export class FcmService {
                     type: trigger.type,
                     message: trigger.message,
                     timestamp: trigger.timestamp.toString(),
-                    trigger_time: triggerTime, // HH:mm format
                     indicator: trigger.indicator || 'rsi',
                     timeframe: trigger.timeframe || '',
                     source: trigger.source || 'custom',

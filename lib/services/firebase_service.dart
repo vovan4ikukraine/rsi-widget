@@ -237,15 +237,11 @@ class FirebaseService {
     final data = message.data;
     if (!data.containsKey('alert_id')) return;
 
-    // When server sends notification payload, system already displays it (reliable on background).
-    // Skip our localized build to avoid duplicate.
-    if (message.notification != null) return;
-
     if (kDebugMode) {
       debugPrint('Showing background notification: ${message.messageId}');
     }
 
-    // Build notification in user's language (data-only path)
+    // Build notification in user's language and local timezone (data-only from server)
     final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
         data['isWatchlistAlert'] == true ||
         data['source'] == 'watchlist';
@@ -266,7 +262,7 @@ class FirebaseService {
       rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
       level: double.tryParse(data['level'] ?? '0') ?? 0.0,
       type: data['type'] ?? 'unknown',
-      message: message.notification?.body ?? data['message'] ?? '',
+      message: data['message'] ?? '',
       indicator: data['indicator'],
       timeframe: data['timeframe'],
       isWatchlistAlert: isWatchlistAlert,
@@ -289,7 +285,7 @@ class FirebaseService {
       return;
     }
 
-    // Foreground: always build our localized notification (ignore server notification if any)
+    // Foreground: build localized notification with local timezone
     final isWatchlistAlert = data['isWatchlistAlert'] == 'true' ||
         data['isWatchlistAlert'] == true ||
         data['source'] == 'watchlist';
@@ -311,7 +307,7 @@ class FirebaseService {
         rsi: double.tryParse(data['rsi'] ?? '0') ?? 0.0,
         level: double.tryParse(data['level'] ?? '0') ?? 0.0,
         type: data['type'] ?? 'unknown',
-        message: message.notification?.body ?? data['message'] ?? '',
+        message: data['message'] ?? '',
         indicator: data['indicator'],
         timeframe: data['timeframe'],
         isWatchlistAlert: isWatchlistAlert,
