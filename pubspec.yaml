@@ -33,14 +33,9 @@ dependencies:
   
   # Serialization
   freezed_annotation: ^2.4.1
-  json_annotation: ^4.9.0
   
   # Charts
   fl_chart: ^1.1.1
-  
-  # UI components
-  cupertino_icons: ^1.0.8
-  material_design_icons_flutter: ^7.0.7296
   
   # Utilities
   get_it: ^8.0.3
@@ -58,16 +53,11 @@ dev_dependencies:
   # Code generation
   build_runner: ^2.4.13
   freezed: ^2.4.7
-  json_serializable: ^6.8.0
   isar_generator: 3.1.0+1
   flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
-  
-  assets:
-    - assets/images/
-    - assets/icons/
 
 flutter_launcher_icons:
   android: true
