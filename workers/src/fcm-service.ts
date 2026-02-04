@@ -11,7 +11,7 @@ export interface FcmV1Message {
         android?: {
             priority: 'normal' | 'high';
             collapse_key?: string;
-            ttl?: string; // Time to live (e.g., "900s" for 15 minutes)
+            ttl?: string; // Time to live (e.g., "1800s" for 30 minutes)
         };
         apns?: {
             headers: {
@@ -218,7 +218,7 @@ export class FcmService {
      * Send alert via FCM V1 API
      * Only sends if notification is recent (not older than maxAgeMinutes)
      */
-    async sendAlert(trigger: any, maxAgeMinutes: number = 15): Promise<void> {
+    async sendAlert(trigger: any, maxAgeMinutes: number = 30): Promise<void> {
         try {
             // Check if notification is still relevant (not too old)
             const now = Date.now();
@@ -295,8 +295,8 @@ export class FcmService {
         // Build body with message and UTC time
         const body = `${trigger.message} • ${timeStr}`;
 
-        // TTL: 15 minutes (900 seconds) - FCM won't deliver messages older than this
-        const ttlSeconds = 900; // 15 minutes
+        // TTL: 30 minutes (1800 seconds) - FCM won't deliver messages older than this
+        const ttlSeconds = 1800; // 30 minutes
         const expirationTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
 
         const message: FcmV1Message = {
