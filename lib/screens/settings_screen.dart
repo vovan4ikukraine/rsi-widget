@@ -186,13 +186,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _launchSupportEmail(loc),
               ),
-              ListTile(
-                title: Text(loc.t('settings_telegram_group')),
-                subtitle: Text(loc.t('settings_telegram_group_sub')),
-                leading: const Icon(Icons.groups_outlined),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () => _launchTelegramGroup(loc),
-              ),
+              // TODO: Uncomment when Telegram group is ready
+              // ListTile(
+              //   title: Text(loc.t('settings_telegram_group')),
+              //   subtitle: Text(loc.t('settings_telegram_group_sub')),
+              //   leading: const Icon(Icons.groups_outlined),
+              //   trailing: const Icon(Icons.arrow_forward_ios),
+              //   onTap: () => _launchTelegramGroup(loc),
+              // ),
             ],
           ),
         ],
@@ -461,17 +462,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _launchTelegramGroup(AppLocalizations loc) async {
-    const url = 'https://t.me/+KdhTzvHT5YY3ZTFk';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        context.showError(loc.t('settings_launch_link_error'));
-      }
-    }
-  }
+  // TODO: Uncomment when Telegram group is ready
+  // Future<void> _launchTelegramGroup(AppLocalizations loc) async {
+  //   const url = 'https://t.me/+KdhTzvHT5YY3ZTFk';
+  //   final uri = Uri.parse(url);
+  //   if (await canLaunchUrl(uri)) {
+  //     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  //   } else {
+  //     if (mounted) {
+  //       context.showError(loc.t('settings_launch_link_error'));
+  //     }
+  //   }
+  // }
 
   Future<void> _signInFromSettings(AppLocalizations loc) async {
     try {
