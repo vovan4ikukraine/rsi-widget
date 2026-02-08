@@ -1493,7 +1493,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     if (!mounted) return;
     
     try {
-      // Validate the field
+      // Validate the field (validation is done in individual handlers now)
       final isValid = validator();
       if (!isValid) return;
 
@@ -1519,11 +1519,29 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _handleMassAlertPeriodFocusLoss() async {
+    final loc = context.loc;
+    // Validate and show error if invalid
+    if (_massAlertPeriodController.text.isEmpty) {
+      if (mounted) context.showError(loc.t('create_alert_field_required'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final period = int.tryParse(_massAlertPeriodController.text);
+    if (period == null) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    if (period < 1 || period > 100) {
+      if (mounted) context.showError(loc.t('create_alert_period_range'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    
     await _handleMassAlertFieldFocusLoss(
-      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      validator: () => true, // Already validated above
       valueApplier: () {
-        final period = int.tryParse(_massAlertPeriodController.text);
-        if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
+        if (period != _massAlertPeriod) {
           setState(() {
             _massAlertPeriod = period;
           });
@@ -1535,11 +1553,29 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _handleMassAlertStochDPeriodFocusLoss() async {
+    final loc = context.loc;
+    // Validate and show error if invalid
+    if (_massAlertStochDPeriodController.text.isEmpty) {
+      if (mounted) context.showError(loc.t('create_alert_field_required'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final dPeriod = int.tryParse(_massAlertStochDPeriodController.text);
+    if (dPeriod == null) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    if (dPeriod < 1 || dPeriod > 100) {
+      if (mounted) context.showError(loc.t('create_alert_period_range'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    
     await _handleMassAlertFieldFocusLoss(
-      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      validator: () => true, // Already validated above
       valueApplier: () {
-        final dPeriod = int.tryParse(_massAlertStochDPeriodController.text);
-        if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100 && dPeriod != _massAlertStochDPeriod) {
+        if (dPeriod != _massAlertStochDPeriod) {
           setState(() {
             _massAlertStochDPeriod = dPeriod;
           });
@@ -1551,18 +1587,34 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _handleMassAlertCooldownFocusLoss() async {
+    final loc = context.loc;
+    // Validate and show error if invalid
+    if (_massAlertCooldownController.text.isEmpty) {
+      if (mounted) context.showError(loc.t('create_alert_field_required'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final minutes = int.tryParse(_massAlertCooldownController.text);
+    if (minutes == null) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    if (minutes < 0 || minutes > 1440) {
+      if (mounted) context.showError(loc.t('create_alert_cooldown_range'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    
     await _handleMassAlertFieldFocusLoss(
-      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      validator: () => true, // Already validated above
       valueApplier: () {
-        final minutes = int.tryParse(_massAlertCooldownController.text);
-        if (minutes != null && minutes >= 0 && minutes <= 1440) {
-          final cooldownSec = minutes * 60;
-          if (cooldownSec != _massAlertCooldownSec) {
-            setState(() {
-              _massAlertCooldownSec = cooldownSec;
-            });
-            return true;
-          }
+        final cooldownSec = minutes * 60;
+        if (cooldownSec != _massAlertCooldownSec) {
+          setState(() {
+            _massAlertCooldownSec = cooldownSec;
+          });
+          return true;
         }
         return false;
       },
@@ -1570,18 +1622,50 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _handleMassAlertLowerLevelFocusLoss() async {
+    if (!_massAlertLowerLevelEnabled) return;
+    
+    final loc = context.loc;
+    final value = _massAlertLowerLevelController.text;
+    
+    // Validate and show error if invalid
+    if (value.isEmpty) {
+      if (mounted) context.showError(loc.t('create_alert_field_required'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final lower = int.tryParse(value)?.toDouble();
+    if (lower == null) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final indicatorType = _massAlertIndicator;
+    final isWilliams = indicatorType == IndicatorType.williams;
+    final minRange = isWilliams ? -99.0 : 1.0;
+    final maxRange = isWilliams ? -1.0 : 99.0;
+    if (lower < minRange || lower > maxRange) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_lower_level'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    // Check relation to upper level if both enabled
+    if (_massAlertUpperLevelEnabled && _massAlertUpperLevelController.text.isNotEmpty) {
+      final upper = int.tryParse(_massAlertUpperLevelController.text)?.toDouble();
+      if (upper != null && lower >= upper) {
+        if (mounted) context.showError(loc.t('create_alert_invalid_levels_relationship'));
+        _massAlertFormKey.currentState?.validate();
+        return;
+      }
+    }
+    
     await _handleMassAlertFieldFocusLoss(
-      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      validator: () => true, // Already validated above
       valueApplier: () {
-        final value = _massAlertLowerLevelController.text;
-        if (value.isNotEmpty) {
-          final lower = int.tryParse(value)?.toDouble();
-          if (lower != null && lower != _massAlertLowerLevel) {
-            setState(() {
-              _massAlertLowerLevel = lower;
-            });
-            return true;
-          }
+        if (lower != _massAlertLowerLevel) {
+          setState(() {
+            _massAlertLowerLevel = lower;
+          });
+          return true;
         }
         return false;
       },
@@ -1590,18 +1674,50 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   Future<void> _handleMassAlertUpperLevelFocusLoss() async {
+    if (!_massAlertUpperLevelEnabled) return;
+    
+    final loc = context.loc;
+    final value = _massAlertUpperLevelController.text;
+    
+    // Validate and show error if invalid
+    if (value.isEmpty) {
+      if (mounted) context.showError(loc.t('create_alert_field_required'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final upper = int.tryParse(value)?.toDouble();
+    if (upper == null) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    final indicatorType = _massAlertIndicator;
+    final isWilliams = indicatorType == IndicatorType.williams;
+    final minRange = isWilliams ? -99.0 : 1.0;
+    final maxRange = isWilliams ? -1.0 : 99.0;
+    if (upper < minRange || upper > maxRange) {
+      if (mounted) context.showError(loc.t('create_alert_invalid_upper_level'));
+      _massAlertFormKey.currentState?.validate();
+      return;
+    }
+    // Check relation to lower level if both enabled
+    if (_massAlertLowerLevelEnabled && _massAlertLowerLevelController.text.isNotEmpty) {
+      final lower = int.tryParse(_massAlertLowerLevelController.text)?.toDouble();
+      if (lower != null && upper <= lower) {
+        if (mounted) context.showError(loc.t('create_alert_invalid_levels_relationship'));
+        _massAlertFormKey.currentState?.validate();
+        return;
+      }
+    }
+    
     await _handleMassAlertFieldFocusLoss(
-      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      validator: () => true, // Already validated above
       valueApplier: () {
-        final value = _massAlertUpperLevelController.text;
-        if (value.isNotEmpty) {
-          final upper = int.tryParse(value)?.toDouble();
-          if (upper != null && upper != _massAlertUpperLevel) {
-            setState(() {
-              _massAlertUpperLevel = upper;
-            });
-            return true;
-          }
+        if (upper != _massAlertUpperLevel) {
+          setState(() {
+            _massAlertUpperLevel = upper;
+          });
+          return true;
         }
         return false;
       },
@@ -2330,14 +2446,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             ),
           Form(
             key: _massAlertFormKey,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
-                child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            child: GestureDetector(
+              onTap: () {
+                // Unfocus all fields when tapping outside
+                FocusScope.of(context).unfocus();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                 // Timeframe for alerts
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2738,6 +2859,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   },
                 ),
             ],
+                  ),
                 ),
               ),
             ),
