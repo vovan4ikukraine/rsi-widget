@@ -79,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _dataSource; // 'cache' or 'yahoo' - shows where data came from
   AppState? _appState; // App state for selected indicator
   int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
+  bool _hasInitialDataLoaded = false; // Flag to track if initial data has been loaded
 
   // Controllers for input fields
   final TextEditingController _indicatorPeriodController =
@@ -108,8 +109,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadSavedState();
     _loadPopularSymbols();
     unawaited(AlertSyncService.syncPendingAlerts());
-    // Always refresh data on app open to ensure freshness
-    unawaited(_refreshIndicatorData());
+    // Don't call _refreshIndicatorData() here - it uses context.loc which isn't available yet
+    // Will be called in didChangeDependencies() instead
 
     // Ask notification permission once, but only after first frame (prevents UI "freeze" on first install).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -130,6 +131,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
+    // Load initial data after dependencies are available (context.loc is now accessible)
+    if (!_hasInitialDataLoaded) {
+      _hasInitialDataLoaded = true;
+      // Always refresh data on app open to ensure freshness
+      unawaited(_refreshIndicatorData());
+    }
     _appState = AppStateScope.of(context);
     _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
