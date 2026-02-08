@@ -133,6 +133,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   final ScrollController _settingsScrollController = ScrollController();
   final GlobalKey _settingsKey = GlobalKey();
   final GlobalKey<FormState> _massAlertFormKey = GlobalKey<FormState>();
+  final ExpansionTileController _massAlertExpansionController = ExpansionTileController();
 
   @override
   void initState() {
@@ -2215,6 +2216,25 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Card(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       child: ExpansionTile(
+        controller: _massAlertExpansionController,
+        onExpansionChanged: (expanded) {
+          // If trying to collapse, validate form first
+          if (!expanded && _massAlertFormKey.currentState != null) {
+            // Trigger validation on all fields
+            final isValid = _massAlertFormKey.currentState!.validate();
+            if (!isValid) {
+              // Prevent collapse if form is invalid
+              // Force expansion back by calling expand() on the controller
+              // Use addPostFrameCallback to ensure it happens after the collapse attempt
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _massAlertExpansionController.expand();
+                }
+              });
+              return;
+            }
+          }
+        },
         title: Row(
           children: [
             const Icon(Icons.notifications_active, size: 20),
