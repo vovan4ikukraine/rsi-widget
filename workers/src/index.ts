@@ -1107,11 +1107,12 @@ const worker: ExportedHandler<Env> = {
                 Logger.info('RSI check completed', env);
             }
 
-            // Periodically cleanup inactive anonymous users (run once per hour, not every minute)
+            // Periodically cleanup inactive anonymous users and devices (run once per hour, not every minute)
             // Check if current minute is 0 (top of the hour)
             const currentMinute = new Date().getMinutes();
             if (currentMinute === 0) {
                 await cleanupInactiveAnonymousUsers(db, env);
+                await cleanupInactiveDevices(db, env);
             }
         } catch (error) {
             Logger.error('Error in scheduled RSI check:', error, env);
@@ -1120,23 +1121,130 @@ const worker: ExportedHandler<Env> = {
 };
 
 /**
- * Clean up alerts for inactive anonymous users (30 days without activity)
- * Only deletes alerts, not devices/sessions
+ * Clean up inactive devices for anonymous users (90 days without activity)
+ * Only deletes devices that are inactive, keeping at least one device per user if possible
+ */
+async function cleanupInactiveDevices(db: D1Database, env: Env): Promise<void> {
+    try {
+        const ninetyDaysAgo = Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60);
+        
+        // Find all anonymous users with inactive devices
+        const usersWithInactiveDevices = await db.prepare(`
+            SELECT DISTINCT user_id
+            FROM device
+            WHERE user_id LIKE 'user_%'
+            AND last_seen IS NOT NULL
+            AND last_seen < ?
+        `).bind(ninetyDaysAgo).all();
+
+        const users = usersWithInactiveDevices.results as Array<{ user_id: string }>;
+        
+        if (users.length === 0) {
+            Logger.debug('No inactive devices to clean up', env);
+            return;
+        }
+
+        Logger.info(`Found ${users.length} anonymous user(s) with inactive devices to check`, env);
+
+        let totalDevicesDeleted = 0;
+
+        for (const user of users) {
+            try {
+                // Check if user has any active devices (last_seen within 90 days or NULL)
+                const activeDevices = await db.prepare(`
+                    SELECT COUNT(*) as count 
+                    FROM device 
+                    WHERE user_id = ? 
+                    AND (last_seen IS NULL OR last_seen >= ?)
+                `).bind(user.user_id, ninetyDaysAgo).first<{ count: number }>();
+
+                const hasActiveDevices = activeDevices && activeDevices.count > 0;
+
+                if (hasActiveDevices) {
+                    // User has active devices, safe to delete all inactive ones
+                    const result = await db.prepare(`
+                        DELETE FROM device 
+                        WHERE user_id = ? 
+                        AND last_seen IS NOT NULL 
+                        AND last_seen < ?
+                    `).bind(user.user_id, ninetyDaysAgo).run();
+
+                    const deletedCount = result.meta?.changes || 0;
+                    totalDevicesDeleted += deletedCount;
+                    
+                    Logger.debug(`Deleted ${deletedCount} inactive device(s) for anonymous user: ${user.user_id} (has ${activeDevices.count} active device(s))`, env);
+                } else {
+                    // User has no active devices, keep the most recent inactive device
+                    // Find the most recent device for this user (even if inactive)
+                    const mostRecentDevice = await db.prepare(`
+                        SELECT id 
+                        FROM device 
+                        WHERE user_id = ? 
+                        ORDER BY COALESCE(last_seen, 0) DESC 
+                        LIMIT 1
+                    `).bind(user.user_id).first<{ id: string }>();
+
+                    if (mostRecentDevice) {
+                        // Delete all inactive devices except the most recent one
+                        const result = await db.prepare(`
+                            DELETE FROM device 
+                            WHERE user_id = ? 
+                            AND last_seen IS NOT NULL 
+                            AND last_seen < ?
+                            AND id != ?
+                        `).bind(user.user_id, ninetyDaysAgo, mostRecentDevice.id).run();
+
+                        const deletedCount = result.meta?.changes || 0;
+                        totalDevicesDeleted += deletedCount;
+                        
+                        if (deletedCount > 0) {
+                            Logger.debug(`Deleted ${deletedCount} inactive device(s) for anonymous user: ${user.user_id} (kept most recent device)`, env);
+                        }
+                    }
+                }
+            } catch (error) {
+                Logger.error(`Error cleaning up devices for user ${user.user_id}:`, error, env);
+            }
+        }
+
+        if (totalDevicesDeleted > 0) {
+            Logger.info(`Device cleanup complete: ${totalDevicesDeleted} device(s) deleted`, env);
+        } else {
+            Logger.debug('Device cleanup complete: no devices deleted (all users have active devices or only one device)', env);
+        }
+    } catch (error) {
+        Logger.error('Error in cleanupInactiveDevices:', error, env);
+    }
+}
+
+/**
+ * Clean up all data for anonymous users who have no devices (30 days)
+ * This handles the case where users uninstall the app without disabling alerts,
+ * preventing accumulation of "dead" alerts that load the cron job.
+ * Deletes: alerts, watchlist, preferences, watchlist_alert_settings
  */
 async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<void> {
     try {
         const thirtyDaysAgo = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60);
         
-        // Find anonymous users (user_id starts with 'user_') with no recent activity
-        // and who have no devices with recent last_seen
+        // Find anonymous users (user_id starts with 'user_') who have NO devices at all
+        // OR only have devices with last_seen older than 30 days
+        // These are users who likely uninstalled the app
         const inactiveAnonymousUsers = await db.prepare(`
-            SELECT DISTINCT ar.user_id 
-            FROM alert_rule ar
-            WHERE ar.user_id LIKE 'user_%'
-            AND NOT EXISTS (
+            SELECT DISTINCT user_id 
+            FROM (
+                SELECT user_id FROM alert_rule WHERE user_id LIKE 'user_%'
+                UNION
+                SELECT user_id FROM user_watchlist WHERE user_id LIKE 'user_%'
+                UNION
+                SELECT user_id FROM user_preferences WHERE user_id LIKE 'user_%'
+                UNION
+                SELECT user_id FROM watchlist_alert_settings WHERE user_id LIKE 'user_%'
+            )
+            WHERE NOT EXISTS (
                 SELECT 1 FROM device d 
-                WHERE d.user_id = ar.user_id 
-                AND (d.last_seen > ? OR d.last_seen IS NULL)
+                WHERE d.user_id = user_id 
+                AND (d.last_seen IS NULL OR d.last_seen >= ?)
             )
         `).bind(thirtyDaysAgo).all();
 
@@ -1147,9 +1255,13 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
             return;
         }
 
-        Logger.info(`Found ${users.length} inactive anonymous user(s) to clean up`, env);
+        Logger.info(`Found ${users.length} anonymous user(s) with no active devices to clean up`, env);
 
         let totalAlertsDeleted = 0;
+        let totalWatchlistDeleted = 0;
+        let totalPreferencesDeleted = 0;
+        let totalSettingsDeleted = 0;
+
         for (const user of users) {
             try {
                 // Delete alert events first (foreign key)
@@ -1165,20 +1277,36 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
                 `).bind(user.user_id).run();
 
                 // Delete alert rules
-                const result = await db.prepare(`
+                const alertsResult = await db.prepare(`
                     DELETE FROM alert_rule WHERE user_id = ?
                 `).bind(user.user_id).run();
+                totalAlertsDeleted += alertsResult.meta?.changes || 0;
 
-                const deletedCount = result.meta?.changes || 0;
-                totalAlertsDeleted += deletedCount;
+                // Delete watchlist
+                const watchlistResult = await db.prepare(`
+                    DELETE FROM user_watchlist WHERE user_id = ?
+                `).bind(user.user_id).run();
+                totalWatchlistDeleted += watchlistResult.meta?.changes || 0;
+
+                // Delete preferences
+                const preferencesResult = await db.prepare(`
+                    DELETE FROM user_preferences WHERE user_id = ?
+                `).bind(user.user_id).run();
+                totalPreferencesDeleted += preferencesResult.meta?.changes || 0;
+
+                // Delete watchlist alert settings
+                const settingsResult = await db.prepare(`
+                    DELETE FROM watchlist_alert_settings WHERE user_id = ?
+                `).bind(user.user_id).run();
+                totalSettingsDeleted += settingsResult.meta?.changes || 0;
                 
-                Logger.debug(`Cleaned up ${deletedCount} alerts for inactive anonymous user: ${user.user_id}`, env);
+                Logger.debug(`Cleaned up all data for anonymous user: ${user.user_id} (alerts: ${alertsResult.meta?.changes || 0}, watchlist: ${watchlistResult.meta?.changes || 0}, preferences: ${preferencesResult.meta?.changes || 0}, settings: ${settingsResult.meta?.changes || 0})`, env);
             } catch (error) {
                 Logger.error(`Error cleaning up user ${user.user_id}:`, error, env);
             }
         }
 
-        Logger.info(`Cleanup complete: ${totalAlertsDeleted} alerts deleted from ${users.length} inactive anonymous user(s)`, env);
+        Logger.info(`Cleanup complete: ${totalAlertsDeleted} alerts, ${totalWatchlistDeleted} watchlist items, ${totalPreferencesDeleted} preferences, ${totalSettingsDeleted} settings deleted from ${users.length} inactive anonymous user(s)`, env);
     } catch (error) {
         Logger.error('Error in cleanupInactiveAnonymousUsers:', error, env);
     }
