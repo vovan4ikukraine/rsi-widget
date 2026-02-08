@@ -122,6 +122,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   final TextEditingController _massAlertCooldownController =
       TextEditingController();
 
+  // Focus nodes for mass alert fields (to handle focus loss)
+  final FocusNode _massAlertPeriodFocusNode = FocusNode();
+  final FocusNode _massAlertStochDPeriodFocusNode = FocusNode();
+  final FocusNode _massAlertLowerLevelFocusNode = FocusNode();
+  final FocusNode _massAlertUpperLevelFocusNode = FocusNode();
+  final FocusNode _massAlertCooldownFocusNode = FocusNode();
+
   // Scroll controller for scrolling to focused fields
   final ScrollController _settingsScrollController = ScrollController();
   final GlobalKey _settingsKey = GlobalKey();
@@ -136,6 +143,33 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _widgetService = WidgetService(yahooService: _yahooService);
     _updateControllerHints();
     _loadSavedState();
+    
+    // Setup focus node listeners for validation on focus loss
+    _massAlertPeriodFocusNode.addListener(() {
+      if (!_massAlertPeriodFocusNode.hasFocus) {
+        _handleMassAlertPeriodFocusLoss();
+      }
+    });
+    _massAlertStochDPeriodFocusNode.addListener(() {
+      if (!_massAlertStochDPeriodFocusNode.hasFocus) {
+        _handleMassAlertStochDPeriodFocusLoss();
+      }
+    });
+    _massAlertCooldownFocusNode.addListener(() {
+      if (!_massAlertCooldownFocusNode.hasFocus) {
+        _handleMassAlertCooldownFocusLoss();
+      }
+    });
+    _massAlertLowerLevelFocusNode.addListener(() {
+      if (!_massAlertLowerLevelFocusNode.hasFocus) {
+        _handleMassAlertLowerLevelFocusLoss();
+      }
+    });
+    _massAlertUpperLevelFocusNode.addListener(() {
+      if (!_massAlertUpperLevelFocusNode.hasFocus) {
+        _handleMassAlertUpperLevelFocusLoss();
+      }
+    });
   }
 
   @override
@@ -894,6 +928,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     _massAlertLowerLevelController.dispose();
     _massAlertUpperLevelController.dispose();
     _massAlertCooldownController.dispose();
+    _massAlertPeriodFocusNode.dispose();
+    _massAlertStochDPeriodFocusNode.dispose();
+    _massAlertLowerLevelFocusNode.dispose();
+    _massAlertUpperLevelFocusNode.dispose();
+    _massAlertCooldownFocusNode.dispose();
     // Reset loading flag
     _isLoadingData = false;
     super.dispose();
@@ -1441,6 +1480,132 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _isActionInProgress = false;
       }
     }
+  }
+
+  /// Handle focus loss for mass alert fields
+  /// Validates the field and applies the value if valid
+  Future<void> _handleMassAlertFieldFocusLoss({
+    required bool Function() validator,
+    required bool Function() valueApplier,
+    bool revalidateOtherFields = false,
+  }) async {
+    if (!mounted) return;
+    
+    try {
+      // Validate the field
+      final isValid = validator();
+      if (!isValid) return;
+
+      // Apply the value
+      final shouldSave = valueApplier();
+      if (!shouldSave) return;
+
+      if (!mounted) return;
+      
+      // Re-validate related fields if needed (e.g., for level relationships)
+      if (revalidateOtherFields) {
+        _massAlertFormKey.currentState?.validate();
+      }
+
+      // Save state and update alerts
+      await _saveState();
+      if (_massAlertEnabled && mounted) {
+        await _updateMassAlerts();
+      }
+    } catch (error) {
+      debugPrint('Error handling mass alert field focus loss: $error');
+    }
+  }
+
+  Future<void> _handleMassAlertPeriodFocusLoss() async {
+    await _handleMassAlertFieldFocusLoss(
+      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      valueApplier: () {
+        final period = int.tryParse(_massAlertPeriodController.text);
+        if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
+          setState(() {
+            _massAlertPeriod = period;
+          });
+          return true;
+        }
+        return false;
+      },
+    );
+  }
+
+  Future<void> _handleMassAlertStochDPeriodFocusLoss() async {
+    await _handleMassAlertFieldFocusLoss(
+      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      valueApplier: () {
+        final dPeriod = int.tryParse(_massAlertStochDPeriodController.text);
+        if (dPeriod != null && dPeriod >= 1 && dPeriod <= 100 && dPeriod != _massAlertStochDPeriod) {
+          setState(() {
+            _massAlertStochDPeriod = dPeriod;
+          });
+          return true;
+        }
+        return false;
+      },
+    );
+  }
+
+  Future<void> _handleMassAlertCooldownFocusLoss() async {
+    await _handleMassAlertFieldFocusLoss(
+      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      valueApplier: () {
+        final minutes = int.tryParse(_massAlertCooldownController.text);
+        if (minutes != null && minutes >= 0 && minutes <= 1440) {
+          final cooldownSec = minutes * 60;
+          if (cooldownSec != _massAlertCooldownSec) {
+            setState(() {
+              _massAlertCooldownSec = cooldownSec;
+            });
+            return true;
+          }
+        }
+        return false;
+      },
+    );
+  }
+
+  Future<void> _handleMassAlertLowerLevelFocusLoss() async {
+    await _handleMassAlertFieldFocusLoss(
+      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      valueApplier: () {
+        final value = _massAlertLowerLevelController.text;
+        if (value.isNotEmpty) {
+          final lower = int.tryParse(value)?.toDouble();
+          if (lower != null && lower != _massAlertLowerLevel) {
+            setState(() {
+              _massAlertLowerLevel = lower;
+            });
+            return true;
+          }
+        }
+        return false;
+      },
+      revalidateOtherFields: true, // Re-validate upper level to check relationship
+    );
+  }
+
+  Future<void> _handleMassAlertUpperLevelFocusLoss() async {
+    await _handleMassAlertFieldFocusLoss(
+      validator: () => _massAlertFormKey.currentState?.validate() ?? false,
+      valueApplier: () {
+        final value = _massAlertUpperLevelController.text;
+        if (value.isNotEmpty) {
+          final upper = int.tryParse(value)?.toDouble();
+          if (upper != null && upper != _massAlertUpperLevel) {
+            setState(() {
+              _massAlertUpperLevel = upper;
+            });
+            return true;
+          }
+        }
+        return false;
+      },
+      revalidateOtherFields: true, // Re-validate lower level to check relationship
+    );
   }
 
   // Validate mass alert level based on indicator type
@@ -2224,8 +2389,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             const Spacer(),
-                            TextField(
+                            TextFormField(
                               controller: _massAlertPeriodController,
+                              focusNode: _massAlertPeriodFocusNode,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
@@ -2236,17 +2402,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               ),
                               keyboardType: TextInputType.number,
                               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                              onChanged: (value) {
-                                final period = int.tryParse(value);
-                                if (period != null && period >= 1 && period <= 100 && period != _massAlertPeriod) {
-                                  setState(() {
-                                    _massAlertPeriod = period;
-                                  });
-                                  _saveState();
-                                  if (_massAlertEnabled) {
-                                    unawaited(_updateMassAlerts());
-                                  }
+                              autovalidateMode: AutovalidateMode.disabled,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return ' '; // Empty string to show red border only
                                 }
+                                final period = int.tryParse(value);
+                                if (period == null) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                                if (period < 1 || period > 100) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                                return null;
+                              },
+                              onEditingComplete: () async {
+                                _massAlertPeriodFocusNode.unfocus();
                               },
                             ),
                           ],
@@ -2263,8 +2434,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 style: const TextStyle(fontSize: 12, color: Colors.grey),
                               ),
                               const Spacer(),
-                              TextField(
+                              TextFormField(
                                 controller: _massAlertStochDPeriodController,
+                                focusNode: _massAlertStochDPeriodFocusNode,
                                 decoration: const InputDecoration(
                                   border: OutlineInputBorder(),
                                   isDense: true,
@@ -2275,20 +2447,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 ),
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                                onChanged: (value) {
-                                  final dPeriod = int.tryParse(value);
-                                  if (dPeriod != null &&
-                                      dPeriod >= 1 &&
-                                      dPeriod <= 100 &&
-                                      dPeriod != _massAlertStochDPeriod) {
-                                    setState(() {
-                                      _massAlertStochDPeriod = dPeriod;
-                                    });
-                                    _saveState();
-                                    if (_massAlertEnabled) {
-                                      unawaited(_updateMassAlerts());
-                                    }
+                                autovalidateMode: AutovalidateMode.disabled,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return ' '; // Empty string to show red border only
                                   }
+                                  final dPeriod = int.tryParse(value);
+                                  if (dPeriod == null) {
+                                    return ' '; // Empty string to show red border only
+                                  }
+                                  if (dPeriod < 1 || dPeriod > 100) {
+                                    return ' '; // Empty string to show red border only
+                                  }
+                                  return null;
+                                },
+                                onEditingComplete: () {
+                                  _massAlertStochDPeriodFocusNode.unfocus();
                                 },
                               ),
                             ],
@@ -2306,8 +2480,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             const Spacer(),
-                            TextField(
+                            TextFormField(
                               controller: _massAlertCooldownController,
+                              focusNode: _massAlertCooldownFocusNode,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 isDense: true,
@@ -2318,22 +2493,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               ),
                               keyboardType: TextInputType.number,
                               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                              onChanged: (value) {
-                                final minutes = int.tryParse(value);
-                                if (minutes != null &&
-                                    minutes >= 0 &&
-                                    minutes <= 1440) {
-                                  final cooldownSec = minutes * 60;
-                                  if (cooldownSec != _massAlertCooldownSec) {
-                                    setState(() {
-                                      _massAlertCooldownSec = cooldownSec;
-                                    });
-                                    _saveState();
-                                    if (_massAlertEnabled) {
-                                      unawaited(_updateMassAlerts());
-                                    }
-                                  }
+                              autovalidateMode: AutovalidateMode.disabled,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return ' '; // Empty string to show red border only
                                 }
+                                final minutes = int.tryParse(value);
+                                if (minutes == null) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                                if (minutes < 0 || minutes > 1440) {
+                                  return ' '; // Empty string to show red border only
+                                }
+                                return null;
+                              },
+                              onEditingComplete: () {
+                                _massAlertCooldownFocusNode.unfocus();
                               },
                             ),
                           ],
@@ -2392,6 +2567,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           const Spacer(),
                           TextFormField(
                             controller: _massAlertLowerLevelController,
+                            focusNode: _massAlertLowerLevelFocusNode,
                             enabled: _massAlertLowerLevelEnabled,
                             decoration: const InputDecoration(
                               border: OutlineInputBorder(),
@@ -2405,6 +2581,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             inputFormatters: _massAlertIndicator == IndicatorType.williams
                                 ? [WprLevelInputFormatter()]
                                 : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                            autovalidateMode: AutovalidateMode.disabled,
                             validator: (value) {
                               if (!_massAlertLowerLevelEnabled) return null;
                               if (value == null || value.isEmpty) {
@@ -2430,18 +2607,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               }
                               return null;
                             },
-                            onChanged: (value) {
-                              if (value.isEmpty) return;
-                              final lower = int.tryParse(value)?.toDouble();
-                              if (lower != null && lower != _massAlertLowerLevel) {
-                                setState(() {
-                                  _massAlertLowerLevel = lower;
-                                });
-                                _saveState();
-                                if (_massAlertEnabled) {
-                                  unawaited(_updateMassAlerts());
-                                }
-                              }
+                            onEditingComplete: () {
+                              _massAlertLowerLevelFocusNode.unfocus();
                             },
                           ),
                         ],
@@ -2485,6 +2652,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           const Spacer(),
                           TextFormField(
                             controller: _massAlertUpperLevelController,
+                            focusNode: _massAlertUpperLevelFocusNode,
                             enabled: _massAlertUpperLevelEnabled,
                             decoration: const InputDecoration(
                               border: OutlineInputBorder(),
@@ -2498,6 +2666,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             inputFormatters: _massAlertIndicator == IndicatorType.williams
                                 ? [WprLevelInputFormatter()]
                                 : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
+                            autovalidateMode: AutovalidateMode.disabled,
                             validator: (value) {
                               if (!_massAlertUpperLevelEnabled) return null;
                               if (value == null || value.isEmpty) {
@@ -2523,18 +2692,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                               }
                               return null;
                             },
-                            onChanged: (value) {
-                              if (value.isEmpty) return;
-                              final upper = int.tryParse(value)?.toDouble();
-                              if (upper != null && upper != _massAlertUpperLevel) {
-                                setState(() {
-                                  _massAlertUpperLevel = upper;
-                                });
-                                _saveState();
-                                if (_massAlertEnabled) {
-                                  unawaited(_updateMassAlerts());
-                                }
-                              }
+                            onEditingComplete: () {
+                              _massAlertUpperLevelFocusNode.unfocus();
                             },
                           ),
                         ],
