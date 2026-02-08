@@ -928,6 +928,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           _watchlistItems = [];
           _indicatorDataMap.clear();
         });
+        // If watchlist is empty, disable watchlist alerts
+        if (_massAlertEnabled) {
+          setState(() {
+            _massAlertEnabled = false;
+          });
+          await _saveState();
+          if (AuthService.isSignedIn) {
+            unawaited(_toggleWatchlistAlertViaServer(false));
+          } else {
+            unawaited(_deleteMassAlerts());
+          }
+        }
         return;
       }
 
@@ -948,6 +960,19 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         debugPrint(
             'WatchlistScreen: _watchlistItems contains: ${_watchlistItems.map((e) => e.symbol).toList()}');
       });
+
+      // If watchlist becomes empty after loading, disable watchlist alerts
+      if (_watchlistItems.isEmpty && _massAlertEnabled) {
+        setState(() {
+          _massAlertEnabled = false;
+        });
+        await _saveState();
+        if (AuthService.isSignedIn) {
+          unawaited(_toggleWatchlistAlertViaServer(false));
+        } else {
+          unawaited(_deleteMassAlerts());
+        }
+      }
 
       _applySortOrder(
         _currentSortOrder,
@@ -1181,6 +1206,22 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _indicatorDataMap.remove(item.symbol);
       });
     }
+    
+    // If watchlist becomes empty, disable watchlist alerts
+    if (_watchlistItems.isEmpty && _massAlertEnabled) {
+      if (mounted) {
+        setState(() {
+          _massAlertEnabled = false;
+        });
+      }
+      await _saveState();
+      if (AuthService.isSignedIn) {
+        unawaited(_toggleWatchlistAlertViaServer(false));
+      } else {
+        unawaited(_deleteMassAlerts());
+      }
+    }
+    
     // Sync watchlist: to server if authenticated, to cache if anonymous
     if (AuthService.isSignedIn) {
       unawaited(DataSyncService.syncWatchlist());
@@ -2033,10 +2074,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             : null,
         leading: Switch(
           value: _massAlertEnabled,
-          onChanged: _isMassAlertOperationInProgress
+          onChanged: (_isMassAlertOperationInProgress || _watchlistItems.isEmpty)
               ? null
               : (value) async {
                   if (_isMassAlertOperationInProgress) return;
+                  // Check if watchlist is empty when trying to enable
+                  if (value && _watchlistItems.isEmpty) {
+                    if (mounted) {
+                      context.showInfo(loc.t('watchlist_alert_empty_watchlist'));
+                    }
+                    return;
+                  }
                   // If trying to enable, validate form first
                   if (value && _massAlertFormKey.currentState != null) {
                     if (!_massAlertFormKey.currentState!.validate()) {
