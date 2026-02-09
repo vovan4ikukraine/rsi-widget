@@ -630,11 +630,11 @@ app.post('/alerts/create', async (c) => {
             return c.json({ error: 'Missing required fields' }, 400);
         }
 
-        // Validate symbol (max 20 chars, alphanumeric and common symbols only)
+        // Validate symbol (max 20 chars, alphanumeric and common symbols including ^ for indices)
         if (typeof symbol !== 'string' || symbol.length > 20 || symbol.length < 1) {
             return c.json({ error: 'Invalid symbol: must be 1-20 characters' }, 400);
         }
-        if (!/^[A-Z0-9.\-=]+$/i.test(symbol)) {
+        if (!/^[A-Z0-9.\-=\^]+$/i.test(symbol)) {
             return c.json({ error: 'Invalid symbol: contains invalid characters' }, 400);
         }
 
@@ -806,7 +806,7 @@ app.put('/alerts/:ruleId', async (c) => {
             if (typeof updates.symbol !== 'string' || updates.symbol.length > 20 || updates.symbol.length < 1) {
                 return c.json({ error: 'Invalid symbol: must be 1-20 characters' }, 400);
             }
-            if (!/^[A-Z0-9.\-=]+$/i.test(updates.symbol)) {
+            if (!/^[A-Z0-9.\-=\^]+$/i.test(updates.symbol)) {
                 return c.json({ error: 'Invalid symbol: contains invalid characters' }, 400);
             }
             updates.symbol = updates.symbol.toUpperCase();
@@ -1804,7 +1804,7 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
             if (enabled && symbols.length > 0) {
                 const levelsJson = JSON.stringify(validLevels);
                 for (const symbol of symbols) {
-                    if (!/^[A-Z0-9.\-=]+$/i.test(symbol) || symbol.length > 20) continue;
+                    if (!/^[A-Z0-9.\-=\^]+$/i.test(symbol) || symbol.length > 20) continue;
                     await db.prepare(`
                         INSERT INTO alert_rule (
                             user_id, symbol, timeframe, indicator, period, indicator_params, rsi_period, levels, mode,
