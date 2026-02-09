@@ -1466,7 +1466,8 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
                     return c.json({ error: 'Invalid symbol: must be string of max 20 characters' }, 400);
                 }
                 const symbolUpper = selected_symbol.trim().toUpperCase();
-                if (!/^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
+                // Allow ^ for index symbols (e.g., ^GDAXI)
+                if (!/^[A-Z0-9.\-=\^]+$/i.test(symbolUpper)) {
                     return c.json({ error: 'Invalid symbol: contains invalid characters' }, 400);
                 }
                 validatedSymbol = symbolUpper;
