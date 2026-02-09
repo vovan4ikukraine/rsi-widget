@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS candles_cache (
   UNIQUE(symbol, timeframe)
 );
 
+CREATE TABLE IF NOT EXISTS symbol_info_cache (
+  symbol TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT,
+  currency TEXT,
+  exchange TEXT,
+  provider TEXT DEFAULT 'yahoo',
+  cached_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_request (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   endpoint TEXT NOT NULL,
@@ -141,6 +151,7 @@ CREATE TABLE IF NOT EXISTS watchlist_alert_settings (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_candles_cache_symbol_timeframe ON candles_cache(symbol, timeframe);
 CREATE INDEX IF NOT EXISTS idx_candles_cache_cached_at ON candles_cache(cached_at);
+CREATE INDEX IF NOT EXISTS idx_symbol_info_cache_cached_at ON symbol_info_cache(cached_at);
 CREATE INDEX IF NOT EXISTS idx_api_request_timestamp ON api_request(timestamp);
 CREATE INDEX IF NOT EXISTS idx_api_request_endpoint ON api_request(endpoint);
 CREATE INDEX IF NOT EXISTS idx_error_log_type ON error_log(type);

@@ -15,6 +15,7 @@ import '../utils/preferences_storage.dart';
 import 'user_service.dart';
 import 'auth_service.dart';
 import 'alert_sync_service.dart';
+import 'yahoo_proto.dart';
 
 /// Service for syncing user data (watchlist, chart preferences) with server
 class DataSyncService {
@@ -402,13 +403,34 @@ class DataSyncService {
 
       // Parse server symbols (use Set to avoid duplicates)
       for (final symbolData in symbols) {
-        final symbol =
-            symbolData is String ? symbolData : symbolData['symbol'] as String?;
+        String? symbol;
+        String? name;
+        
+        if (symbolData is String) {
+          symbol = symbolData;
+        } else if (symbolData is Map) {
+          symbol = symbolData['symbol'] as String?;
+          name = symbolData['name'] as String?;
+        }
+        
         if (symbol == null || symbol.isEmpty) continue;
 
         // Only add if not already in set (prevent duplicates)
         if (!serverSymbols.contains(symbol)) {
           serverSymbols.add(symbol);
+          
+          // Cache symbol name from server response in DataCache
+          if (name != null && name != symbol) {
+            // Import SymbolInfo and DataCache to cache the name
+            // This will be used by watchlist screen to avoid API calls
+            try {
+              // We'll cache it in watchlist screen's _loadSymbolNames method
+              // For now, just store it in serverSymbolsWithData
+            } catch (e) {
+              // Ignore cache errors
+            }
+          }
+          
           if (symbolData is Map) {
             serverSymbolsWithData[symbol] =
                 Map<String, dynamic>.from(symbolData);
@@ -429,6 +451,27 @@ class DataSyncService {
           item.createdAt = DateTime.now().millisecondsSinceEpoch;
         }
         items.add(item);
+        
+        // Cache symbol name from server response if available
+        if (serverSymbolsWithData.containsKey(symbol)) {
+          final name = serverSymbolsWithData[symbol]!['name'] as String?;
+          if (name != null && name != symbol) {
+            // Cache in DataCache for use by watchlist screen
+            // This avoids API calls since server already returned the name
+            try {
+              final symbolInfo = SymbolInfo(
+                symbol: symbol,
+                name: name,
+                type: serverSymbolsWithData[symbol]!['type'] as String? ?? 'unknown',
+                currency: serverSymbolsWithData[symbol]!['currency'] as String? ?? 'USD',
+                exchange: serverSymbolsWithData[symbol]!['exchange'] as String? ?? 'Unknown',
+              );
+              DataCache.setInfo(symbol, symbolInfo);
+            } catch (e) {
+              // Ignore cache errors
+            }
+          }
+        }
       }
       final repo = sl<IWatchlistRepository>();
       await repo.replaceAll(items);

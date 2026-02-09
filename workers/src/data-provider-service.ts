@@ -131,9 +131,15 @@ export class DataProviderService {
     }
 
     /**
-     * Get symbol info with automatic provider selection
+     * Get symbol info with automatic provider selection and caching
      */
     async getSymbolInfo(symbol: string): Promise<{ info: SymbolInfo; provider: DataProvider }> {
+        // Check cache first
+        const cached = await this.getCachedSymbolInfo(symbol);
+        if (cached) {
+            return { info: cached.info, provider: cached.provider };
+        }
+
         const isCrypto = SymbolMapper.isCrypto(symbol);
 
         // TEMPORARILY DISABLED: Binance until proxy is set up
@@ -144,6 +150,8 @@ export class DataProviderService {
                     const info = await this.binanceService.getSymbolInfo(binanceSymbol);
                     // Convert symbol back to Yahoo format for consistency
                     info.symbol = symbol;
+                    // Cache it
+                    await this.setCachedSymbolInfo(symbol, info, 'binance');
                     return { info, provider: 'binance' };
                 } catch (error) {
                     console.warn(`DataProvider: Binance info failed for ${symbol}, falling back to Yahoo:`, error);
@@ -153,7 +161,92 @@ export class DataProviderService {
 
         // Use Yahoo
         const info = await this.yahooService.getSymbolInfo(symbol);
+        // Cache it
+        await this.setCachedSymbolInfo(symbol, info, 'yahoo');
         return { info, provider: 'yahoo' };
+    }
+
+    /**
+     * Get cached symbol info
+     */
+    async getCachedSymbolInfo(symbol: string): Promise<{ info: SymbolInfo; provider: DataProvider } | null> {
+        try {
+            const now = Date.now();
+            const maxCacheAge = 7 * 24 * 60 * 60 * 1000; // 7 days (symbol names don't change often)
+
+            const result = await this.db.prepare(`
+                SELECT name, type, currency, exchange, provider, cached_at
+                FROM symbol_info_cache 
+                WHERE symbol = ?
+            `).bind(symbol).first<{ 
+                name: string;
+                type: string | null;
+                currency: string | null;
+                exchange: string | null;
+                provider: string | null;
+                cached_at: number;
+            }>();
+
+            if (result && (now - result.cached_at) < maxCacheAge) {
+                const info: SymbolInfo = {
+                    symbol: symbol,
+                    name: result.name,
+                    type: result.type || 'unknown',
+                    currency: result.currency || 'USD',
+                    exchange: result.exchange || 'Unknown',
+                };
+                const provider = (result.provider || 'yahoo') as DataProvider;
+                return { info, provider };
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error getting cached symbol info from D1:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Save symbol info to cache
+     */
+    async setCachedSymbolInfo(
+        symbol: string,
+        info: SymbolInfo,
+        provider: DataProvider
+    ): Promise<void> {
+        try {
+            const cachedAt = Date.now();
+
+            await this.db.prepare(`
+                INSERT INTO symbol_info_cache (symbol, name, type, currency, exchange, provider, cached_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) 
+                DO UPDATE SET name = ?, type = ?, currency = ?, exchange = ?, provider = ?, cached_at = ?
+            `).bind(
+                symbol,
+                info.name,
+                info.type,
+                info.currency,
+                info.exchange,
+                provider,
+                cachedAt,
+                info.name,
+                info.type,
+                info.currency,
+                info.exchange,
+                provider,
+                cachedAt
+            ).run();
+
+            // Clean up old cache entries (older than 30 days)
+            const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+            await this.db.prepare(`
+                DELETE FROM symbol_info_cache 
+                WHERE cached_at < ?
+            `).bind(thirtyDaysAgo).run();
+        } catch (error) {
+            console.error('Error caching symbol info in D1:', error);
+        }
     }
 
     /**

@@ -363,6 +363,26 @@ async function ensureTables(db: D1Database, env?: any) {
     } catch (e: any) {
         // Indexes may already exist, ignore
     }
+
+    // Create symbol info cache table (for caching symbol names and metadata)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS symbol_info_cache (
+        symbol TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT,
+        currency TEXT,
+        exchange TEXT,
+        provider TEXT DEFAULT 'yahoo',
+        cached_at INTEGER NOT NULL
+      )
+    `).run();
+
+    // Create index for symbol info cache
+    try {
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_symbol_info_cache_cached_at ON symbol_info_cache(cached_at)`).run();
+    } catch (e: any) {
+        // Index may already exist, ignore
+    }
 }
 
 /**
@@ -1338,8 +1358,8 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
                     continue; // Skip invalid entries
                 }
                 const symbolUpper = symbol.trim().toUpperCase();
-                // Validate symbol (max 20 chars, alphanumeric and common symbols only)
-                if (symbolUpper.length > 0 && symbolUpper.length <= 20 && /^[A-Z0-9.\-=]+$/i.test(symbolUpper)) {
+                // Validate symbol (max 20 chars, alphanumeric and common symbols including ^ for indices)
+                if (symbolUpper.length > 0 && symbolUpper.length <= 20 && /^[A-Z0-9.\-=\^]+$/i.test(symbolUpper)) {
                     // Deduplicate (UNIQUE constraint will also prevent duplicates)
                     if (!validSymbols.includes(symbolUpper)) {
                         validSymbols.push(symbolUpper);
@@ -1398,7 +1418,32 @@ async function cleanupInactiveAnonymousUsers(db: D1Database, env: Env): Promise<
             // Update device activity (user action)
             await updateDeviceActivity(db, userId);
 
-            return c.json({ symbols: result.results.map((r: any) => r.symbol) });
+            // Load symbol names from cache or fetch if missing
+            const yahooService = new YahooService(c.env?.YAHOO_ENDPOINT as string || '');
+            const binanceService = new BinanceService();
+            const dataProviderService = new DataProviderService(yahooService, binanceService, db);
+
+            const symbolsWithNames = await Promise.all(
+                result.results.map(async (r: any) => {
+                    const symbol = r.symbol;
+                    try {
+                        const { info } = await dataProviderService.getSymbolInfo(symbol);
+                        return {
+                            symbol: symbol,
+                            name: info.name,
+                        };
+                    } catch (error) {
+                        // If fetching fails, return symbol without name
+                        Logger.warn(`Failed to get symbol info for ${symbol}:`, error, c.env);
+                        return {
+                            symbol: symbol,
+                            name: symbol, // Fallback to symbol itself
+                        };
+                    }
+                })
+            );
+
+            return c.json({ symbols: symbolsWithNames });
         } catch (error) {
             Logger.error('Error fetching watchlist:', error, c.env);
             return c.json({ error: 'Failed to fetch watchlist' }, 500);

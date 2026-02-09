@@ -5,6 +5,7 @@ import 'package:isar/isar.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
+import '../services/yahoo_proto.dart' show DataCache;
 import '../services/indicator_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
@@ -26,6 +27,7 @@ import '../repositories/i_alert_repository.dart';
 import '../repositories/i_watchlist_repository.dart';
 import '../utils/preferences_storage.dart';
 import '../services/widget_service.dart';
+import '../data/popular_symbols.dart';
 
 class WatchlistScreen extends StatefulWidget {
   final Isar isar;
@@ -50,6 +52,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   List<WatchlistItem> _watchlistItems = [];
   final Map<String, _SymbolIndicatorData> _indicatorDataMap = {};
+  final Map<String, String> _symbolNames = {}; // Cache for symbol names
   bool _isLoading = false;
   bool _isLoadingData = false; // Flag to prevent duplicate data loading calls
   bool _settingsExpanded = false;
@@ -993,6 +996,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       debugPrint(
           'WatchlistScreen: After sorting: ${sortedItems.map((e) => e.symbol).toList()}');
 
+      // Load symbol names for all items
+      await _loadSymbolNames(sortedItems.map((item) => item.symbol).toList());
+
       setState(() {
         _watchlistItems = sortedItems;
         debugPrint(
@@ -1244,6 +1250,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       setState(() {
         _watchlistItems.remove(item);
         _indicatorDataMap.remove(item.symbol);
+        _symbolNames.remove(item.symbol); // Remove from cache
       });
     }
     
@@ -2210,6 +2217,101 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     );
   }
 
+  /// Load symbol names from server response, cache, or Yahoo API
+  /// Server response (from fetchWatchlist) already includes names, so we use those first
+  Future<void> _loadSymbolNames(List<String> symbols) async {
+    final symbolsToLoad = symbols.where((s) => !_symbolNames.containsKey(s)).toList();
+    if (symbolsToLoad.isEmpty) return;
+
+    // Load in batches to avoid rate limiting
+    const batchSize = 10;
+    for (int i = 0; i < symbolsToLoad.length; i += batchSize) {
+      final batch = symbolsToLoad.skip(i).take(batchSize).toList();
+      await Future.wait(
+        batch.map((symbol) async {
+          try {
+            // First try popular symbols (fast, no API call)
+            final popularMatch = popularSymbols.firstWhere(
+              (s) => s.symbol.toUpperCase() == symbol.toUpperCase(),
+              orElse: () => SymbolInfo(
+                symbol: symbol,
+                name: symbol,
+                type: 'unknown',
+                currency: 'USD',
+                exchange: 'Unknown',
+              ),
+            );
+            
+            if (popularMatch.name != symbol) {
+              // Found in popular symbols, use it and cache
+              _symbolNames[symbol] = popularMatch.name;
+              DataCache.setInfo(symbol, popularMatch);
+              return;
+            }
+
+            // Check client-side cache (DataCache) - caches for 2 minutes
+            // This cache is populated by server response (fetchWatchlist returns names)
+            final cachedInfo = DataCache.getInfo(symbol);
+            if (cachedInfo != null) {
+              _symbolNames[symbol] = cachedInfo.name;
+              return;
+            }
+
+            // Not in cache, fetch from API (server will cache it)
+            // Server-side cache (7 days) will handle most requests
+            final symbolInfo = await _yahooService.fetchSymbolInfo(symbol);
+            if (mounted) {
+              _symbolNames[symbol] = symbolInfo.name;
+              // Cache it for future use (2 minutes client-side)
+              DataCache.setInfo(symbol, symbolInfo);
+            }
+          } catch (e) {
+            debugPrint('Error loading symbol name for $symbol: $e');
+            // Fallback to symbol itself if API call fails
+            if (mounted) {
+              _symbolNames[symbol] = symbol;
+            }
+          }
+        }),
+        eagerError: false, // Continue even if some fail
+      );
+      
+      // Small delay between batches
+      if (i + batchSize < symbolsToLoad.length) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
+
+    // Update UI if mounted
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Get symbol name from cache, popular symbols, or return symbol itself
+  String _getSymbolName(String symbol) {
+    // First check cache
+    if (_symbolNames.containsKey(symbol)) {
+      return _symbolNames[symbol]!;
+    }
+    
+    // Then check popular symbols
+    final popularMatch = popularSymbols.firstWhere(
+      (s) => s.symbol.toUpperCase() == symbol.toUpperCase(),
+      orElse: () => SymbolInfo(
+        symbol: symbol,
+        name: symbol,
+        type: 'unknown',
+        currency: 'USD',
+        exchange: 'Unknown',
+      ),
+    );
+    
+    // Cache the result
+    _symbolNames[symbol] = popularMatch.name;
+    return popularMatch.name;
+  }
+
   Widget _buildWatchlistItem(
       WatchlistItem item, _SymbolIndicatorData indicatorData) {
     final loc = context.loc;
@@ -2266,7 +2368,18 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _getSymbolName(item.symbol),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   Row(
                     children: [
                       if (indicatorData.price != null) ...[
