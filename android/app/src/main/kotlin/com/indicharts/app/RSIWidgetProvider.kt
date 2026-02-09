@@ -11,6 +11,7 @@ import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
 import android.graphics.Color
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -73,6 +74,13 @@ class RSIWidgetProvider : AppWidgetProvider() {
                     }
                 }
             } catch (e: Exception) {
+                // Check if this is a cancellation (normal when widget updates multiple times)
+                if (e is kotlinx.coroutines.CancellationException || 
+                    e.message?.contains("cancelled", ignoreCase = true) == true ||
+                    e.message?.contains("StandaloneCoroutine", ignoreCase = true) == true) {
+                    Log.d(TAG, "Widget refresh job cancelled (newer request started)")
+                    return@launch
+                }
                 withContext(Dispatchers.Main) {
                     if (currentRequestId == requestId) {
                         setLoadingState(context, false)

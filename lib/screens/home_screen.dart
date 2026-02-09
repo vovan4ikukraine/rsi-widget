@@ -132,15 +132,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Load initial data after dependencies are available (context.loc is now accessible)
-    if (!_hasInitialDataLoaded) {
-      _hasInitialDataLoaded = true;
-      // Always refresh data on app open to ensure freshness
-      unawaited(_refreshIndicatorData());
-    }
     _appState = AppStateScope.of(context);
     _previousIndicatorType = _appState?.selectedIndicator;
     _appState?.addListener(_onIndicatorChanged);
+    
+    // Load initial data after dependencies are available (context.loc is now accessible)
+    // Wait a bit to ensure _loadSavedState() has completed
+    if (!_hasInitialDataLoaded) {
+      _hasInitialDataLoaded = true;
+      // Use postFrameCallback to ensure state is loaded
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (mounted) {
+          // Always refresh data on app open to ensure freshness
+          await _refreshIndicatorData();
+        }
+      });
+    }
     
     // Set indicator from initialIndicator if provided (after appState is available)
     if (widget.initialIndicator != null && _appState != null) {
@@ -422,6 +429,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _clearControllers();
 
     setState(() {});
+
+    // Ensure focus is removed from any text fields when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
+    });
 
     // Sync data: fetch from server and push local changes
     if (AuthService.isSignedIn) {
@@ -736,6 +750,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.trending_up),
             tooltip: 'Markets',
             onPressed: () async {
+              // Remove focus before navigation
+              FocusScope.of(context).unfocus();
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -748,6 +764,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.bookmark_border),
             tooltip: loc.t('home_watchlist_tooltip'),
             onPressed: () async {
+              // Remove focus before navigation
+              FocusScope.of(context).unfocus();
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -761,6 +779,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.notifications),
             tooltip: loc.t('home_alerts_tooltip'),
             onPressed: () async {
+              // Remove focus before navigation
+              FocusScope.of(context).unfocus();
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1000,8 +1020,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       if (textEditingController.text.isEmpty || 
                           textEditingController.text == _symbolController.text) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted && textEditingController.text == _symbolController.text || 
-                              (textEditingController.text.isEmpty && _symbolController.text.isNotEmpty)) {
+                          if (mounted && (textEditingController.text == _symbolController.text || 
+                              (textEditingController.text.isEmpty && _symbolController.text.isNotEmpty))) {
                             if (textEditingController.text != _symbolController.text) {
                               textEditingController.text = _symbolController.text;
                             }
@@ -1018,6 +1038,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           if (textEditingController.text.isNotEmpty) {
                             textEditingController.clear();
                             _symbolController.clear();
+                          }
+                        },
+                        onChanged: (value) {
+                          // Update _symbolController to keep it in sync
+                          // This allows showing current symbol when not editing
+                          if (mounted && value != _symbolController.text) {
+                            _symbolController.text = value;
                           }
                         },
                         onFieldSubmitted: (String value) async {
@@ -1053,13 +1080,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 )
                               : null,
                         ),
-                        onChanged: (value) {
-                          // Update _symbolController to keep it in sync
-                          // This allows showing current symbol when not editing
-                          if (mounted && value != _symbolController.text) {
-                            _symbolController.text = value;
-                          }
-                        },
                       );
                     },
                     onSelected: (SymbolInfo selection) async {

@@ -2,6 +2,7 @@ package com.indicharts.app
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -131,6 +132,13 @@ object WidgetDataService {
                             Log.w(TAG, "Failed to load data for $symbol: item is null")
                         }
                     } catch (e: Exception) {
+                        // Check if this is a cancellation (normal when widget updates multiple times)
+                        if (e is kotlinx.coroutines.CancellationException || 
+                            e.message?.contains("cancelled", ignoreCase = true) == true ||
+                            e.message?.contains("StandaloneCoroutine", ignoreCase = true) == true) {
+                            Log.d(TAG, "Request cancelled for $symbol (newer request started)")
+                            return@withContext false
+                        }
                         Log.e(TAG, "Error loading data for $symbol: ${e.message}", e)
                         e.printStackTrace()
                         // Continue loading other symbols
@@ -194,6 +202,13 @@ object WidgetDataService {
                     return@withContext false
                 }
             } catch (e: Exception) {
+                // Check if this is a cancellation (normal when widget updates multiple times)
+                if (e is kotlinx.coroutines.CancellationException || 
+                    e.message?.contains("cancelled", ignoreCase = true) == true ||
+                    e.message?.contains("StandaloneCoroutine", ignoreCase = true) == true) {
+                    Log.d(TAG, "Widget refresh cancelled (newer request started)")
+                    return@withContext false
+                }
                 Log.e(TAG, "Error refreshing widget data: ${e.message}", e)
                 return@withContext false
             }
@@ -310,6 +325,13 @@ object WidgetDataService {
                     rsiValues = chartValues
                 )
             } catch (e: Exception) {
+                // Check if this is a cancellation (normal when widget updates multiple times)
+                if (e is kotlinx.coroutines.CancellationException || 
+                    e.message?.contains("cancelled", ignoreCase = true) == true ||
+                    e.message?.contains("StandaloneCoroutine", ignoreCase = true) == true) {
+                    Log.d(TAG, "Symbol data loading cancelled for $symbol (newer request started)")
+                    return@withContext null
+                }
                 Log.e(TAG, "Error loading symbol data for $symbol: ${e.message}", e)
                 return@withContext null
             }
