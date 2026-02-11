@@ -180,6 +180,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.info,
             children: [
               ListTile(
+                title: Text(loc.t('settings_privacy_policy')),
+                subtitle: Text(loc.t('settings_privacy_policy_sub')),
+                leading: const Icon(Icons.privacy_tip_outlined),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () => _launchPrivacyPolicy(loc),
+              ),
+              ListTile(
                 title: Text(loc.t('settings_support')),
                 subtitle: Text(loc.t('settings_support_sub')),
                 leading: const Icon(Icons.email_outlined),
@@ -449,6 +456,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  static const String _privacyPolicyUrl =
+      'https://vovan4ikukraine.github.io/indi-charts-public/privacy.html';
+
+  Future<void> _launchPrivacyPolicy(AppLocalizations loc) async {
+    final uri = Uri.parse(_privacyPolicyUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        context.showError(loc.t('settings_launch_link_error'));
+      }
+    }
   }
 
   Future<void> _launchSupportEmail(AppLocalizations loc) async {

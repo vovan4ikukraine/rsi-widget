@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/preferences_storage.dart';
 import '../localization/app_localizations.dart';
 import '../services/auth_service.dart';
@@ -44,6 +45,16 @@ class _LoginScreenState extends State<LoginScreen> {
           _errorMessage = e.toString();
         });
       }
+    }
+  }
+
+  static const String _privacyPolicyUrl =
+      'https://vovan4ikukraine.github.io/indi-charts-public/privacy.html';
+
+  Future<void> _launchPrivacyPolicy() async {
+    final uri = Uri.parse(_privacyPolicyUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -178,6 +189,43 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: isDark ? Colors.grey[500] : Colors.grey[500],
                   ),
                   textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // Privacy Policy link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      loc.t('auth_privacy_agreement'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _launchPrivacyPolicy,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          loc.t('auth_privacy_link'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue[700],
+                            decoration: TextDecoration.underline,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

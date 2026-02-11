@@ -164,7 +164,7 @@ To exercise these rights, please contact us using the information provided below
 
 If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us:
 
-- **Email**: vovan4ikukraine@gmail.com
+- **Email**: ads.contact.manager@gmail.com
 
 We will respond to your request within 30 days.
 
@@ -172,7 +172,7 @@ We will respond to your request within 30 days.
 
 **Data Controller**: INDI CHARTS Development Team
 
-**Contact Information**: vovan4ikukraine@gmail.com
+**Contact Information**: ads.contact.manager@gmail.com
 
 ---
 
