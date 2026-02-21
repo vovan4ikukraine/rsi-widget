@@ -20,6 +20,22 @@ import 'localization/app_localizations.dart';
 import 'state/app_state.dart';
 import 'dart:async';
 
+/// Resolve initial language for first launch: use device locale if supported, else English.
+String _resolveInitialLanguage() {
+  final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
+  final code = deviceLocale.languageCode;
+  // Map common aliases to our supported locales (e.g. 'tl' -> 'fil' for Tagalog/Filipino)
+  final resolved = _localeAliases[code] ?? code;
+  final supported = AppLocalizations.supportedLocales
+      .map((e) => e.languageCode)
+      .toSet();
+  return supported.contains(resolved) ? resolved : 'en';
+}
+
+const _localeAliases = <String, String>{
+  'tl': 'fil', // Tagalog -> Filipino
+};
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -48,7 +64,11 @@ void main() async {
 
   // 4️⃣ Load preferences (quick)
   final prefs = await SharedPreferences.getInstance();
-  final languageCode = prefs.getString('language') ?? 'ru';
+  final savedLanguage = prefs.getString('language');
+  final languageCode = savedLanguage ?? _resolveInitialLanguage();
+  if (savedLanguage == null) {
+    await prefs.setString('language', languageCode);
+  }
   final theme = prefs.getString('theme') ?? 'dark';
   final appState = AppState(
     locale: Locale(languageCode),
