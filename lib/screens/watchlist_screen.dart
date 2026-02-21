@@ -2378,34 +2378,28 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Flexible(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (indicatorData.price != null) ...[
-                          Text(
-                            PriceFormatter.formatPrice(indicatorData.price!),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey[500],
-                              fontWeight: FontWeight.normal,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(width: 6),
-                        ],
+                  Row(
+                    children: [
+                      if (indicatorData.price != null) ...[
                         Text(
-                          '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
+                          PriceFormatter.formatPrice(indicatorData.price!),
                           style: TextStyle(
-                            fontSize: 11,
-                            color: indicatorColor,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 9,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.normal,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(width: 6),
                       ],
-                    ),
+                      Text(
+                        '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: indicatorColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
