@@ -34,7 +34,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setTheme(String theme) async {
-    final newThemeMode = theme == 'light' ? ThemeMode.light : ThemeMode.dark;
+    final newThemeMode = theme == 'light'
+        ? ThemeMode.light
+        : theme == 'dark'
+            ? ThemeMode.dark
+            : ThemeMode.system;
 
     if (newThemeMode == _themeMode) return;
 

@@ -69,10 +69,15 @@ void main() async {
   if (savedLanguage == null) {
     await prefs.setString('language', languageCode);
   }
-  final theme = prefs.getString('theme') ?? 'dark';
+  final theme = prefs.getString('theme') ?? 'system';
+  final themeMode = theme == 'light'
+      ? ThemeMode.light
+      : theme == 'dark'
+          ? ThemeMode.dark
+          : ThemeMode.system;
   final appState = AppState(
     locale: Locale(languageCode),
-    themeMode: theme == 'light' ? ThemeMode.light : ThemeMode.dark,
+    themeMode: themeMode,
   );
 
   // 5️⃣ Launch application immediately

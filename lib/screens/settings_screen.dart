@@ -25,7 +25,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _theme = 'dark';
+  String _theme = 'system';
   String _language = 'ru';
   IndicatorType _widgetIndicator = IndicatorType.rsi;
   StreamSubscription? _authSubscription;
@@ -62,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Use 'widget_indicator' to match Android native code and widget_service.dart
     final savedWidgetIndicator = prefs.getString('widget_indicator');
     setState(() {
-      _theme = prefs.getString('theme') ?? 'dark';
+      _theme = prefs.getString('theme') ?? 'system';
       _language = prefs.getString('language') ?? 'ru';
       _widgetIndicator = savedWidgetIndicator != null
           ? IndicatorType.fromJson(savedWidgetIndicator)
@@ -99,9 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               ListTile(
                 title: Text(loc.t('settings_theme')),
-                subtitle: Text(_theme == 'dark'
-                    ? loc.t('settings_theme_dark')
-                    : loc.t('settings_theme_light')),
+                subtitle: Text(loc.t(_themeDisplayKey(_theme))),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _showThemeDialog(appState),
               ),
@@ -236,8 +234,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  static String _themeDisplayKey(String theme) {
+    switch (theme) {
+      case 'dark':
+        return 'settings_theme_dark';
+      case 'light':
+        return 'settings_theme_light';
+      default:
+        return 'settings_theme_system';
+    }
+  }
+
   void _showThemeDialog(AppState appState) {
     final loc = context.loc;
+
+    Future<void> selectTheme(String value) async {
+      if (value.isEmpty) return;
+      final navigator = Navigator.of(context);
+      setState(() {
+        _theme = value;
+      });
+      await appState.setTheme(value);
+      await _saveSettings();
+      if (mounted) {
+        navigator.pop();
+      }
+    }
 
     showDialog(
       context: context,
@@ -247,22 +269,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              title: Text(loc.t('settings_theme_system')),
+              leading: Radio<String>(
+                value: 'system',
+                groupValue: _theme,
+                onChanged: (v) => selectTheme(v ?? ''),
+              ),
+            ),
+            ListTile(
               title: Text(loc.t('settings_theme_dark')),
               leading: Radio<String>(
                 value: 'dark',
                 groupValue: _theme,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final navigator = Navigator.of(context);
-                  setState(() {
-                    _theme = value;
-                  });
-                  await appState.setTheme(value);
-                  await _saveSettings();
-                  if (mounted) {
-                    navigator.pop();
-                  }
-                },
+                onChanged: (v) => selectTheme(v ?? ''),
               ),
             ),
             ListTile(
@@ -270,18 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: Radio<String>(
                 value: 'light',
                 groupValue: _theme,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final navigator = Navigator.of(context);
-                  setState(() {
-                    _theme = value;
-                  });
-                  await appState.setTheme(value);
-                  await _saveSettings();
-                  if (mounted) {
-                    navigator.pop();
-                  }
-                },
+                onChanged: (v) => selectTheme(v ?? ''),
               ),
             ),
           ],
