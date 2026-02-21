@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -38,6 +39,14 @@ const _localeAliases = <String, String>{
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Edge-to-edge for Android 15+ (required by Google Play)
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarDividerColor: Colors.transparent,
+  ));
 
   // 1️⃣ Initialize Firebase (critical for auth)
   await Firebase.initializeApp();
