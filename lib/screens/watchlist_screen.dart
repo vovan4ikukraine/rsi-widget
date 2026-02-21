@@ -136,6 +136,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   final GlobalKey _settingsKey = GlobalKey();
   final GlobalKey<FormState> _massAlertFormKey = GlobalKey<FormState>();
   final ExpansionTileController _massAlertExpansionController = ExpansionTileController();
+  /// Explicit error state for cross-field validation (lower/upper levels depend on each other)
+  String? _massAlertLowerLevelError;
+  String? _massAlertUpperLevelError;
 
   @override
   void initState() {
@@ -242,6 +245,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', massAlertUpperFromController ?? _massAlertUpperLevel);
         await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_lower_level_enabled', _massAlertLowerLevelEnabled);
         await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_upper_level_enabled', _massAlertUpperLevelEnabled);
+        await prefs.setString('watchlist_mass_alert_${previousIndicatorKey}_mode', _massAlertMode);
+        await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_cooldown_sec', _massAlertCooldownSec);
+        await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_repeatable', _massAlertRepeatable);
+        await prefs.setBool('watchlist_mass_alert_${previousIndicatorKey}_on_close', _massAlertOnClose);
         
         if (_previousIndicatorType == IndicatorType.stoch) {
           final massAlertStochDFromController = int.tryParse(_massAlertStochDPeriodController.text);
@@ -258,9 +265,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final savedUpperLevel = prefs.getDouble('watchlist_${indicatorType.toJson()}_upper_level');
       
       // Load saved mass alert settings for the new indicator, or use defaults
-      final savedMassAlertPeriod = prefs.getInt('watchlist_mass_alert_${indicatorType.toJson()}_period');
-      final savedMassAlertLowerLevel = prefs.getDouble('watchlist_mass_alert_${indicatorType.toJson()}_lower_level');
-      final savedMassAlertUpperLevel = prefs.getDouble('watchlist_mass_alert_${indicatorType.toJson()}_upper_level');
+      final indicatorKeyForLoad = indicatorType.toJson();
+      final savedMassAlertPeriod = prefs.getInt('watchlist_mass_alert_${indicatorKeyForLoad}_period');
+      final savedMassAlertLowerLevel = prefs.getDouble('watchlist_mass_alert_${indicatorKeyForLoad}_lower_level');
+      final savedMassAlertUpperLevel = prefs.getDouble('watchlist_mass_alert_${indicatorKeyForLoad}_upper_level');
+      final savedMassAlertMode = prefs.getString('watchlist_mass_alert_${indicatorKeyForLoad}_mode');
+      final savedMassAlertCooldown = prefs.getInt('watchlist_mass_alert_${indicatorKeyForLoad}_cooldown_sec');
+      final savedMassAlertRepeatable = prefs.getBool('watchlist_mass_alert_${indicatorKeyForLoad}_repeatable');
+      final savedMassAlertOnClose = prefs.getBool('watchlist_mass_alert_${indicatorKeyForLoad}_on_close');
       
       // Check if saved values are in valid range for this indicator
       final savedLowerValid = savedLowerLevel != null &&
@@ -288,7 +300,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           }
           
           // Load mass alert settings for the new indicator
+          final indicatorKey = indicatorType.toJson();
           _massAlertPeriod = savedMassAlertPeriod ?? indicatorType.defaultPeriod;
+          // Timeframe is per indicator
+          _massAlertTimeframe = prefs.getString('watchlist_mass_alert_${indicatorKey}_timeframe') ??
+              prefs.getString('watchlist_mass_alert_timeframe') ??
+              _timeframe;
           // Validate mass alert levels
           final massAlertLowerValid = savedMassAlertLowerLevel != null &&
               ((indicatorType == IndicatorType.williams && savedMassAlertLowerLevel >= -100.0 && savedMassAlertLowerLevel <= 0.0) ||
@@ -303,7 +320,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                   : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
           
           // Load level enabled state
-          final indicatorKey = indicatorType.toJson();
           final savedLowerEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled');
           final savedUpperEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_upper_level_enabled');
           _massAlertLowerLevelEnabled = savedLowerEnabled ?? true;
@@ -314,6 +330,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           } else {
             _massAlertStochDPeriod = null;
           }
+
+          // Mode, cooldown, repeatable, on_close are per indicator
+          _massAlertMode = savedMassAlertMode ?? prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
+          _massAlertCooldownSec = savedMassAlertCooldown ?? prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? AppConstants.defaultCooldownSec;
+          _massAlertRepeatable = savedMassAlertRepeatable ?? prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
+          _massAlertOnClose = savedMassAlertOnClose ?? prefs.getBool('watchlist_mass_alert_on_close') ?? false;
 
           // Update controllers - for WPR levels, ensure minus sign is preserved
           _indicatorPeriodController.text = _indicatorPeriod.toString();
@@ -536,11 +558,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         _massAlertEnabledByIndicator[IndicatorType.williams] =
             prefs.getBool('watchlist_mass_alert_williams_enabled') ?? false;
         
-        _massAlertTimeframe =
-            prefs.getString('watchlist_mass_alert_timeframe') ?? _timeframe;
         // Mass alerts use the indicator from AppState (main interface)
         // Load settings for the current indicator from AppState
         final indicatorKey = indicatorType.toJson();
+        // Timeframe is stored per indicator (each has its own)
+        _massAlertTimeframe = prefs.getString('watchlist_mass_alert_${indicatorKey}_timeframe') ??
+            prefs.getString('watchlist_mass_alert_timeframe') ?? // migration from old shared key
+            _timeframe;
         _massAlertPeriod = prefs.getInt('watchlist_mass_alert_${indicatorKey}_period') ??
             indicatorType.defaultPeriod;
         _massAlertStochDPeriod =
@@ -549,7 +573,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             _massAlertStochDPeriod == null) {
           _massAlertStochDPeriod = 3;
         }
-        _massAlertMode = prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
+        // Mode, cooldown, repeatable, on_close are per indicator
+        _massAlertMode = prefs.getString('watchlist_mass_alert_${indicatorKey}_mode') ??
+            prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
+        _massAlertCooldownSec = prefs.getInt('watchlist_mass_alert_${indicatorKey}_cooldown_sec') ??
+            prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? AppConstants.defaultCooldownSec;
+        _massAlertRepeatable = prefs.getBool('watchlist_mass_alert_${indicatorKey}_repeatable') ??
+            prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
+        _massAlertOnClose = prefs.getBool('watchlist_mass_alert_${indicatorKey}_on_close') ??
+            prefs.getBool('watchlist_mass_alert_on_close') ?? false;
         final savedMassAlertLower = prefs.getDouble('watchlist_mass_alert_${indicatorKey}_lower_level');
         final savedMassAlertUpper = prefs.getDouble('watchlist_mass_alert_${indicatorKey}_upper_level');
         // Validate mass alert levels
@@ -564,13 +596,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             (indicatorType.defaultLevels.length > 1
                 ? indicatorType.defaultLevels[1]
                 : (indicatorType == IndicatorType.williams ? 0.0 : 100.0));
-        _massAlertCooldownSec =
-            prefs.getInt('watchlist_mass_alert_cooldown_sec') ??
-                AppConstants.defaultCooldownSec;
-        _massAlertRepeatable =
-            prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
-        _massAlertOnClose =
-            prefs.getBool('watchlist_mass_alert_on_close') ?? false;
         
         // Load level enabled state (if not saved, check existing alerts to determine state)
         final savedLowerEnabled = prefs.getBool('watchlist_mass_alert_${indicatorKey}_lower_level_enabled');
@@ -666,11 +691,12 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       await prefs.setBool('watchlist_mass_alert_${prefsKey}_enabled', enabled);
       _massAlertEnabledByIndicator[indicatorType] = enabled;
 
-      // Update other settings
+      // Each indicator has its own timeframe - save to per-indicator key
       final timeframe = indicatorSettings['timeframe'] as String?;
       if (timeframe != null) {
-        await prefs.setString('watchlist_mass_alert_timeframe', timeframe);
-        if (mounted) {
+        await prefs.setString('watchlist_mass_alert_${prefsKey}_timeframe', timeframe);
+        if (mounted &&
+            indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
           setState(() {
             _massAlertTimeframe = timeframe;
           });
@@ -706,8 +732,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       final mode = indicatorSettings['mode'] as String?;
       if (mode != null) {
-        await prefs.setString('watchlist_mass_alert_mode', mode);
-        if (mounted) {
+        await prefs.setString('watchlist_mass_alert_${prefsKey}_mode', mode);
+        if (mounted &&
+            indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
           setState(() {
             _massAlertMode = mode;
           });
@@ -766,8 +793,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       final cooldownSec = indicatorSettings['cooldownSec'] as int?;
       if (cooldownSec != null) {
-        await prefs.setInt('watchlist_mass_alert_cooldown_sec', cooldownSec);
-        if (mounted) {
+        await prefs.setInt('watchlist_mass_alert_${prefsKey}_cooldown_sec', cooldownSec);
+        if (mounted &&
+            indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
           setState(() {
             _massAlertCooldownSec = cooldownSec;
             _massAlertCooldownController.text = (cooldownSec ~/ 60).toString();
@@ -777,8 +805,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       final repeatable = indicatorSettings['repeatable'] as bool?;
       if (repeatable != null) {
-        await prefs.setBool('watchlist_mass_alert_repeatable', repeatable);
-        if (mounted) {
+        await prefs.setBool('watchlist_mass_alert_${prefsKey}_repeatable', repeatable);
+        if (mounted &&
+            indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
           setState(() {
             _massAlertRepeatable = repeatable;
           });
@@ -787,8 +816,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
       final onClose = indicatorSettings['onClose'] as bool?;
       if (onClose != null) {
-        await prefs.setBool('watchlist_mass_alert_on_close', onClose);
-        if (mounted) {
+        await prefs.setBool('watchlist_mass_alert_${prefsKey}_on_close', onClose);
+        if (mounted &&
+            indicatorType == (_appState?.selectedIndicator ?? IndicatorType.rsi)) {
           setState(() {
             _massAlertOnClose = onClose;
           });
@@ -822,11 +852,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setBool('watchlist_mass_alert_stoch_enabled', _massAlertEnabledByIndicator[IndicatorType.stoch] ?? false);
     await prefs.setBool('watchlist_mass_alert_williams_enabled', _massAlertEnabledByIndicator[IndicatorType.williams] ?? false);
     
-    await prefs.setString(
-        'watchlist_mass_alert_timeframe', _massAlertTimeframe);
     // Mass alerts use the indicator from AppState (main interface)
     // Save settings for the current indicator from AppState
     final indicatorKey = indicatorType.toJson();
+    // Timeframe is stored per indicator
+    await prefs.setString(
+        'watchlist_mass_alert_${indicatorKey}_timeframe', _massAlertTimeframe);
+    await prefs.setString('watchlist_mass_alert_${indicatorKey}_mode', _massAlertMode);
     await prefs.setInt('watchlist_mass_alert_${indicatorKey}_period', _massAlertPeriod);
     if (_massAlertStochDPeriod != null) {
       await prefs.setInt(
@@ -834,7 +866,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     } else {
       await prefs.remove('watchlist_mass_alert_stoch_d_period');
     }
-    await prefs.setString('watchlist_mass_alert_mode', _massAlertMode);
     await prefs.setDouble(
         'watchlist_mass_alert_${indicatorKey}_lower_level', _massAlertLowerLevel);
     await prefs.setDouble(
@@ -844,11 +875,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     await prefs.setBool(
         'watchlist_mass_alert_${indicatorKey}_upper_level_enabled', _massAlertUpperLevelEnabled);
     await prefs.setInt(
-        'watchlist_mass_alert_cooldown_sec', _massAlertCooldownSec);
+        'watchlist_mass_alert_${indicatorKey}_cooldown_sec', _massAlertCooldownSec);
     await prefs.setBool(
-        'watchlist_mass_alert_repeatable', _massAlertRepeatable);
+        'watchlist_mass_alert_${indicatorKey}_repeatable', _massAlertRepeatable);
     await prefs.setBool(
-        'watchlist_mass_alert_on_close', _massAlertOnClose);
+        'watchlist_mass_alert_${indicatorKey}_on_close', _massAlertOnClose);
 
     // Sync watchlist alert settings to server (for cross-device sync)
     // Only sync for the current indicator. API uses 'wpr' for Williams.
@@ -1493,7 +1524,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   Future<void> _handleMassAlertFieldFocusLoss({
     required bool Function() validator,
     required bool Function() valueApplier,
-    bool revalidateOtherFields = false,
   }) async {
     if (!mounted) return;
     
@@ -1507,11 +1537,13 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       if (!shouldSave) return;
 
       if (!mounted) return;
-      
-      // Re-validate related fields if needed (e.g., for level relationships)
-      if (revalidateOtherFields) {
-        _massAlertFormKey.currentState?.validate();
-      }
+
+      // Clear explicit error state for related fields (e.g. fixing upper clears lower's error)
+      setState(() {
+        _massAlertLowerLevelError = null;
+        _massAlertUpperLevelError = null;
+      });
+      _massAlertFormKey.currentState?.validate();
 
       // Save state and update alerts
       await _saveState();
@@ -1628,19 +1660,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
   Future<void> _handleMassAlertLowerLevelFocusLoss() async {
     if (!_massAlertLowerLevelEnabled) return;
-    
+
     final loc = context.loc;
     final value = _massAlertLowerLevelController.text;
-    
+
     // Validate and show error if invalid
     if (value.isEmpty) {
       if (mounted) context.showError(loc.t('create_alert_field_required'));
+      setState(() => _massAlertLowerLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
     final lower = int.tryParse(value)?.toDouble();
     if (lower == null) {
       if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      setState(() => _massAlertLowerLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
@@ -1650,6 +1684,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final maxRange = isWilliams ? -1.0 : 99.0;
     if (lower < minRange || lower > maxRange) {
       if (mounted) context.showError(loc.t('create_alert_invalid_lower_level'));
+      setState(() => _massAlertLowerLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
@@ -1658,11 +1693,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final upper = int.tryParse(_massAlertUpperLevelController.text)?.toDouble();
       if (upper != null && lower >= upper) {
         if (mounted) context.showError(loc.t('create_alert_invalid_levels_relationship'));
+        setState(() {
+          _massAlertLowerLevelError = ' ';
+          _massAlertUpperLevelError = ' ';
+        });
         _massAlertFormKey.currentState?.validate();
         return;
       }
     }
-    
+
+    setState(() => _massAlertLowerLevelError = null);
     await _handleMassAlertFieldFocusLoss(
       validator: () => true, // Already validated above
       valueApplier: () {
@@ -1674,25 +1714,26 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
         return false;
       },
-      revalidateOtherFields: true, // Re-validate upper level to check relationship
     );
   }
 
   Future<void> _handleMassAlertUpperLevelFocusLoss() async {
     if (!_massAlertUpperLevelEnabled) return;
-    
+
     final loc = context.loc;
     final value = _massAlertUpperLevelController.text;
-    
+
     // Validate and show error if invalid
     if (value.isEmpty) {
       if (mounted) context.showError(loc.t('create_alert_field_required'));
+      setState(() => _massAlertUpperLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
     final upper = int.tryParse(value)?.toDouble();
     if (upper == null) {
       if (mounted) context.showError(loc.t('create_alert_invalid_number'));
+      setState(() => _massAlertUpperLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
@@ -1702,6 +1743,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     final maxRange = isWilliams ? -1.0 : 99.0;
     if (upper < minRange || upper > maxRange) {
       if (mounted) context.showError(loc.t('create_alert_invalid_upper_level'));
+      setState(() => _massAlertUpperLevelError = ' ');
       _massAlertFormKey.currentState?.validate();
       return;
     }
@@ -1710,11 +1752,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       final lower = int.tryParse(_massAlertLowerLevelController.text)?.toDouble();
       if (lower != null && upper <= lower) {
         if (mounted) context.showError(loc.t('create_alert_invalid_levels_relationship'));
+        setState(() {
+          _massAlertLowerLevelError = ' ';
+          _massAlertUpperLevelError = ' ';
+        });
         _massAlertFormKey.currentState?.validate();
         return;
       }
     }
-    
+
+    setState(() => _massAlertUpperLevelError = null);
     await _handleMassAlertFieldFocusLoss(
       validator: () => true, // Already validated above
       valueApplier: () {
@@ -1726,7 +1773,6 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         }
         return false;
       },
-      revalidateOtherFields: true, // Re-validate lower level to check relationship
     );
   }
 
@@ -2580,6 +2626,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     ),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
+                      key: ValueKey(_massAlertTimeframe),
                       initialValue: _massAlertTimeframe,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
@@ -2699,7 +2746,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 ),
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                                autovalidateMode: AutovalidateMode.disabled,
+                                autovalidateMode: AutovalidateMode.onUserInteraction,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return ' '; // Empty string to show red border only
@@ -2833,9 +2880,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             inputFormatters: _massAlertIndicator == IndicatorType.williams
                                 ? [WprLevelInputFormatter()]
                                 : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                            autovalidateMode: AutovalidateMode.disabled,
+                            autovalidateMode: AutovalidateMode.onUserInteraction,
                             validator: (value) {
                               if (!_massAlertLowerLevelEnabled) return null;
+                              if (_massAlertLowerLevelError != null) return _massAlertLowerLevelError;
                               if (value == null || value.isEmpty) {
                                 return ' '; // Empty string to show red border only
                               }
@@ -2858,6 +2906,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 }
                               }
                               return null;
+                            },
+                            onChanged: (_) {
+                              if (_massAlertLowerLevelError != null || _massAlertUpperLevelError != null) {
+                                setState(() {
+                                  _massAlertLowerLevelError = null;
+                                  _massAlertUpperLevelError = null;
+                                });
+                              }
                             },
                             onEditingComplete: () {
                               _massAlertLowerLevelFocusNode.unfocus();
@@ -2918,9 +2974,10 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                             inputFormatters: _massAlertIndicator == IndicatorType.williams
                                 ? [WprLevelInputFormatter()]
                                 : [FilteringTextInputFormatter.allow(RegExp(r'[0-9]'))],
-                            autovalidateMode: AutovalidateMode.disabled,
+                            autovalidateMode: AutovalidateMode.onUserInteraction,
                             validator: (value) {
                               if (!_massAlertUpperLevelEnabled) return null;
+                              if (_massAlertUpperLevelError != null) return _massAlertUpperLevelError;
                               if (value == null || value.isEmpty) {
                                 return ' '; // Empty string to show red border only
                               }
@@ -2943,6 +3000,14 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                                 }
                               }
                               return null;
+                            },
+                            onChanged: (_) {
+                              if (_massAlertLowerLevelError != null || _massAlertUpperLevelError != null) {
+                                setState(() {
+                                  _massAlertLowerLevelError = null;
+                                  _massAlertUpperLevelError = null;
+                                });
+                              }
                             },
                             onEditingComplete: () {
                               _massAlertUpperLevelFocusNode.unfocus();

@@ -1255,6 +1255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 4),
                       DropdownButtonFormField<String>(
+                        key: ValueKey(_selectedTimeframe),
                         initialValue: _selectedTimeframe,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
