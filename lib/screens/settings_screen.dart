@@ -107,11 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 title: Text(loc.t('settings_language')),
-                subtitle: Text(_language == 'ru'
-                    ? loc.t('settings_language_russian')
-                    : _language == 'uk'
-                        ? loc.t('settings_language_ukrainian')
-                        : loc.t('settings_language_english')),
+                subtitle: Text(loc.t(_languageDisplayKey(_language))),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () => _showLanguageDialog(appState),
               ),
@@ -294,74 +290,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  static String _languageDisplayKey(String code) {
+    switch (code) {
+      case 'ru':
+        return 'settings_language_russian';
+      case 'uk':
+        return 'settings_language_ukrainian';
+      case 'es':
+        return 'settings_language_spanish';
+      case 'pt':
+        return 'settings_language_portuguese';
+      case 'de':
+        return 'settings_language_german';
+      case 'fr':
+        return 'settings_language_french';
+      case 'tr':
+        return 'settings_language_turkish';
+      case 'id':
+        return 'settings_language_indonesian';
+      case 'vi':
+        return 'settings_language_vietnamese';
+      case 'fil':
+        return 'settings_language_filipino';
+      default:
+        return 'settings_language_english';
+    }
+  }
+
   void _showLanguageDialog(AppState appState) {
     final loc = context.loc;
+
+    Future<void> selectLanguage(String value) async {
+      if (value.isEmpty) return;
+      final navigator = Navigator.of(context);
+      setState(() {
+        _language = value;
+      });
+      await appState.setLanguage(value);
+      await _saveSettings();
+      if (mounted) {
+        navigator.pop();
+      }
+    }
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(loc.t('settings_select_language')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(loc.t('settings_language_russian')),
-              leading: Radio<String>(
-                value: 'ru',
-                groupValue: _language,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final navigator = Navigator.of(context);
-                  setState(() {
-                    _language = value;
-                  });
-                  await appState.setLanguage(value);
-                  await _saveSettings();
-                  if (mounted) {
-                    navigator.pop();
-                  }
-                },
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: Text(loc.t('settings_language_english')),
+                leading: Radio<String>(
+                  value: 'en',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
               ),
-            ),
-            ListTile(
-              title: Text(loc.t('settings_language_english')),
-              leading: Radio<String>(
-                value: 'en',
-                groupValue: _language,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final navigator = Navigator.of(context);
-                  setState(() {
-                    _language = value;
-                  });
-                  await appState.setLanguage(value);
-                  await _saveSettings();
-                  if (mounted) {
-                    navigator.pop();
-                  }
-                },
+              ListTile(
+                title: Text(loc.t('settings_language_russian')),
+                leading: Radio<String>(
+                  value: 'ru',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
               ),
-            ),
-            ListTile(
-              title: Text(loc.t('settings_language_ukrainian')),
-              leading: Radio<String>(
-                value: 'uk',
-                groupValue: _language,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final navigator = Navigator.of(context);
-                  setState(() {
-                    _language = value;
-                  });
-                  await appState.setLanguage(value);
-                  await _saveSettings();
-                  if (mounted) {
-                    navigator.pop();
-                  }
-                },
+              ListTile(
+                title: Text(loc.t('settings_language_ukrainian')),
+                leading: Radio<String>(
+                  value: 'uk',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
               ),
-            ),
-          ],
+              ListTile(
+                title: Text(loc.t('settings_language_spanish')),
+                leading: Radio<String>(
+                  value: 'es',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_portuguese')),
+                leading: Radio<String>(
+                  value: 'pt',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_german')),
+                leading: Radio<String>(
+                  value: 'de',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_french')),
+                leading: Radio<String>(
+                  value: 'fr',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_turkish')),
+                leading: Radio<String>(
+                  value: 'tr',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_indonesian')),
+                leading: Radio<String>(
+                  value: 'id',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_vietnamese')),
+                leading: Radio<String>(
+                  value: 'vi',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+              ListTile(
+                title: Text(loc.t('settings_language_filipino')),
+                leading: Radio<String>(
+                  value: 'fil',
+                  groupValue: _language,
+                  onChanged: (v) => selectLanguage(v ?? ''),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
