@@ -362,15 +362,3 @@ class IndicatorService {
   }
 }
 
-/// Extension to convert RsiResult to IndicatorResult
-extension RsiResultExtension on RsiResult {
-  IndicatorResult toIndicatorResult() {
-    return IndicatorResult(
-      value: rsi,
-      state: state.toIndicatorState(),
-      timestamp: timestamp,
-      close: close,
-      indicator: 'rsi',
-    );
-  }
-}

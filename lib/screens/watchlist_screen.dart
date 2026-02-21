@@ -5,7 +5,6 @@ import 'package:isar/isar.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
-import '../services/yahoo_proto.dart' show DataCache;
 import '../services/indicator_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
@@ -2537,8 +2536,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
               margin: const EdgeInsets.all(12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                color: Colors.orange.withValues(alpha: 0.1),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -3316,7 +3315,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   /// Ensures we have enough candles for indicator calculation + buffer for charts
   int _candlesLimitForTimeframe(String timeframe, [int? period]) {
     // Minimum candles required for indicators: period + buffer
-    final defaultPeriod = AppConstants.defaultIndicatorPeriod;
+    const defaultPeriod = AppConstants.defaultIndicatorPeriod;
     final periodBuffer = period != null
         ? period + AppConstants.periodBuffer
         : defaultPeriod + AppConstants.periodBuffer;

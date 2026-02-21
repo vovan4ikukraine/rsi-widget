@@ -446,15 +446,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _showWidgetIndicatorDialog(AppLocalizations loc) async {
     if (widget.isar == null) return;
-    
+
+    final buildContext = context;
     final prefs = await PreferencesStorage.instance;
     final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? false; // Default: ascending
 
     if (!mounted) return;
-    final dialogContext = context;
     showDialog(
-      context: dialogContext,
-      builder: (context) => AlertDialog(
+      context: buildContext,
+      builder: (overlayContext) => AlertDialog(
         title: Text(loc.t('settings_widget_indicator_select')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -466,12 +466,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: _widgetIndicator,
                 onChanged: (value) async {
                   if (value == null) return;
+                  final navigator = Navigator.of(overlayContext);
                   setState(() {
                     _widgetIndicator = value;
                   });
                   await _saveSettings();
-                  if (mounted && dialogContext.mounted) {
-                    final navigator = Navigator.of(dialogContext);
+                  if (mounted) {
                     navigator.pop();
                   }
                   
@@ -522,9 +522,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   }
                   
-                  // Use context extension with mounted check to avoid deactivated widget error
-                  if (mounted && context.mounted) {
-                    context.showSuccess(loc.t('settings_widget_indicator_updated'));
+                  if (overlayContext.mounted) {
+                    overlayContext.showSuccess(loc.t('settings_widget_indicator_updated'));
                   }
                 },
               ),

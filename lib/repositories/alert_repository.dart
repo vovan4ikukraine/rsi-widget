@@ -14,11 +14,13 @@ class AlertRepository implements IAlertRepository {
   AlertRepository(this.isar);
 
   /// Save or update an alert
+  @override
   Future<void> saveAlert(AlertRule alert) async {
     await isar.writeTxn(() => isar.alertRules.put(alert));
   }
 
   /// Save multiple alert states in a single transaction
+  @override
   Future<void> saveAlertStates(List<AlertState> states) async {
     if (states.isEmpty) return;
     await isar.writeTxn(() async {
@@ -30,6 +32,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Save multiple alerts in a single transaction
+  @override
   Future<void> saveAlerts(List<AlertRule> alerts) async {
     if (alerts.isEmpty) return;
     await isar.writeTxn(() async {
@@ -41,11 +44,13 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Delete an alert by ID
+  @override
   Future<void> deleteAlert(int id) async {
     await isar.writeTxn(() => isar.alertRules.delete(id));
   }
 
   /// Delete multiple alerts in a single transaction
+  @override
   Future<void> deleteAlerts(List<int> ids) async {
     if (ids.isEmpty) return;
     await isar.writeTxn(() async {
@@ -57,6 +62,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Delete an alert with all related data (states and events) in a single transaction
+  @override
   Future<void> deleteAlertWithRelatedData(int id) async {
     await isar.writeTxn(() async {
       // Delete alert state
@@ -93,6 +99,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Delete multiple alerts with all related data (states and events) in a single transaction
+  @override
   Future<void> deleteAlertsWithRelatedData(List<int> ids) async {
     await isar.writeTxn(() async {
       for (final id in ids) {
@@ -133,6 +140,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Delete alert state by rule ID
+  @override
   Future<void> deleteAlertStateByRuleId(int ruleId) async {
     await isar.writeTxn(() async {
       try {
@@ -169,16 +177,19 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Get all alerts
+  @override
   Future<List<AlertRule>> getAllAlerts() async {
     return await isar.alertRules.where().findAll();
   }
 
   /// Get alert by ID
+  @override
   Future<AlertRule?> getAlertById(int id) async {
     return await isar.alertRules.get(id);
   }
 
   /// Get alerts by symbol
+  @override
   Future<List<AlertRule>> getAlertsBySymbol(String symbol) async {
     return await isar.alertRules
         .filter()
@@ -187,6 +198,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Get active alerts
+  @override
   Future<List<AlertRule>> getActiveAlerts() async {
     return await isar.alertRules
         .filter()
@@ -195,6 +207,7 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Get active alerts excluding watchlist alerts (for home chart)
+  @override
   Future<List<AlertRule>> getActiveCustomAlerts() async {
     final active = await getActiveAlerts();
     return active.where((a) {
@@ -205,16 +218,19 @@ class AlertRepository implements IAlertRepository {
   }
 
   /// Get all alert events
+  @override
   Future<List<AlertEvent>> getAllAlertEvents() async {
     return await isar.alertEvents.where().findAll();
   }
 
   /// Get all alert states
+  @override
   Future<List<AlertState>> getAllAlertStates() async {
     return await isar.alertStates.where().findAll();
   }
 
   /// Save multiple alert events in a single transaction
+  @override
   Future<void> saveAlertEvents(List<AlertEvent> events) async {
     if (events.isEmpty) return;
     await isar.writeTxn(() async {
@@ -235,6 +251,7 @@ class AlertRepository implements IAlertRepository {
   /// Restore anonymous alerts from cache data in a single transaction.
   /// Deletes anonymous alerts, then puts [alertsToRestore], [statesToRestore], [eventsToRestore].
   /// States/events use placeholder ruleId; repo overwrites with new ruleId from idMap before put.
+  @override
   Future<void> restoreAnonymousAlertsFromCacheData({
     required List<(int oldId, AlertRule rule)> alertsToRestore,
     required List<(int oldRuleId, AlertState state)> statesToRestore,
@@ -278,6 +295,7 @@ class AlertRepository implements IAlertRepository {
 
   /// Replace local alerts with server snapshot (fetch-and-sync logic).
   /// Deletes anonymous alerts, then adds/updates from [rules], removes locals not on server.
+  @override
   Future<void> replaceAlertsWithServerSnapshot(
     List<Map<String, dynamic>> rules,
   ) async {
@@ -382,12 +400,16 @@ class AlertRepository implements IAlertRepository {
     try {
       final states =
           await isar.alertStates.filter().ruleIdEqualTo(id).findAll();
-      for (final s in states) await isar.alertStates.delete(s.id);
+      for (final s in states) {
+        await isar.alertStates.delete(s.id);
+      }
     } catch (_) {}
     try {
       final events =
           await isar.alertEvents.filter().ruleIdEqualTo(id).findAll();
-      for (final e in events) await isar.alertEvents.delete(e.id);
+      for (final e in events) {
+        await isar.alertEvents.delete(e.id);
+      }
     } catch (_) {}
     await isar.alertRules.delete(id);
   }
@@ -398,16 +420,21 @@ class AlertRepository implements IAlertRepository {
       if (a.remoteId == null) {
         final states =
             await isar.alertStates.filter().ruleIdEqualTo(a.id).findAll();
-        for (final s in states) await isar.alertStates.delete(s.id);
+        for (final s in states) {
+          await isar.alertStates.delete(s.id);
+        }
         final events =
             await isar.alertEvents.filter().ruleIdEqualTo(a.id).findAll();
-        for (final e in events) await isar.alertEvents.delete(e.id);
+        for (final e in events) {
+          await isar.alertEvents.delete(e.id);
+        }
         await isar.alertRules.delete(a.id);
       }
     }
   }
 
   /// Get alerts excluding watchlist alerts
+  @override
   Future<List<AlertRule>> getCustomAlerts() async {
     final allAlerts = await getAllAlerts();
     return allAlerts.where((a) {
@@ -429,6 +456,7 @@ class AlertRepository implements IAlertRepository {
 
   /// Get watchlist mass alerts for a specific indicator (e.g. "WATCHLIST: Mass alert for rsi").
   /// Handles WPR/williams alternate description from server.
+  @override
   Future<List<AlertRule>> getWatchlistMassAlertsForIndicator(
     IndicatorType indicatorType,
   ) async {
