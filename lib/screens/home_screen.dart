@@ -132,8 +132,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
+    final oldAppState = _appState;
     _appState = AppStateScope.of(context);
     _previousIndicatorType = _appState?.selectedIndicator;
+    // Remove old listener before adding to prevent accumulation (causes loop of sync/fetch)
+    oldAppState?.removeListener(_onIndicatorChanged);
     _appState?.addListener(_onIndicatorChanged);
     
     // Load initial data after dependencies are available (context.loc is now accessible)
@@ -174,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_appState != null) {
       final prefs = await PreferencesStorage.instance;
       final indicatorType = _appState!.selectedIndicator;
+      final didIndicatorChange = _previousIndicatorType != indicatorType;
 
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
@@ -248,8 +252,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Save loaded settings so they persist for next time
       await _saveState();
 
-      // Reload data when indicator changes
-      _loadIndicatorData();
+      // Reload data only when indicator actually changed (skip redundant calls from duplicate listeners)
+      if (didIndicatorChange) {
+        unawaited(_loadIndicatorData());
+      }
     }
   }
 

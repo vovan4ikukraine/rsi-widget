@@ -126,8 +126,11 @@ class _MarketsScreenState extends State<MarketsScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final previousIndicator = _previousIndicatorType;
+    final oldAppState = _appState;
     _appState = AppStateScope.of(context);
     final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
+    // Remove old listener before adding to prevent accumulation (causes loop of sync/fetch)
+    oldAppState?.removeListener(_onIndicatorChanged);
     
     debugPrint('MarketsScreen: didChangeDependencies called - previousIndicator: $previousIndicator, currentIndicator: $currentIndicator, _indicatorPeriod: $_indicatorPeriod, controller empty: ${_indicatorPeriodController.text.isEmpty}');
     
@@ -174,7 +177,7 @@ class _MarketsScreenState extends State<MarketsScreen>
         debugPrint('MarketsScreen: Screen already initialized with data, checking if reload needed');
       }
     }
-    
+
     _appState?.addListener(_onIndicatorChanged);
   }
 
@@ -182,6 +185,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     if (_appState != null && mounted) {
       final prefs = await PreferencesStorage.instance;
       final indicatorType = _appState!.selectedIndicator;
+      final didIndicatorChange = _previousIndicatorType != indicatorType;
       debugPrint('MarketsScreen: _onIndicatorChanged called for indicator: $indicatorType, previous: $_previousIndicatorType');
       
       // Save current settings for the PREVIOUS indicator before switching
@@ -252,17 +256,16 @@ class _MarketsScreenState extends State<MarketsScreen>
       // Save loaded settings so they persist for next time
       await _saveState();
 
-      // Clear cache and reload visible items when indicator changes
-      debugPrint('MarketsScreen: Clearing cache and reloading data with indicator=$indicatorType, period=$_indicatorPeriod, stochD=$_stochDPeriod');
-      _loadedSymbols.clear();
-      _indicatorDataMap.clear();
-      // Clear indicator values for sorting when indicator changes (all tabs)
-      _indicatorValuesForSorting.clear();
-      _indicatorValuesLoaded.clear();
-      
-      if (mounted) {
+      // Clear cache and reload only when indicator actually changed (skip redundant calls from duplicate listeners)
+      if (didIndicatorChange && mounted) {
+        debugPrint('MarketsScreen: Clearing cache and reloading data with indicator=$indicatorType, period=$_indicatorPeriod, stochD=$_stochDPeriod');
+        _loadedSymbols.clear();
+        _indicatorDataMap.clear();
+        // Clear indicator values for sorting when indicator changes (all tabs)
+        _indicatorValuesForSorting.clear();
+        _indicatorValuesLoaded.clear();
         // If sorting by indicator value, load values first
-        if (_currentSortOrder == _MarketsSortOrder.descending || 
+        if (_currentSortOrder == _MarketsSortOrder.descending ||
             _currentSortOrder == _MarketsSortOrder.ascending) {
           unawaited(_loadIndicatorValuesOnly());
         } else {

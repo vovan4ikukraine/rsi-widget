@@ -179,15 +179,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final previousIndicator = _previousIndicatorType;
+    final oldAppState = _appState;
     _appState = AppStateScope.of(context);
     final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
-    
-    // Remove old listener before adding new one to prevent duplicate listeners
-    // This prevents _onIndicatorChanged from being called multiple times
-    final oldAppState = _appState;
-    if (oldAppState != null) {
-      oldAppState.removeListener(_onIndicatorChanged);
-    }
+    // Remove old listener before adding to prevent accumulation (causes loop of sync/fetch)
+    oldAppState?.removeListener(_onIndicatorChanged);
     
     // Update previousIndicatorType if it's the first time or if it changed
     if (_previousIndicatorType == null || _previousIndicatorType != currentIndicator) {
@@ -207,7 +203,8 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     if (_appState != null) {
       final prefs = await PreferencesStorage.instance;
       final indicatorType = _appState!.selectedIndicator;
-      
+      final didIndicatorChange = _previousIndicatorType != indicatorType;
+
       // Save current settings for the PREVIOUS indicator before switching
       if (_previousIndicatorType != null && _previousIndicatorType != indicatorType) {
         // Get current values from controllers to ensure we save the latest user input
@@ -352,13 +349,15 @@ class _WatchlistScreenState extends State<WatchlistScreen>
       // Save loaded settings so widget can use them
       await _saveState();
 
-      // Clear data and reload when indicator changes
-      if (mounted) {
-        setState(() {
-          _indicatorDataMap.clear();
-        });
+      // Clear data and reload only when indicator actually changed (skip redundant calls from duplicate listeners)
+      if (didIndicatorChange) {
+        if (mounted) {
+          setState(() {
+            _indicatorDataMap.clear();
+          });
+        }
+        _loadAllIndicatorData();
       }
-      _loadAllIndicatorData();
     }
   }
 
@@ -2379,28 +2378,34 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Row(
-                    children: [
-                      if (indicatorData.price != null) ...[
-                        Text(
-                          PriceFormatter.formatPrice(indicatorData.price!),
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.normal,
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (indicatorData.price != null) ...[
+                          Text(
+                            PriceFormatter.formatPrice(indicatorData.price!),
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.grey[500],
+                              fontWeight: FontWeight.normal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                          '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: indicatorColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 6),
                       ],
-                      Text(
-                        '${indicatorType.name}: ${currentValue.toStringAsFixed(1)}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: indicatorColor,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
