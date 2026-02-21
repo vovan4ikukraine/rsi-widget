@@ -3,13 +3,21 @@ package com.indicharts.app
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.util.Log
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 
 class MainActivity: FlutterActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Enable edge-to-edge for Android 15+ compatibility (required by Google Play)
+        WindowCompat.enableEdgeToEdge(window)
+        super.onCreate(savedInstanceState)
+    }
     private val CHANNEL = "com.indicharts.app/widget"
     private val TAG = "MainActivity"
     private var methodChannel: MethodChannel? = null

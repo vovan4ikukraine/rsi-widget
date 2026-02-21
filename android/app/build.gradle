@@ -52,6 +52,12 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false  // 16KB page size alignment
+        }
+    }
+
     signingConfigs {
         release {
             if (keystorePropertiesFile.exists()) {
@@ -94,6 +100,7 @@ dependencies {
     // AndroidX Material for lStar and other Material Design 3 attributes support
     // Material 1.11.0+ supports Material Design 3 and lStar attribute (requires API 31+)
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.17.0'  // 1.17+ for WindowCompat.enableEdgeToEdge (Android 15)
     implementation 'com.google.android.material:material:1.11.0'
     
     // OkHttp for HTTP requests in widget
