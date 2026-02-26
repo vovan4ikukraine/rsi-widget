@@ -181,21 +181,17 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final previousIndicator = _previousIndicatorType;
     final oldAppState = _appState;
     _appState = AppStateScope.of(context);
     final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
     // Remove old listener before adding to prevent accumulation (causes loop of sync/fetch)
     oldAppState?.removeListener(_onIndicatorChanged);
     
-    // Update previousIndicatorType if it's the first time or if it changed
-    if (_previousIndicatorType == null || _previousIndicatorType != currentIndicator) {
+    // Only set _previousIndicatorType on initial load (null). When indicator changes,
+    // _onIndicatorChanged handles save/load and updates it - do NOT overwrite here
+    // or we'd lose the previous indicator reference before saving its settings.
+    if (_previousIndicatorType == null) {
       _previousIndicatorType = currentIndicator;
-      
-      // If indicator changed and we already have initial state loaded, trigger reload
-      if (previousIndicator != null && previousIndicator != currentIndicator) {
-        // Indicator changed - let _onIndicatorChanged handle it via listener
-      }
     }
     
     // Add listener only once per didChangeDependencies call
@@ -240,6 +236,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         
         // Save mass alert settings for the previous indicator
         final previousIndicatorKey = _previousIndicatorType!.toJson();
+        await prefs.setString('watchlist_mass_alert_${previousIndicatorKey}_timeframe', _massAlertTimeframe);
         await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', massAlertPeriodFromController ?? _massAlertPeriod);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', massAlertLowerFromController ?? _massAlertLowerLevel);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', massAlertUpperFromController ?? _massAlertUpperLevel);
@@ -331,11 +328,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             _massAlertStochDPeriod = null;
           }
 
-          // Mode, cooldown, repeatable, on_close are per indicator
-          _massAlertMode = savedMassAlertMode ?? prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
-          _massAlertCooldownSec = savedMassAlertCooldown ?? prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? AppConstants.defaultCooldownSec;
-          _massAlertRepeatable = savedMassAlertRepeatable ?? prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
-          _massAlertOnClose = savedMassAlertOnClose ?? prefs.getBool('watchlist_mass_alert_on_close') ?? false;
+          // Mode, cooldown, repeatable, on_close are per indicator (no shared fallback)
+          _massAlertMode = savedMassAlertMode ?? 'cross';
+          _massAlertCooldownSec = savedMassAlertCooldown ?? AppConstants.defaultCooldownSec;
+          _massAlertRepeatable = savedMassAlertRepeatable ?? true;
+          _massAlertOnClose = savedMassAlertOnClose ?? false;
 
           // Update controllers - for WPR levels, ensure minus sign is preserved
           _indicatorPeriodController.text = _indicatorPeriod.toString();
