@@ -560,10 +560,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Candle limit for home chart (period + buffer, or base minimum for timeframe).
+  /// Adds extra buffer for indices (markets closed on weekends/holidays).
   int _candleLimitForHome() {
     final periodBuffer = _indicatorPeriod + AppConstants.periodBuffer;
     const baseMinimum = AppConstants.minCandlesForChart;
-    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    var limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    if (AppConstants.isIndexSymbol(_selectedSymbol)) {
+      limit += AppConstants.indexCandleBuffer;
+    }
+    return limit;
   }
 
   /// Max chart points to display based on timeframe.

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../constants/app_constants.dart';
 import '../di/app_container.dart';
 import '../models/indicator_type.dart';
 import '../repositories/i_watchlist_repository.dart';
@@ -83,7 +84,7 @@ class WidgetService {
               final candles = await yahooService.fetchCandles(
                 item.symbol,
                 finalTimeframe,
-                limit: _candlesLimitForTimeframe(finalTimeframe, finalPeriod),
+                limit: _candlesLimitForTimeframe(finalTimeframe, finalPeriod, item.symbol),
               );
               if (candles.isEmpty) return null;
               final candlesList = candles
@@ -208,8 +209,9 @@ class WidgetService {
   }
 
   /// Calculate optimal candle limit based on timeframe and period
-  /// Ensures we have enough candles for indicator calculation + buffer for charts
-  int _candlesLimitForTimeframe(String timeframe, [int? period]) {
+  /// Ensures we have enough candles for indicator calculation + buffer for charts.
+  /// Adds extra buffer for indices (markets closed on weekends/holidays).
+  int _candlesLimitForTimeframe(String timeframe, [int? period, String? symbol]) {
     // Minimum candles required for indicators: period + buffer (20 for smoothing and charts)
     final periodBuffer = period != null ? period + 20 : 34; // Default: 14 + 20 = 34
     
@@ -229,6 +231,10 @@ class WidgetService {
     }
     
     // Return max of period requirement and base minimum
-    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    var limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    if (symbol != null && AppConstants.isIndexSymbol(symbol)) {
+      limit += AppConstants.indexCandleBuffer;
+    }
+    return limit;
   }
 }

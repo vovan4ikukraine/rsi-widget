@@ -1195,7 +1195,10 @@ class _MarketsScreenState extends State<MarketsScreen>
         }
         
         // Return max of period requirement and base minimum
-        final limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+        var limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+        if (AppConstants.isIndexSymbol(symbol)) {
+          limit += AppConstants.indexCandleBuffer;
+        }
 
         final candles = await _yahooService.fetchCandles(
           symbol,

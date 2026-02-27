@@ -1117,7 +1117,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     while (attempt < maxRetries) {
       try {
         // Use same candle limit calculation as CRON (ensures consistency)
-        final limit = _candlesLimitForTimeframe(_timeframe, _indicatorPeriod);
+        final limit = _candlesLimitForTimeframe(_timeframe, _indicatorPeriod, symbol);
 
         final candles = await _yahooService.fetchCandles(
           symbol,
@@ -3224,7 +3224,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           final candles = await _yahooService.fetchCandles(
             item.symbol,
             _massAlertTimeframe,
-            limit: _candlesLimitForTimeframe(_massAlertTimeframe, _massAlertPeriod),
+            limit: _candlesLimitForTimeframe(_massAlertTimeframe, _massAlertPeriod, item.symbol),
           );
 
           if (candles.isNotEmpty) {
@@ -3375,8 +3375,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   /// Calculate optimal candle limit based on timeframe and period
-  /// Ensures we have enough candles for indicator calculation + buffer for charts
-  int _candlesLimitForTimeframe(String timeframe, [int? period]) {
+  /// Ensures we have enough candles for indicator calculation + buffer for charts.
+  /// Adds extra buffer for indices (markets closed on weekends/holidays).
+  int _candlesLimitForTimeframe(String timeframe, [int? period, String? symbol]) {
     // Minimum candles required for indicators: period + buffer
     const defaultPeriod = AppConstants.defaultIndicatorPeriod;
     final periodBuffer = period != null
@@ -3399,7 +3400,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
     
     // Return max of period requirement and base minimum
-    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    var limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    if (symbol != null && AppConstants.isIndexSymbol(symbol)) {
+      limit += AppConstants.indexCandleBuffer;
+    }
+    return limit;
   }
 
   /// Check if two level lists are equal
