@@ -50,7 +50,7 @@ class WatchlistRepository implements IWatchlistRepository {
   @override
   Future<void> replaceAll(List<WatchlistItem> items) async {
     await isar.write((i) async {
-      final existing = await i.watchlistItems.where().findAll();
+      final existing = i.watchlistItems.where().findAll();
       for (final e in existing) {
         i.watchlistItems.delete(e.id);
       }

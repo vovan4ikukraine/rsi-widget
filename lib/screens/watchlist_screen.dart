@@ -190,9 +190,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     // Only set _previousIndicatorType on initial load (null). When indicator changes,
     // _onIndicatorChanged handles save/load and updates it - do NOT overwrite here
     // or we'd lose the previous indicator reference before saving its settings.
-    if (_previousIndicatorType == null) {
-      _previousIndicatorType = currentIndicator;
-    }
+    _previousIndicatorType ??= currentIndicator;
     
     // Add listener only once per didChangeDependencies call
     _appState?.addListener(_onIndicatorChanged);

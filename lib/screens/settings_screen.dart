@@ -447,13 +447,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showWidgetIndicatorDialog(AppLocalizations loc) async {
     if (widget.isar == null) return;
 
-    final buildContext = context;
     final prefs = await PreferencesStorage.instance;
     final savedSortDescending = prefs.getBool('rsi_widget_sort_descending') ?? false; // Default: ascending
 
     if (!mounted) return;
     showDialog(
-      context: buildContext,
+      context: context,
       builder: (overlayContext) => AlertDialog(
         title: Text(loc.t('settings_widget_indicator_select')),
         content: Column(

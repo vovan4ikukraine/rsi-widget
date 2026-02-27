@@ -64,7 +64,7 @@ class AlertRepository implements IAlertRepository {
     await isar.write((i) async {
       // Delete alert state
       try {
-        final alertState = await i.alertStates
+        final alertState = i.alertStates
             .where()
             .ruleIdEqualTo(id)
             .findFirst();
@@ -77,7 +77,7 @@ class AlertRepository implements IAlertRepository {
 
       // Delete alert events
       try {
-        final events = await i.alertEvents
+        final events = i.alertEvents
             .where()
             .ruleIdEqualTo(id)
             .findAll();
@@ -104,27 +104,27 @@ class AlertRepository implements IAlertRepository {
 
         // Delete alert state
         try {
-          final alertState = await i.alertStates
+          final alertState = i.alertStates
               .where()
               .ruleIdEqualTo(id)
               .findFirst();
-          if (alertState != null && alertState.id > 0) {
-            await i.alertStates.delete(alertState.id);
-          }
+        if (alertState != null && alertState.id > 0) {
+          i.alertStates.delete(alertState.id);
+        }
         } catch (e) {
           // Ignore errors - state may not exist
         }
 
         // Delete alert events
         try {
-          final events = await i.alertEvents
+          final events = i.alertEvents
               .where()
               .ruleIdEqualTo(id)
               .findAll();
           for (final event in events) {
-            if (event.id > 0) {
-              await i.alertEvents.delete(event.id);
-            }
+          if (event.id > 0) {
+            i.alertEvents.delete(event.id);
+          }
           }
         } catch (e) {
           // Ignore errors - events may not exist
@@ -141,7 +141,7 @@ class AlertRepository implements IAlertRepository {
   Future<void> deleteAlertStateByRuleId(int ruleId) async {
     await isar.write((i) async {
       try {
-        final alertState = await i.alertStates
+        final alertState = i.alertStates
             .where()
             .ruleIdEqualTo(ruleId)
             .findFirst();
@@ -158,7 +158,7 @@ class AlertRepository implements IAlertRepository {
   Future<void> deleteAlertEventsByRuleId(int ruleId) async {
     await isar.write((i) async {
       try {
-        final events = await i.alertEvents
+        final events = i.alertEvents
             .where()
             .ruleIdEqualTo(ruleId)
             .findAll();
@@ -393,32 +393,32 @@ class AlertRepository implements IAlertRepository {
   Future<void> _deleteAlertWithRelatedDataInTxn(Isar i, int id) async {
     try {
       final states =
-          await i.alertStates.where().ruleIdEqualTo(id).findAll();
+          i.alertStates.where().ruleIdEqualTo(id).findAll();
       for (final s in states) {
         i.alertStates.delete(s.id);
       }
     } catch (_) {}
     try {
       final events =
-          await i.alertEvents.where().ruleIdEqualTo(id).findAll();
+          i.alertEvents.where().ruleIdEqualTo(id).findAll();
       for (final e in events) {
         i.alertEvents.delete(e.id);
       }
     } catch (_) {}
-        i.alertRules.delete(id);
+    i.alertRules.delete(id);
   }
 
   Future<void> _deleteAnonymousInTxn(Isar i) async {
-    final all = await i.alertRules.where().findAll();
+    final all = i.alertRules.where().findAll();
     for (final a in all) {
       if (a.remoteId == null) {
         final states =
-            await i.alertStates.where().ruleIdEqualTo(a.id).findAll();
+            i.alertStates.where().ruleIdEqualTo(a.id).findAll();
         for (final s in states) {
           i.alertStates.delete(s.id);
         }
         final events =
-            await i.alertEvents.where().ruleIdEqualTo(a.id).findAll();
+            i.alertEvents.where().ruleIdEqualTo(a.id).findAll();
         for (final e in events) {
           i.alertEvents.delete(e.id);
         }
@@ -458,7 +458,7 @@ class AlertRepository implements IAlertRepository {
     final indicatorName = indicatorType.toJson();
     final watchlistAlertDescription =
         '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
-    final williamsAltDescription =
+    const williamsAltDescription =
         '${AppConstants.watchlistAlertPrefix} Mass alert for williams';
 
     return allAlerts.where((a) {
