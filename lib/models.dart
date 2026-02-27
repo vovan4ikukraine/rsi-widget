@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:isar/isar.dart';
+import 'package:isar_db/isar_db.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'models.g.dart';
@@ -7,8 +7,8 @@ part 'models.freezed.dart';
 
 @collection
 class AlertRule {
-  Id id = Isar
-      .autoIncrement; // Isar will automatically assign the next available ID when saving
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   int? remoteId;
 
@@ -46,6 +46,7 @@ class AlertRule {
   }
 
   // Keep rsiPeriod for backward compatibility (deprecated, use period instead)
+  @ignore
   @Deprecated('Use period instead')
   int get rsiPeriod => period;
   @Deprecated('Use period instead')
@@ -79,8 +80,8 @@ class AlertRule {
 
 @collection
 class AlertState {
-  Id id = Isar
-      .autoIncrement; // Isar will automatically assign the next available ID when saving
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   @Index()
   late int ruleId;
@@ -120,11 +121,13 @@ class AlertState {
   bool? wasBelowLower;
 
   // Deprecated: Keep for backward compatibility
+  @ignore
   @Deprecated('Use lastIndicatorValue instead')
   double? get lastRsi => lastIndicatorValue;
   @Deprecated('Use lastIndicatorValue instead')
   set lastRsi(double? value) => lastIndicatorValue = value;
 
+  @ignore
   @Deprecated('Use indicatorState instead')
   double? get lastAu => indicatorState?['au'] as double?;
   @Deprecated('Use indicatorState instead')
@@ -137,6 +140,7 @@ class AlertState {
     }
   }
 
+  @ignore
   @Deprecated('Use indicatorState instead')
   double? get lastAd => indicatorState?['ad'] as double?;
   @Deprecated('Use indicatorState instead')
@@ -152,8 +156,8 @@ class AlertState {
 
 @collection
 class AlertEvent {
-  Id id = Isar
-      .autoIncrement; // Isar will automatically assign the next available ID when saving
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   @Index()
   late int ruleId;
@@ -166,6 +170,7 @@ class AlertEvent {
   String? indicator; // Type of indicator: 'rsi', 'stoch', etc.
 
   // Deprecated: Keep for backward compatibility
+  @ignore
   @Deprecated('Use indicatorValue instead')
   double get rsi => indicatorValue;
   @Deprecated('Use indicatorValue instead')
@@ -186,8 +191,8 @@ class AlertEvent {
 
 @collection
 class IndicatorData {
-  Id id = Isar
-      .autoIncrement; // Isar will automatically assign the next available ID when saving
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   @Index()
   late String symbol;
@@ -227,11 +232,13 @@ class IndicatorData {
   }
 
   // Deprecated: Keep for backward compatibility
+  @ignore
   @Deprecated('Use IndicatorData with indicator field instead')
   double get rsi => value;
   @Deprecated('Use IndicatorData with indicator field instead')
   set rsi(double v) => value = v;
 
+  @ignore
   @Deprecated('Use state instead')
   double? get au => state?['au'] as double?;
   @Deprecated('Use state instead')
@@ -240,6 +247,7 @@ class IndicatorData {
     state!['au'] = v;
   }
 
+  @ignore
   @Deprecated('Use state instead')
   double? get ad => state?['ad'] as double?;
   @Deprecated('Use state instead')
@@ -255,8 +263,8 @@ typedef RsiData = IndicatorData;
 
 @collection
 class DeviceInfo {
-  Id id = Isar
-      .autoIncrement; // Isar will automatically assign the next available ID when saving
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   late String deviceId;
 
@@ -271,7 +279,8 @@ class DeviceInfo {
 
 @collection
 class WatchlistItem {
-  Id id = Isar.autoIncrement;
+  @Id()
+  int id = 0; // 0 = auto-increment on put (isar_db)
 
   @Index()
   late String symbol;

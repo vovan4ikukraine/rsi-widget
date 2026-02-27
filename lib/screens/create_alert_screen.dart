@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_db/isar_db.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_db/isar_db.dart';
 import '../models/indicator_type.dart';
 import '../utils/preferences_storage.dart';
 import '../models.dart';

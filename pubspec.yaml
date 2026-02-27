@@ -5,7 +5,7 @@ description: RSI Widget App - mobile application for RSI alerts and widgets
 version: 1.0.3+3
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ">=3.7.0 <4.0.0"  # isar_db requires Dart 3.7+
 
 dependencies:
   flutter:
@@ -26,10 +26,9 @@ dependencies:
   # HTTP client
   http: ^1.2.2
   
-  # Local database
-  # Using older version for compatibility
-  isar: 3.1.0+1
-  isar_flutter_libs: 3.1.0+1
+  # Local database - isar_db fork with 16KB page size support (Android 15)
+  isar_db: ^1.0.1
+  isar_db_flutter_libs: ^1.0.0
   
   # Serialization
   freezed_annotation: ^2.4.1
@@ -50,10 +49,9 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^3.0.0
-  # Code generation
+  # Code generation (isar_db has built-in generator)
   build_runner: ^2.4.13
   freezed: ^2.4.7
-  isar_generator: 3.1.0+1
   flutter_launcher_icons: ^0.13.1
 
 flutter:
