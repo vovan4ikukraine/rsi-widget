@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
 import '../constants/app_constants.dart';
