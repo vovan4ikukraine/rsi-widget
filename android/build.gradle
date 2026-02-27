@@ -94,9 +94,13 @@ gradle.beforeProject { project ->
         }
     }
     
-    // For all Android projects, ensure compileSdk 34+ for Material Design 3 system colors
+    // For all Android projects, ensure compileSdk 34+ and 16KB packaging
     project.afterEvaluate {
         if (project.hasProperty('android')) {
+            // 16KB page size for Google Play (Nov 2025+) - apply to all native libs
+            try {
+                project.android.packaging { jniLibs { useLegacyPackaging = false } }
+            } catch (e) { /* some projects may not have packaging */ }
             // Ensure compileSdk is high enough for Material Design 3 system colors (API 34+)
             // and lStar attribute (API 31+)
             try {
