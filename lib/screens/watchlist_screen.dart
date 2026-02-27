@@ -1817,22 +1817,26 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(loc.t('watchlist_title')),
-            if (_isLoading || _isActionInProgress || _isLoadingData) ...[
-              const SizedBox(width: 12),
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(loc.t('watchlist_title')),
+              if (_isLoading || _isActionInProgress || _isLoadingData) ...[
+                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],

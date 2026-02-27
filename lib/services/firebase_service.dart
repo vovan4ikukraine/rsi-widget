@@ -68,8 +68,8 @@ class FirebaseService {
   static void _setupMessageHandlers() {
     if (_messaging == null) return;
 
-    // Handle messages when app is in background
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // Handle messages when app is in background (must use top-level function)
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     // Handle messages when app is open
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -230,17 +230,6 @@ class FirebaseService {
   /// Expose device id for other services (ensures caching).
   static Future<String> getDeviceId() => _getDeviceId();
 
-  /// Handle messages in background
-  static Future<void> _firebaseMessagingBackgroundHandler(
-      RemoteMessage message) async {
-    // Server sends notification payload, system will display it automatically
-    // No client-side processing needed for background messages
-    if (kDebugMode) {
-      debugPrint('Background notification received: ${message.messageId}');
-      debugPrint('Notification: ${message.notification?.title} - ${message.notification?.body}');
-    }
-  }
-
   /// Handle messages in foreground
   static void _handleForegroundMessage(RemoteMessage message) {
     if (kDebugMode) {
@@ -354,9 +343,14 @@ class FirebaseService {
   }
 }
 
-/// Background message handler (must be a global function)
+/// Background message handler (must be a top-level function - runs in separate isolate).
+/// Do NOT call FirebaseService here - the class may not load in background isolate.
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  await FirebaseService._firebaseMessagingBackgroundHandler(message);
+  // Inline minimal logic - server displays notification, no client processing needed
+  if (kDebugMode) {
+    debugPrint('Background notification received: ${message.messageId}');
+    debugPrint('Notification: ${message.notification?.title} - ${message.notification?.body}');
+  }
 }
