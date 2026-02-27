@@ -311,10 +311,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Returns non-empty string or null (treats empty/whitespace as null).
+  static String? _nonEmpty(String? s) {
+    if (s == null) return null;
+    final t = s.trim();
+    return t.isEmpty ? null : t;
+  }
+
   Future<void> _loadSavedState() async {
     final prefs = await PreferencesStorage.instance;
 
-    if (widget.initialSymbol != null) {
+    final hasInitialSymbol = widget.initialSymbol != null;
+    if (hasInitialSymbol) {
       _selectedSymbol = widget.initialSymbol!;
     } else {
       _selectedSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
@@ -325,17 +333,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Fetch preferences from server
       final prefsData = await DataSyncService.fetchPreferences();
       if (prefsData != null) {
-        _selectedSymbol = prefsData['symbol'] as String? ??
-            prefs.getString('home_selected_symbol') ??
-            'AAPL';
-        _selectedTimeframe = prefsData['timeframe'] as String? ??
-            prefs.getString('home_selected_timeframe') ??
-            '15m';
         final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
-        _indicatorPeriod = prefsData['rsiPeriod'] as int? ??
-            prefs.getInt('home_${indicatorType.toJson()}_period') ??
-            indicatorType.defaultPeriod;
-        
+        final localSymbol = prefs.getString('home_selected_symbol') ?? 'AAPL';
+        final localTimeframe = prefs.getString('home_selected_timeframe') ?? '15m';
+        final localPeriod = prefs.getInt('home_${indicatorType.toJson()}_period') ?? indicatorType.defaultPeriod;
+
+        // Treat empty string from server as null (fallback to local)
+        final serverSymbol = _nonEmpty(prefsData['symbol'] as String?);
+        final serverTimeframe = _nonEmpty(prefsData['timeframe'] as String?);
+        final serverPeriod = prefsData['rsiPeriod'] as int?;
+
+        // Prefer local over server when server has "default" values and local has different.
+        // This prevents reset when sync failed (e.g. app killed before syncPreferences completed).
+        final isServerLikelyStale = (serverSymbol == null || serverSymbol == 'AAPL') &&
+            (serverTimeframe == null || serverTimeframe == '15m') &&
+            (serverPeriod == null || serverPeriod == indicatorType.defaultPeriod);
+
+        if (!hasInitialSymbol &&
+            isServerLikelyStale &&
+            (localSymbol != 'AAPL' || localTimeframe != '15m' || localPeriod != indicatorType.defaultPeriod)) {
+          // Use local - server probably has stale defaults; repair server in background
+          _selectedSymbol = localSymbol;
+          _selectedTimeframe = localTimeframe;
+          _indicatorPeriod = localPeriod;
+          unawaited(DataSyncService.syncPreferences(
+            symbol: localSymbol,
+            timeframe: localTimeframe,
+            rsiPeriod: localPeriod,
+            lowerLevel: prefs.getDouble('home_${indicatorType.toJson()}_lower_level'),
+            upperLevel: prefs.getDouble('home_${indicatorType.toJson()}_upper_level'),
+          ));
+        } else {
+          _selectedSymbol = serverSymbol ?? localSymbol;
+          _selectedTimeframe = serverTimeframe ?? localTimeframe;
+          _indicatorPeriod = serverPeriod ?? localPeriod;
+        }
+
         // Validate levels from server - must be in valid range for current indicator
         final serverLowerLevel = prefsData['lowerLevel'] as double?;
         final serverUpperLevel = prefsData['upperLevel'] as double?;
@@ -388,12 +421,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     } else {
-      // Anonymous mode: load from cache
+      // Anonymous mode: load from cache (treat empty string as null)
       final cacheData = await DataSyncService.loadPreferencesFromCache();
-      _selectedSymbol = cacheData['symbol'] as String? ??
+      _selectedSymbol = _nonEmpty(cacheData['symbol'] as String?) ??
           prefs.getString('home_selected_symbol') ??
           'AAPL';
-      _selectedTimeframe = cacheData['timeframe'] as String? ??
+      _selectedTimeframe = _nonEmpty(cacheData['timeframe'] as String?) ??
           prefs.getString('home_selected_timeframe') ??
           '15m';
       final indicatorType = _appState?.selectedIndicator ?? IndicatorType.rsi;
