@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:app_settings/app_settings.dart';
-import 'package:isar_db/isar_db.dart';
+import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
@@ -226,13 +226,14 @@ class NotificationService {
 
       // Get Isar from path
       final dir = await getApplicationDocumentsDirectory();
-      final isar = await Isar.openAsync(
-        schemas: [
+      final isar = await Isar.open(
+        [
           AlertRuleSchema,
           AlertStateSchema,
           AlertEventSchema,
           IndicatorDataSchema,
-          DeviceInfoSchema
+          DeviceInfoSchema,
+          WatchlistItemSchema,
         ],
         directory: dir.path,
         name: 'rsi_alert_db',
@@ -262,13 +263,14 @@ class NotificationService {
 
       // Get Isar from path
       final dir = await getApplicationDocumentsDirectory();
-      final isar = await Isar.openAsync(
-        schemas: [
+      final isar = await Isar.open(
+        [
           AlertRuleSchema,
           AlertStateSchema,
           AlertEventSchema,
           IndicatorDataSchema,
-          DeviceInfoSchema
+          DeviceInfoSchema,
+          WatchlistItemSchema,
         ],
         directory: dir.path,
         name: 'rsi_alert_db',

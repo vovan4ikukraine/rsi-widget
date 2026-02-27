@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:isar_db/isar_db.dart';
+import 'package:isar/isar.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'models.g.dart';
@@ -7,8 +7,7 @@ part 'models.freezed.dart';
 
 @collection
 class AlertRule {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   int? remoteId;
 
@@ -80,8 +79,7 @@ class AlertRule {
 
 @collection
 class AlertState {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   @Index()
   late int ruleId;
@@ -156,8 +154,7 @@ class AlertState {
 
 @collection
 class AlertEvent {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   @Index()
   late int ruleId;
@@ -191,8 +188,7 @@ class AlertEvent {
 
 @collection
 class IndicatorData {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   @Index()
   late String symbol;
@@ -263,8 +259,7 @@ typedef RsiData = IndicatorData;
 
 @collection
 class DeviceInfo {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   late String deviceId;
 
@@ -279,8 +274,7 @@ class DeviceInfo {
 
 @collection
 class WatchlistItem {
-  @Id()
-  int id = 0; // 0 = auto-increment on put (isar_db)
+  Id id = Isar.autoIncrement;
 
   @Index()
   late String symbol;

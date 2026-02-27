@@ -1,5 +1,5 @@
 import 'package:get_it/get_it.dart';
-import 'package:isar_db/isar_db.dart';
+import 'package:isar/isar.dart';
 
 import '../repositories/alert_repository.dart';
 import '../repositories/i_alert_repository.dart';

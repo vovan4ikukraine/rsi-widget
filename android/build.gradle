@@ -59,8 +59,8 @@ gradle.beforeProject { project ->
         project.afterEvaluate {
             if (project.hasProperty("android")) {
                 project.android.namespace = project.name == "isar_db_flutter_libs"
-                    ? "dev.isar_db.flutter_libs"
-                    : "dev.isar.flutter_libs";
+                    ? "dev.isar.isar_db_flutter_libs"
+                    : "dev.isar.isar_flutter_libs";
                 
                 // Ensure compileSdk is high enough for lStar attribute (API 31+)
                 try {
