@@ -12,37 +12,31 @@ class WatchlistRepository implements IWatchlistRepository {
   /// Get all watchlist items.
   @override
   Future<List<WatchlistItem>> getAll() async {
-    return isar.watchlistItems.where().findAll();
+    return isar.watchlistItems.where().anyId().findAll();
   }
 
   /// Get watchlist item by symbol.
   @override
   Future<WatchlistItem?> getBySymbol(String symbol) async {
-    return isar.watchlistItems
-        .filter()
-        .symbolEqualTo(symbol)
-        .findFirst();
+    return isar.watchlistItems.where().symbolEqualTo(symbol).findFirst();
   }
 
   /// Get all watchlist items with given symbol (for duplicate check).
   @override
   Future<List<WatchlistItem>> findAllBySymbol(String symbol) async {
-    return isar.watchlistItems
-        .filter()
-        .symbolEqualTo(symbol)
-        .findAll();
+    return isar.watchlistItems.where().symbolEqualTo(symbol).findAll();
   }
 
   /// Save or update a watchlist item.
   @override
   Future<void> put(WatchlistItem item) async {
-    await isar.writeTxn(() => isar.watchlistItems.put(item));
+    await isar.writeTxn(() async => isar.watchlistItems.put(item));
   }
 
   /// Delete a watchlist item by ID.
   @override
   Future<void> delete(int id) async {
-    await isar.writeTxn(() => isar.watchlistItems.delete(id));
+    await isar.writeTxn(() async => isar.watchlistItems.delete(id));
   }
 
   /// Replace all watchlist items with [items] in a single transaction.
@@ -50,14 +44,13 @@ class WatchlistRepository implements IWatchlistRepository {
   @override
   Future<void> replaceAll(List<WatchlistItem> items) async {
     await isar.writeTxn(() async {
-      final existing = await isar.watchlistItems.where().findAll();
+      final existing = await isar.watchlistItems.where().anyId().findAll();
       for (final e in existing) {
-        await isar.watchlistItems.delete(e.id);
+        isar.watchlistItems.delete(e.id);
       }
       for (final item in items) {
-        await isar.watchlistItems.put(item);
+        isar.watchlistItems.put(item);
       }
-      return Future<void>.value();
     });
   }
 }

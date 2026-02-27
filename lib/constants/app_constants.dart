@@ -9,6 +9,12 @@ class AppConstants {
   // Chart and data limits
   static const int minCandlesForChart = 100;
   static const int periodBuffer = 20;
+  /// Extra candles for indices (^GDAXI, ^DJI, etc.) - markets closed on weekends/holidays
+  static const int indexCandleBuffer = 50;
+
+  /// True if symbol is a stock index (Yahoo prefix ^)
+  static bool isIndexSymbol(String symbol) =>
+      symbol.trim().toUpperCase().startsWith('^');
   
   // Alert defaults
   static const int defaultCooldownSec = 600;

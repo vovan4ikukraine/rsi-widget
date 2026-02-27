@@ -52,13 +52,15 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Fix isar_flutter_libs and other plugins - ensure compileSdk 34+ for Material Design 3 system colors
+// Fix isar_flutter_libs / isar_db_flutter_libs and other plugins - ensure compileSdk 34+ for Material Design 3 system colors
 gradle.beforeProject { project ->
-    // Special handling for isar_flutter_libs
-    if (project.name == "isar_flutter_libs") {
+    // Special handling for isar_flutter_libs (legacy) and isar_db_flutter_libs
+    if (project.name == "isar_flutter_libs" || project.name == "isar_db_flutter_libs") {
         project.afterEvaluate {
             if (project.hasProperty("android")) {
-                project.android.namespace = "dev.isar.flutter_libs"
+                project.android.namespace = project.name == "isar_db_flutter_libs"
+                    ? "dev.isar.isar_db_flutter_libs"
+                    : "dev.isar.isar_flutter_libs";
                 
                 // Ensure compileSdk is high enough for lStar attribute (API 31+)
                 try {

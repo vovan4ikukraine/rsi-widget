@@ -196,33 +196,35 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      loc.t('auth_privacy_agreement'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey[500] : Colors.grey[600],
-                      ),
-                    ),
-                    InkWell(
-                      onTap: _launchPrivacyPolicy,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          loc.t('auth_privacy_link'),
+                    Flexible(
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: TextSpan(
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.blue[700],
-                            decoration: TextDecoration.underline,
-                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
                           ),
+                          children: [
+                            TextSpan(text: '${loc.t('auth_privacy_agreement')} '),
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.baseline,
+                              baseline: TextBaseline.alphabetic,
+                              child: InkWell(
+                                onTap: _launchPrivacyPolicy,
+                                child: Text(
+                                  loc.t('auth_privacy_link'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blue[700],
+                                    decoration: TextDecoration.underline,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const TextSpan(text: '.'),
+                          ],
                         ),
-                      ),
-                    ),
-                    Text(
-                      '.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey[500] : Colors.grey[600],
                       ),
                     ),
                   ],

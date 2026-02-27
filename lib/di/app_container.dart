@@ -9,7 +9,7 @@ import '../repositories/watchlist_repository.dart';
 final GetIt sl = GetIt.instance;
 
 /// Registers core dependencies (Isar, repositories).
-/// Call once from main() after Isar.open().
+/// Call once from main() after Isar.openAsync().
 void registerAppDependencies(Isar isar) {
   sl
     ..registerSingleton<Isar>(isar)

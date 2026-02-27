@@ -16,7 +16,7 @@ class AlertRepository implements IAlertRepository {
   /// Save or update an alert
   @override
   Future<void> saveAlert(AlertRule alert) async {
-    await isar.writeTxn(() => isar.alertRules.put(alert));
+    await isar.writeTxn(() async => isar.alertRules.put(alert));
   }
 
   /// Save multiple alert states in a single transaction
@@ -25,9 +25,8 @@ class AlertRepository implements IAlertRepository {
     if (states.isEmpty) return;
     await isar.writeTxn(() async {
       for (final state in states) {
-        await isar.alertStates.put(state);
+        isar.alertStates.put(state);
       }
-      return Future<void>.value();
     });
   }
 
@@ -37,16 +36,15 @@ class AlertRepository implements IAlertRepository {
     if (alerts.isEmpty) return;
     await isar.writeTxn(() async {
       for (final alert in alerts) {
-        await isar.alertRules.put(alert);
+        isar.alertRules.put(alert);
       }
-      return Future<void>.value();
     });
   }
 
   /// Delete an alert by ID
   @override
   Future<void> deleteAlert(int id) async {
-    await isar.writeTxn(() => isar.alertRules.delete(id));
+    await isar.writeTxn(() async => isar.alertRules.delete(id));
   }
 
   /// Delete multiple alerts in a single transaction
@@ -55,9 +53,8 @@ class AlertRepository implements IAlertRepository {
     if (ids.isEmpty) return;
     await isar.writeTxn(() async {
       for (final id in ids) {
-        await isar.alertRules.delete(id);
+        isar.alertRules.delete(id);
       }
-      return Future<void>.value();
     });
   }
 
@@ -68,11 +65,11 @@ class AlertRepository implements IAlertRepository {
       // Delete alert state
       try {
         final alertState = await isar.alertStates
-            .filter()
+            .where()
             .ruleIdEqualTo(id)
             .findFirst();
-        if (alertState != null && alertState.id > 0) {
-          await isar.alertStates.delete(alertState.id);
+        if (alertState != null && alertState.id != Isar.autoIncrement) {
+          isar.alertStates.delete(alertState.id);
         }
       } catch (e) {
         // Ignore errors - state may not exist
@@ -81,12 +78,12 @@ class AlertRepository implements IAlertRepository {
       // Delete alert events
       try {
         final events = await isar.alertEvents
-            .filter()
+            .where()
             .ruleIdEqualTo(id)
             .findAll();
         for (final event in events) {
-          if (event.id > 0) {
-            await isar.alertEvents.delete(event.id);
+          if (event.id != Isar.autoIncrement) {
+            isar.alertEvents.delete(event.id);
           }
         }
       } catch (e) {
@@ -94,7 +91,7 @@ class AlertRepository implements IAlertRepository {
       }
 
       // Delete alert rule
-      await isar.alertRules.delete(id);
+      isar.alertRules.delete(id);
     });
   }
 
@@ -108,12 +105,12 @@ class AlertRepository implements IAlertRepository {
         // Delete alert state
         try {
           final alertState = await isar.alertStates
-              .filter()
+              .where()
               .ruleIdEqualTo(id)
               .findFirst();
-          if (alertState != null && alertState.id > 0) {
-            await isar.alertStates.delete(alertState.id);
-          }
+        if (alertState != null && alertState.id != Isar.autoIncrement) {
+          isar.alertStates.delete(alertState.id);
+        }
         } catch (e) {
           // Ignore errors - state may not exist
         }
@@ -121,20 +118,20 @@ class AlertRepository implements IAlertRepository {
         // Delete alert events
         try {
           final events = await isar.alertEvents
-              .filter()
+              .where()
               .ruleIdEqualTo(id)
               .findAll();
           for (final event in events) {
-            if (event.id > 0) {
-              await isar.alertEvents.delete(event.id);
-            }
+          if (event.id != Isar.autoIncrement) {
+            isar.alertEvents.delete(event.id);
+          }
           }
         } catch (e) {
           // Ignore errors - events may not exist
         }
 
         // Delete alert rule
-        await isar.alertRules.delete(id);
+        isar.alertRules.delete(id);
       }
     });
   }
@@ -145,11 +142,11 @@ class AlertRepository implements IAlertRepository {
     await isar.writeTxn(() async {
       try {
         final alertState = await isar.alertStates
-            .filter()
+            .where()
             .ruleIdEqualTo(ruleId)
             .findFirst();
-        if (alertState != null && alertState.id > 0) {
-          await isar.alertStates.delete(alertState.id);
+        if (alertState != null && alertState.id != Isar.autoIncrement) {
+          isar.alertStates.delete(alertState.id);
         }
       } catch (e) {
         // Ignore errors - state may not exist
@@ -162,12 +159,12 @@ class AlertRepository implements IAlertRepository {
     await isar.writeTxn(() async {
       try {
         final events = await isar.alertEvents
-            .filter()
+            .where()
             .ruleIdEqualTo(ruleId)
             .findAll();
         for (final event in events) {
-          if (event.id > 0) {
-            await isar.alertEvents.delete(event.id);
+          if (event.id != Isar.autoIncrement) {
+            isar.alertEvents.delete(event.id);
           }
         }
       } catch (e) {
@@ -179,20 +176,20 @@ class AlertRepository implements IAlertRepository {
   /// Get all alerts
   @override
   Future<List<AlertRule>> getAllAlerts() async {
-    return await isar.alertRules.where().findAll();
+    return isar.alertRules.where().anyId().findAll();
   }
 
   /// Get alert by ID
   @override
   Future<AlertRule?> getAlertById(int id) async {
-    return await isar.alertRules.get(id);
+    return isar.alertRules.get(id);
   }
 
   /// Get alerts by symbol
   @override
   Future<List<AlertRule>> getAlertsBySymbol(String symbol) async {
-    return await isar.alertRules
-        .filter()
+    return isar.alertRules
+        .where()
         .symbolEqualTo(symbol)
         .findAll();
   }
@@ -200,7 +197,9 @@ class AlertRepository implements IAlertRepository {
   /// Get active alerts
   @override
   Future<List<AlertRule>> getActiveAlerts() async {
-    return await isar.alertRules
+    return isar.alertRules
+        .where()
+        .anyId()
         .filter()
         .activeEqualTo(true)
         .findAll();
@@ -220,13 +219,13 @@ class AlertRepository implements IAlertRepository {
   /// Get all alert events
   @override
   Future<List<AlertEvent>> getAllAlertEvents() async {
-    return await isar.alertEvents.where().findAll();
+    return isar.alertEvents.where().anyId().findAll();
   }
 
   /// Get all alert states
   @override
   Future<List<AlertState>> getAllAlertStates() async {
-    return await isar.alertStates.where().findAll();
+    return isar.alertStates.where().anyId().findAll();
   }
 
   /// Save multiple alert events in a single transaction
@@ -235,9 +234,8 @@ class AlertRepository implements IAlertRepository {
     if (events.isEmpty) return;
     await isar.writeTxn(() async {
       for (final event in events) {
-        await isar.alertEvents.put(event);
+        isar.alertEvents.put(event);
       }
-      return Future<void>.value();
     });
   }
 
@@ -263,7 +261,7 @@ class AlertRepository implements IAlertRepository {
       for (final r in alertsToRestore) {
         final oldId = r.$1;
         final rule = r.$2;
-        await isar.alertRules.put(rule);
+        isar.alertRules.put(rule);
         idMap[oldId] = rule.id;
       }
       for (final s in statesToRestore) {
@@ -272,7 +270,7 @@ class AlertRepository implements IAlertRepository {
         final newRuleId = idMap[oldRuleId];
         if (newRuleId != null) {
           state.ruleId = newRuleId;
-          await isar.alertStates.put(state);
+          isar.alertStates.put(state);
         }
       }
       for (final e in eventsToRestore) {
@@ -281,16 +279,20 @@ class AlertRepository implements IAlertRepository {
         final newRuleId = idMap[oldRuleId];
         if (newRuleId != null) {
           event.ruleId = newRuleId;
-          await isar.alertEvents.put(event);
+          isar.alertEvents.put(event);
         }
       }
-      return Future<void>.value();
     });
   }
 
   /// Get alerts with remoteId set (for fetch-and-sync)
   Future<List<AlertRule>> getAlertsWithRemoteId() async {
-    return await isar.alertRules.filter().remoteIdIsNotNull().findAll();
+    return isar.alertRules
+        .where()
+        .anyId()
+        .filter()
+        .remoteIdIsNotNull()
+        .findAll();
   }
 
   /// Replace local alerts with server snapshot (fetch-and-sync logic).
@@ -350,7 +352,7 @@ class AlertRepository implements IAlertRepository {
             ..repeatable = true
             ..soundEnabled = true
             ..source = ruleData['source'] as String? ?? 'custom';
-          await isar.alertRules.put(alert);
+          isar.alertRules.put(alert);
         } else {
           final levelsData = ruleData['levels'] is String
               ? jsonDecode(ruleData['levels'] as String)
@@ -380,7 +382,7 @@ class AlertRepository implements IAlertRepository {
                 ? (ruleData['alert_on_close'] as int? ?? 0) == 1
                 : ex.alertOnClose
             ..source = ruleData['source'] as String? ?? ex.source;
-          await isar.alertRules.put(ex);
+          isar.alertRules.put(ex);
         }
         existingRemoteIds.remove(remoteId);
       }
@@ -391,44 +393,43 @@ class AlertRepository implements IAlertRepository {
           await _deleteAlertWithRelatedDataInTxn(toDelete.first.id);
         }
       }
-      return Future<void>.value();
     });
   }
 
-  /// Must be called inside an active writeTxn.
+  /// Must be called inside an active write callback with the same isar instance.
   Future<void> _deleteAlertWithRelatedDataInTxn(int id) async {
     try {
       final states =
-          await isar.alertStates.filter().ruleIdEqualTo(id).findAll();
+          await isar.alertStates.where().ruleIdEqualTo(id).findAll();
       for (final s in states) {
-        await isar.alertStates.delete(s.id);
+        isar.alertStates.delete(s.id);
       }
     } catch (_) {}
     try {
       final events =
-          await isar.alertEvents.filter().ruleIdEqualTo(id).findAll();
+          await isar.alertEvents.where().ruleIdEqualTo(id).findAll();
       for (final e in events) {
-        await isar.alertEvents.delete(e.id);
+        isar.alertEvents.delete(e.id);
       }
     } catch (_) {}
-    await isar.alertRules.delete(id);
+    isar.alertRules.delete(id);
   }
 
   Future<void> _deleteAnonymousInTxn() async {
-    final all = await isar.alertRules.where().findAll();
+    final all = await isar.alertRules.where().anyId().findAll();
     for (final a in all) {
       if (a.remoteId == null) {
         final states =
-            await isar.alertStates.filter().ruleIdEqualTo(a.id).findAll();
+            await isar.alertStates.where().ruleIdEqualTo(a.id).findAll();
         for (final s in states) {
-          await isar.alertStates.delete(s.id);
+          isar.alertStates.delete(s.id);
         }
         final events =
-            await isar.alertEvents.filter().ruleIdEqualTo(a.id).findAll();
+            await isar.alertEvents.where().ruleIdEqualTo(a.id).findAll();
         for (final e in events) {
-          await isar.alertEvents.delete(e.id);
+          isar.alertEvents.delete(e.id);
         }
-        await isar.alertRules.delete(a.id);
+        isar.alertRules.delete(a.id);
       }
     }
   }
@@ -464,7 +465,7 @@ class AlertRepository implements IAlertRepository {
     final indicatorName = indicatorType.toJson();
     final watchlistAlertDescription =
         '${AppConstants.watchlistAlertPrefix} Mass alert for $indicatorName';
-    final williamsAltDescription =
+    const williamsAltDescription =
         '${AppConstants.watchlistAlertPrefix} Mass alert for williams';
 
     return allAlerts.where((a) {

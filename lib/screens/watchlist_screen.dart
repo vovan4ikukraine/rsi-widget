@@ -181,22 +181,16 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final previousIndicator = _previousIndicatorType;
     final oldAppState = _appState;
     _appState = AppStateScope.of(context);
     final currentIndicator = _appState?.selectedIndicator ?? IndicatorType.rsi;
     // Remove old listener before adding to prevent accumulation (causes loop of sync/fetch)
     oldAppState?.removeListener(_onIndicatorChanged);
     
-    // Update previousIndicatorType if it's the first time or if it changed
-    if (_previousIndicatorType == null || _previousIndicatorType != currentIndicator) {
-      _previousIndicatorType = currentIndicator;
-      
-      // If indicator changed and we already have initial state loaded, trigger reload
-      if (previousIndicator != null && previousIndicator != currentIndicator) {
-        // Indicator changed - let _onIndicatorChanged handle it via listener
-      }
-    }
+    // Only set _previousIndicatorType on initial load (null). When indicator changes,
+    // _onIndicatorChanged handles save/load and updates it - do NOT overwrite here
+    // or we'd lose the previous indicator reference before saving its settings.
+    _previousIndicatorType ??= currentIndicator;
     
     // Add listener only once per didChangeDependencies call
     _appState?.addListener(_onIndicatorChanged);
@@ -240,6 +234,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         
         // Save mass alert settings for the previous indicator
         final previousIndicatorKey = _previousIndicatorType!.toJson();
+        await prefs.setString('watchlist_mass_alert_${previousIndicatorKey}_timeframe', _massAlertTimeframe);
         await prefs.setInt('watchlist_mass_alert_${previousIndicatorKey}_period', massAlertPeriodFromController ?? _massAlertPeriod);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_lower_level', massAlertLowerFromController ?? _massAlertLowerLevel);
         await prefs.setDouble('watchlist_mass_alert_${previousIndicatorKey}_upper_level', massAlertUpperFromController ?? _massAlertUpperLevel);
@@ -331,11 +326,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
             _massAlertStochDPeriod = null;
           }
 
-          // Mode, cooldown, repeatable, on_close are per indicator
-          _massAlertMode = savedMassAlertMode ?? prefs.getString('watchlist_mass_alert_mode') ?? 'cross';
-          _massAlertCooldownSec = savedMassAlertCooldown ?? prefs.getInt('watchlist_mass_alert_cooldown_sec') ?? AppConstants.defaultCooldownSec;
-          _massAlertRepeatable = savedMassAlertRepeatable ?? prefs.getBool('watchlist_mass_alert_repeatable') ?? true;
-          _massAlertOnClose = savedMassAlertOnClose ?? prefs.getBool('watchlist_mass_alert_on_close') ?? false;
+          // Mode, cooldown, repeatable, on_close are per indicator (no shared fallback)
+          _massAlertMode = savedMassAlertMode ?? 'cross';
+          _massAlertCooldownSec = savedMassAlertCooldown ?? AppConstants.defaultCooldownSec;
+          _massAlertRepeatable = savedMassAlertRepeatable ?? true;
+          _massAlertOnClose = savedMassAlertOnClose ?? false;
 
           // Update controllers - for WPR levels, ensure minus sign is preserved
           _indicatorPeriodController.text = _indicatorPeriod.toString();
@@ -1122,7 +1117,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     while (attempt < maxRetries) {
       try {
         // Use same candle limit calculation as CRON (ensures consistency)
-        final limit = _candlesLimitForTimeframe(_timeframe, _indicatorPeriod);
+        final limit = _candlesLimitForTimeframe(_timeframe, _indicatorPeriod, symbol);
 
         final candles = await _yahooService.fetchCandles(
           symbol,
@@ -1822,22 +1817,26 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(loc.t('watchlist_title')),
-            if (_isLoading || _isActionInProgress || _isLoadingData) ...[
-              const SizedBox(width: 12),
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(loc.t('watchlist_title')),
+              if (_isLoading || _isActionInProgress || _isLoadingData) ...[
+                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         titleSpacing: 8, // Reduce spacing between back button and title
         backgroundColor: Colors.blue[900],
@@ -3225,7 +3224,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
           final candles = await _yahooService.fetchCandles(
             item.symbol,
             _massAlertTimeframe,
-            limit: _candlesLimitForTimeframe(_massAlertTimeframe, _massAlertPeriod),
+            limit: _candlesLimitForTimeframe(_massAlertTimeframe, _massAlertPeriod, item.symbol),
           );
 
           if (candles.isNotEmpty) {
@@ -3376,8 +3375,9 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   }
 
   /// Calculate optimal candle limit based on timeframe and period
-  /// Ensures we have enough candles for indicator calculation + buffer for charts
-  int _candlesLimitForTimeframe(String timeframe, [int? period]) {
+  /// Ensures we have enough candles for indicator calculation + buffer for charts.
+  /// Adds extra buffer for indices (markets closed on weekends/holidays).
+  int _candlesLimitForTimeframe(String timeframe, [int? period, String? symbol]) {
     // Minimum candles required for indicators: period + buffer
     const defaultPeriod = AppConstants.defaultIndicatorPeriod;
     final periodBuffer = period != null
@@ -3400,7 +3400,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
     }
     
     // Return max of period requirement and base minimum
-    return periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    var limit = periodBuffer > baseMinimum ? periodBuffer : baseMinimum;
+    if (symbol != null && AppConstants.isIndexSymbol(symbol)) {
+      limit += AppConstants.indexCandleBuffer;
+    }
+    return limit;
   }
 
   /// Check if two level lists are equal

@@ -40,13 +40,10 @@ const _localeAliases = <String, String>{
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Edge-to-edge for Android 15+ (required by Google Play)
+  // Edge-to-edge for Android 15+ (required by Google Play).
+  // Do NOT use statusBarColor/systemNavigationBarColor/systemNavigationBarDividerColor -
+  // they trigger deprecated APIs (setStatusBarColor etc.) unsupported in Android 15.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    systemNavigationBarColor: Colors.transparent,
-    systemNavigationBarDividerColor: Colors.transparent,
-  ));
 
   // 1️⃣ Initialize Firebase (critical for auth)
   await Firebase.initializeApp();

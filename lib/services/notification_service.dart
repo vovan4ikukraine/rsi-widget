@@ -232,7 +232,8 @@ class NotificationService {
           AlertStateSchema,
           AlertEventSchema,
           IndicatorDataSchema,
-          DeviceInfoSchema
+          DeviceInfoSchema,
+          WatchlistItemSchema,
         ],
         directory: dir.path,
         name: 'rsi_alert_db',
@@ -268,7 +269,8 @@ class NotificationService {
           AlertStateSchema,
           AlertEventSchema,
           IndicatorDataSchema,
-          DeviceInfoSchema
+          DeviceInfoSchema,
+          WatchlistItemSchema,
         ],
         directory: dir.path,
         name: 'rsi_alert_db',
