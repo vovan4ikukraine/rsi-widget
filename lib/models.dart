@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'models.g.dart';
@@ -321,7 +321,7 @@ class RsiState {
 
 /// Indicator calculation result (universal)
 @freezed
-class IndicatorResult with _$IndicatorResult {
+abstract class IndicatorResult with _$IndicatorResult {
   const IndicatorResult._();
 
   const factory IndicatorResult({
@@ -336,7 +336,7 @@ class IndicatorResult with _$IndicatorResult {
 /// Deprecated: Use IndicatorResult instead
 @Deprecated('Use IndicatorResult instead')
 @freezed
-class RsiResult with _$RsiResult {
+abstract class RsiResult with _$RsiResult {
   const RsiResult._();
 
   const factory RsiResult({
@@ -378,7 +378,7 @@ typedef RsiZone = IndicatorZone;
 
 /// Alert configuration
 @freezed
-class AlertConfig with _$AlertConfig {
+abstract class AlertConfig with _$AlertConfig {
   const factory AlertConfig({
     required String symbol,
     required String timeframe,
@@ -393,7 +393,7 @@ class AlertConfig with _$AlertConfig {
 
 /// Alert trigger event (universal)
 @freezed
-class AlertTrigger with _$AlertTrigger {
+abstract class AlertTrigger with _$AlertTrigger {
   const AlertTrigger._();
 
   const factory AlertTrigger({
