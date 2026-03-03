@@ -1767,11 +1767,11 @@ class _MarketsScreenState extends State<MarketsScreen>
                         const SizedBox(height: 12),
                         CheckboxListTile(
                           value: _showDivergences,
-                          onChanged: (value) {
+                          onChanged: (value) async {
                             setState(() {
                               _showDivergences = value ?? false;
-                              _saveState();
                             });
+                            await _saveState();
                           },
                           title: Text(
                             loc.t('chart_show_divergences'),

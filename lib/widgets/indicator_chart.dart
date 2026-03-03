@@ -181,108 +181,65 @@ class IndicatorChart extends StatelessWidget {
     }).toList();
 
     final hasDivergences = divergences != null && divergences!.isNotEmpty;
+    final divergenceIndices = hasDivergences
+        ? divergences!
+            .expand((d) => [d.startIndex, d.endIndex])
+            .toSet()
+        : <int>{};
 
-    if (!hasDivergences || mainSpots.isEmpty) {
-      return [
-        LineChartBarData(
-          spots: mainSpots,
-          isCurved: false,
-          color: lineColor ?? _getMainLineColor(mainValues.last),
-          barWidth: lineWidth,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
-        ),
-      ];
-    }
-
-    // Build segments: alternate default color and yellow for divergence ranges
-    // Sort by startIndex for consistent segment ordering
-    final sorted = List<Divergence>.from(divergences!)
-      ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
-    final result = <LineChartBarData>[];
-    int i = 0;
-    for (final d in sorted) {
-      final start = d.startIndex;
-      final end = d.endIndex;
-      if (start >= mainSpots.length || end >= mainSpots.length) continue;
-
-      // Segment before this divergence
-      if (i < start) {
-        result.add(_segment(
-          mainSpots.sublist(i, start + 1),
-          lineColor ?? _getMainLineColor(mainValues.last),
-          <int>{},
-        ));
-      }
-
-      // Divergence segment (yellow) with dots at start and end
-      result.add(_segment(
-        mainSpots.sublist(start, end + 1),
-        Colors.amber,
-        {start, end},
-      ));
-
-      i = end;
-    }
-
-    // Remaining segment after last divergence
-    if (i < mainSpots.length) {
-      result.add(_segment(
-        mainSpots.sublist(i),
-        lineColor ?? _getMainLineColor(mainValues.last),
-        <int>{},
-      ));
-    }
-
-    if (result.isEmpty) {
-      return [
-        LineChartBarData(
-          spots: mainSpots,
-          isCurved: false,
-          color: lineColor ?? _getMainLineColor(mainValues.last),
-          barWidth: lineWidth,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
-        ),
-      ];
-    }
-
-    return result;
-  }
-
-  LineChartBarData _segment(
-    List<FlSpot> spots,
-    Color color,
-    Set<int> dotAtIndices,
-  ) {
-    return LineChartBarData(
-      spots: spots,
-      isCurved: false,
-      color: color,
-      barWidth: lineWidth,
-      isStrokeCapRound: true,
-      dotData: FlDotData(
-        show: dotAtIndices.isNotEmpty,
-        getDotPainter: (spot, percent, barData, spotIndex) {
-          final globalIndex = spot.x.round();
-          if (!dotAtIndices.contains(globalIndex)) {
+    final bars = <LineChartBarData>[
+      LineChartBarData(
+        spots: mainSpots,
+        isCurved: false,
+        color: lineColor ?? _getMainLineColor(mainValues.last),
+        barWidth: lineWidth,
+        isStrokeCapRound: true,
+        dotData: FlDotData(
+          show: divergenceIndices.isNotEmpty,
+          getDotPainter: (spot, percent, barData, spotIndex) {
+            final idx = spot.x.round();
+            if (!divergenceIndices.contains(idx)) {
+              return FlDotCirclePainter(
+                radius: 0,
+                color: Colors.transparent,
+              );
+            }
             return FlDotCirclePainter(
-              radius: 0,
-              color: Colors.transparent,
+              radius: 2.5,
+              color: Colors.amber,
+              strokeWidth: 1,
+              strokeColor: Colors.amber.shade800,
             );
-          }
-          return FlDotCirclePainter(
-            radius: 4,
-            color: Colors.amber,
-            strokeWidth: 2,
-            strokeColor: Colors.amber.shade800,
-          );
-        },
+          },
+        ),
+        belowBarData: BarAreaData(show: false),
       ),
-      belowBarData: BarAreaData(show: false),
-    );
+    ];
+
+    // Yellow segments for divergences (barIndex >= 1) — tooltip disabled via getTooltipItems
+    if (hasDivergences) {
+      for (final d in divergences!) {
+        final segmentSpots = <FlSpot>[];
+        for (var i = d.startIndex; i <= d.endIndex && i < mainValues.length; i++) {
+          segmentSpots.add(FlSpot(i.toDouble(), mainValues[i]));
+        }
+        if (segmentSpots.length >= 2) {
+          bars.add(
+            LineChartBarData(
+              spots: segmentSpots,
+              isCurved: false,
+              color: Colors.amber,
+              barWidth: lineWidth,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: false),
+            ),
+          );
+        }
+      }
+    }
+
+    return bars;
   }
 
   ExtraLinesData _buildExtraLinesData(double minY, double maxY) {
@@ -347,34 +304,42 @@ class IndicatorChart extends StatelessWidget {
         fitInsideVertically: true,
         getTooltipItems: (touchedSpots) {
           if (touchedSpots.isEmpty) return [];
-          
-          final firstSpot = touchedSpots.first;
-          final index = firstSpot.x.toInt().clamp(0, timestamps.length - 1);
+          // Всегда берём точку основной линии (barIndex 0) — у неё все индексы, при перетаскивании не прыгает
+          final mainSpots = touchedSpots.where((s) => s.barIndex == 0);
+          final spot = mainSpots.isEmpty ? touchedSpots.first : mainSpots.first;
+          final index = spot.x.toInt().clamp(0, timestamps.length - 1);
           final timestamp = timestamps[index];
           final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
           final formatted = _formatTooltipDate(date);
-
-          final currentValue = _formatTooltipValue(firstSpot.y);
+          final currentValue = _formatTooltipValue(spot.y);
           final tooltipText = '${indicatorType.name}: $currentValue\n$formatted';
-          
-          return [
-            LineTooltipItem(
-              tooltipText,
-              const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-          ];
+          return touchedSpots.asMap().entries.map((e) {
+            return e.key == 0
+                ? LineTooltipItem(tooltipText, const TextStyle(color: Colors.white, fontSize: 11))
+                : null;
+          }).toList();
         },
         tooltipPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
       getTouchLineStart: (data, index) => 0,
       getTouchLineEnd: (data, index) => 100,
-      touchSpotThreshold: 10,
+      touchSpotThreshold: 25,
       getTouchedSpotIndicator: (barData, spotIndexes) {
+        final isMain = barData.color != Colors.amber;
         return spotIndexes.map((index) {
+          if (!isMain) {
+            return TouchedSpotIndicatorData(
+              const FlLine(color: Colors.transparent, strokeWidth: 0),
+              FlDotData(
+                getDotPainter: (spot, percent, barData, i) =>
+                    FlDotCirclePainter(radius: 0, color: Colors.transparent),
+              ),
+            );
+          }
           return TouchedSpotIndicatorData(
             const FlLine(color: Colors.blue, strokeWidth: 1),
             FlDotData(
-              getDotPainter: (spot, percent, barData, index) {
+              getDotPainter: (spot, percent, barData, i) {
                 return FlDotCirclePainter(
                   radius: 3,
                   color: Colors.blue,
@@ -392,6 +357,7 @@ class IndicatorChart extends StatelessWidget {
   LineTouchData _buildLineTouchData() {
     return LineTouchData(
       enabled: true,
+      touchSpotThreshold: 25,
       touchTooltipData: LineTouchTooltipData(
         getTooltipColor: (spot) => Colors.blue.withValues(alpha: 0.8),
         tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -400,30 +366,37 @@ class IndicatorChart extends StatelessWidget {
         fitInsideVertically: true,
         getTooltipItems: (touchedSpots) {
           if (touchedSpots.isEmpty) return [];
-          
-          final firstSpot = touchedSpots.first;
-          final index = firstSpot.x.toInt().clamp(0, timestamps.length - 1);
+          // Всегда берём точку основной линии (barIndex 0) — у неё все индексы, при перетаскивании не прыгает
+          final mainSpots = touchedSpots.where((s) => s.barIndex == 0);
+          final spot = mainSpots.isEmpty ? touchedSpots.first : mainSpots.first;
+          final index = spot.x.toInt().clamp(0, timestamps.length - 1);
           final date = DateTime.fromMillisecondsSinceEpoch(timestamps[index]);
           final formatted = _formatTooltipDate(date);
-
-          final currentValue = _formatTooltipValue(firstSpot.y);
+          final currentValue = _formatTooltipValue(spot.y);
           final tooltipText = '${indicatorType.name}: $currentValue\n$formatted';
-          
-          // Return tooltip for all spots (usually just one), but with same text to avoid duplication
-          return touchedSpots.map((spot) {
-            return LineTooltipItem(
-              tooltipText,
-              const TextStyle(color: Colors.white, fontSize: 12),
-            );
+          return touchedSpots.asMap().entries.map((e) {
+            return e.key == 0
+                ? LineTooltipItem(tooltipText, const TextStyle(color: Colors.white, fontSize: 12))
+                : null;
           }).toList();
         },
       ),
       getTouchedSpotIndicator: (barData, spotIndexes) {
+        final isMain = barData.color != Colors.amber;
         return spotIndexes.map((index) {
+          if (!isMain) {
+            return TouchedSpotIndicatorData(
+              const FlLine(color: Colors.transparent, strokeWidth: 0),
+              FlDotData(
+                getDotPainter: (spot, percent, barData, i) =>
+                    FlDotCirclePainter(radius: 0, color: Colors.transparent),
+              ),
+            );
+          }
           return TouchedSpotIndicatorData(
             const FlLine(color: Colors.blue, strokeWidth: 1.5),
             FlDotData(
-              getDotPainter: (spot, percent, barData, index) {
+              getDotPainter: (spot, percent, barData, i) {
                 return FlDotCirclePainter(
                   radius: 3.5,
                   color: Colors.blue,
