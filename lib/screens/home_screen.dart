@@ -10,6 +10,7 @@ import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/widget_service.dart';
 import '../services/indicator_service.dart';
+import '../services/divergence_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../widgets/indicator_zone_indicator.dart';
 import '../localization/app_localizations.dart';
@@ -76,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double? _currentPrice; // Current price (last close)
   bool _isLoading = false;
   bool _indicatorSettingsExpanded = false; // Indicator settings expansion state
+  bool _showDivergences = false;
   String? _dataSource; // 'cache' or 'yahoo' - shows where data came from
   AppState? _appState; // App state for selected indicator
   int? _stochDPeriod; // Stochastic %D period (only for Stochastic)
@@ -320,6 +322,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _loadSavedState() async {
     final prefs = await PreferencesStorage.instance;
+    _showDivergences = prefs.getBool('chart_show_divergences') ?? false;
 
     final hasInitialSymbol = widget.initialSymbol != null;
     if (hasInitialSymbol) {
@@ -519,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (indicatorType == IndicatorType.stoch && _stochDPeriod != null) {
       await prefs.setInt('home_stoch_d_period', _stochDPeriod!);
     }
+    await prefs.setBool('chart_show_divergences', _showDivergences);
 
     // Sync to server if authenticated, or save to cache if anonymous
     unawaited(
@@ -1443,6 +1447,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               symbol: _selectedSymbol,
               timeframe: _selectedTimeframe,
               levels: [_lowerLevel, _upperLevel],
+              divergences: _showDivergences
+                  ? DivergenceService.detectFromResults(_indicatorResults)
+                  : null,
             ),
           ],
         ),
@@ -1778,6 +1785,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: _showDivergences,
+                    onChanged: (value) {
+                      setState(() {
+                        _showDivergences = value ?? false;
+                        _saveState();
+                      });
+                    },
+                    title: Text(
+                      loc.t('chart_show_divergences'),
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [

@@ -7,6 +7,7 @@ import '../utils/preferences_storage.dart';
 import '../models.dart';
 import '../services/yahoo_proto.dart';
 import '../services/indicator_service.dart';
+import '../services/divergence_service.dart';
 import '../services/error_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
@@ -45,6 +46,7 @@ class _MarketsScreenState extends State<MarketsScreen>
   IndicatorType? _previousIndicatorType; // Track previous indicator to save its settings
   int? _stochDPeriod;
   bool _settingsExpanded = false;
+  bool _showDivergences = false;
 
   // Controllers for settings input fields
   final TextEditingController _indicatorPeriodController =
@@ -488,6 +490,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     
     if (mounted) {
       setState(() {
+        _showDivergences = prefs.getBool('chart_show_divergences') ?? false;
         _timeframe = prefs.getString('markets_timeframe') ?? '15m';
         _indicatorPeriod =
             prefs.getInt('markets_${indicatorType.toJson()}_period') ??
@@ -604,6 +607,7 @@ class _MarketsScreenState extends State<MarketsScreen>
     if (_stochDPeriod != null) {
       await prefs.setInt('markets_stoch_d_period', _stochDPeriod!);
     }
+    await prefs.setBool('chart_show_divergences', _showDivergences);
   }
 
   Future<void> _applySettings() async {
@@ -1761,6 +1765,21 @@ class _MarketsScreenState extends State<MarketsScreen>
                           ),
                         ),
                         const SizedBox(height: 12),
+                        CheckboxListTile(
+                          value: _showDivergences,
+                          onChanged: (value) {
+                            setState(() {
+                              _showDivergences = value ?? false;
+                              _saveState();
+                            });
+                          },
+                          title: Text(
+                            loc.t('chart_show_divergences'),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                         Row(
                           children: [
                             IconButton(
@@ -1997,6 +2016,11 @@ class _MarketsScreenState extends State<MarketsScreen>
                   showLabels: false,
                   isInteractive: false,
                   lineWidth: 1.2,
+                  divergences: _showDivergences
+                      ? DivergenceService.detectFromResults(
+                          indicatorData.indicatorResults,
+                        )
+                      : null,
                 ),
               )
             : SizedBox(

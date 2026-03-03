@@ -6,6 +6,7 @@ import '../models.dart';
 import '../models/indicator_type.dart';
 import '../services/yahoo_proto.dart';
 import '../services/indicator_service.dart';
+import '../services/divergence_service.dart';
 import '../widgets/indicator_chart.dart';
 import '../localization/app_localizations.dart';
 import '../services/data_sync_service.dart';
@@ -55,6 +56,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
   bool _isLoading = false;
   bool _isLoadingData = false; // Flag to prevent duplicate data loading calls
   bool _settingsExpanded = false;
+  bool _showDivergences = false;
   bool _isActionInProgress = false;
   _RsiSortOrder _currentSortOrder = _RsiSortOrder.ascending;
   AppState? _appState; // App state for selected indicator
@@ -502,6 +504,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
 
     if (mounted) {
       setState(() {
+        _showDivergences = prefs.getBool('chart_show_divergences') ?? false;
         // Use watchlist settings, or defaults if not set
         _timeframe = watchlistTimeframe ?? '15m';
         _indicatorPeriod = watchlistPeriod ?? indicatorType.defaultPeriod;
@@ -875,6 +878,7 @@ class _WatchlistScreenState extends State<WatchlistScreen>
         'watchlist_mass_alert_${indicatorKey}_repeatable', _massAlertRepeatable);
     await prefs.setBool(
         'watchlist_mass_alert_${indicatorKey}_on_close', _massAlertOnClose);
+    await prefs.setBool('chart_show_divergences', _showDivergences);
 
     // Sync watchlist alert settings to server (for cross-device sync)
     // Only sync for the current indicator. API uses 'wpr' for Williams.
@@ -2086,6 +2090,21 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                           ),
                         ),
                         const SizedBox(height: 8),
+                        CheckboxListTile(
+                          value: _showDivergences,
+                          onChanged: (value) {
+                            setState(() {
+                              _showDivergences = value ?? false;
+                              _saveState();
+                            });
+                          },
+                          title: Text(
+                            loc.t('chart_show_divergences'),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                         Row(
                           children: [
                             IconButton(
@@ -2463,6 +2482,11 @@ class _WatchlistScreenState extends State<WatchlistScreen>
                     showLabels: true, // Enable labels for Y axis
                     lineWidth: 1.2,
                     isInteractive: false, // But tooltip will still work
+                    divergences: _showDivergences
+                        ? DivergenceService.detectFromResults(
+                            indicatorData.indicatorResults,
+                          )
+                        : null,
                   ),
                 )
               else

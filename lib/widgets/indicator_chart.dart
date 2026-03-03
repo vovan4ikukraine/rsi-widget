@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models.dart';
 import '../models/indicator_type.dart';
+import '../models/divergence.dart';
 import '../localization/app_localizations.dart';
 
 /// Universal widget for displaying indicator charts
@@ -18,6 +19,8 @@ class IndicatorChart extends StatelessWidget {
   final Color? lineColor;
   final double lineWidth;
   final bool isInteractive;
+  /// When non-null and non-empty, divergence segments are highlighted in yellow with dots
+  final List<Divergence>? divergences;
 
   const IndicatorChart({
     super.key,
@@ -32,6 +35,7 @@ class IndicatorChart extends StatelessWidget {
     this.lineColor,
     this.lineWidth = 2.0,
     this.isInteractive = true,
+    this.divergences,
   });
 
   @override
@@ -112,7 +116,7 @@ class IndicatorChart extends StatelessWidget {
   }
 
   FlGridData _buildGridData(double minY, double maxY) {
-    final interval = indicatorType == IndicatorType.williams ? 20.0 : 20.0; // 20 units for both
+    const interval = 20.0;
     return FlGridData(
       show: true,
       drawVerticalLine: false,
@@ -176,17 +180,109 @@ class IndicatorChart extends StatelessWidget {
       return FlSpot(entry.key.toDouble(), entry.value);
     }).toList();
 
-    return [
-      LineChartBarData(
-        spots: mainSpots,
-        isCurved: false,
-        color: lineColor ?? _getMainLineColor(mainValues.last),
-        barWidth: lineWidth,
-        isStrokeCapRound: true,
-        dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
+    final hasDivergences = divergences != null && divergences!.isNotEmpty;
+
+    if (!hasDivergences || mainSpots.isEmpty) {
+      return [
+        LineChartBarData(
+          spots: mainSpots,
+          isCurved: false,
+          color: lineColor ?? _getMainLineColor(mainValues.last),
+          barWidth: lineWidth,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      ];
+    }
+
+    // Build segments: alternate default color and yellow for divergence ranges
+    // Sort by startIndex for consistent segment ordering
+    final sorted = List<Divergence>.from(divergences!)
+      ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
+    final result = <LineChartBarData>[];
+    int i = 0;
+    for (final d in sorted) {
+      final start = d.startIndex;
+      final end = d.endIndex;
+      if (start >= mainSpots.length || end >= mainSpots.length) continue;
+
+      // Segment before this divergence
+      if (i < start) {
+        result.add(_segment(
+          mainSpots.sublist(i, start + 1),
+          lineColor ?? _getMainLineColor(mainValues.last),
+          <int>{},
+        ));
+      }
+
+      // Divergence segment (yellow) with dots at start and end
+      result.add(_segment(
+        mainSpots.sublist(start, end + 1),
+        Colors.amber,
+        {start, end},
+      ));
+
+      i = end;
+    }
+
+    // Remaining segment after last divergence
+    if (i < mainSpots.length) {
+      result.add(_segment(
+        mainSpots.sublist(i),
+        lineColor ?? _getMainLineColor(mainValues.last),
+        <int>{},
+      ));
+    }
+
+    if (result.isEmpty) {
+      return [
+        LineChartBarData(
+          spots: mainSpots,
+          isCurved: false,
+          color: lineColor ?? _getMainLineColor(mainValues.last),
+          barWidth: lineWidth,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      ];
+    }
+
+    return result;
+  }
+
+  LineChartBarData _segment(
+    List<FlSpot> spots,
+    Color color,
+    Set<int> dotAtIndices,
+  ) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: false,
+      color: color,
+      barWidth: lineWidth,
+      isStrokeCapRound: true,
+      dotData: FlDotData(
+        show: dotAtIndices.isNotEmpty,
+        getDotPainter: (spot, percent, barData, spotIndex) {
+          final globalIndex = spot.x.round();
+          if (!dotAtIndices.contains(globalIndex)) {
+            return FlDotCirclePainter(
+              radius: 0,
+              color: Colors.transparent,
+            );
+          }
+          return FlDotCirclePainter(
+            radius: 4,
+            color: Colors.amber,
+            strokeWidth: 2,
+            strokeColor: Colors.amber.shade800,
+          );
+        },
       ),
-    ];
+      belowBarData: BarAreaData(show: false),
+    );
   }
 
   ExtraLinesData _buildExtraLinesData(double minY, double maxY) {
